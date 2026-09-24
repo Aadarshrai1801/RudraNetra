@@ -1,109 +1,135 @@
-import React from 'react';
-import { Wifi, WifiOff, Bell, User, Search } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Search, Bell } from 'lucide-react';
 import { useWebSocket } from '../../hooks/useWebSocket';
 
 export const Header: React.FC = () => {
   const { isConnected } = useWebSocket();
+  const [timeStr, setTimeStr] = useState<string>('');
+
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      setTimeStr(
+        now.toLocaleTimeString('en-GB', {
+          hour12: false,
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        })
+      );
+    };
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <header className="header">
-      <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: 1, maxWidth: '480px' }}>
-        <div style={{ position: 'relative', width: '100%' }}>
-          <Search
-            size={16}
-            style={{
-              position: 'absolute',
-              left: '12px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              color: 'var(--text-muted)',
-            }}
-          />
-          <input
-            type="text"
-            placeholder="Search vehicles, IMEI, drivers, or geofences..."
-            style={{
-              width: '100%',
-              background: 'rgba(255, 255, 255, 0.04)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: '8px',
-              padding: '8px 12px 8px 36px',
-              color: 'var(--text-primary)',
-              fontSize: '0.85rem',
-              outline: 'none',
-            }}
-          />
-        </div>
+      {/* Flush Inline Search */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, maxWidth: '420px' }}>
+        <Search size={14} color="var(--text-muted)" />
+        <input
+          type="text"
+          placeholder="Filter plate, IMEI, driver, or geofence..."
+          style={{
+            width: '100%',
+            background: 'transparent',
+            border: 'none',
+            borderBottom: '1px solid transparent',
+            color: 'var(--text-primary)',
+            fontSize: '0.8rem',
+            fontFamily: 'var(--font-ui)',
+            outline: 'none',
+            padding: '4px 0',
+            transition: 'border-color 0.15s ease',
+          }}
+          onFocus={(e) => (e.target.style.borderBottom = '1px solid var(--line-strong)')}
+          onBlur={(e) => (e.target.style.borderBottom = '1px solid transparent')}
+        />
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '18px' }}>
-        {/* Real-time telemetry connection badge */}
-        <div
-          className="glass-panel"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '6px 12px',
-            fontSize: '0.75rem',
-            fontWeight: 600,
-          }}
-        >
-          {isConnected ? (
-            <>
-              <Wifi size={14} color="#10b981" />
-              <span style={{ color: '#10b981' }}>Telemetry Stream Live</span>
-            </>
-          ) : (
-            <>
-              <WifiOff size={14} color="#ef4444" />
-              <span style={{ color: '#ef4444' }}>Reconnecting...</span>
-            </>
-          )}
+      {/* Right System Telemetry Status & Operator Profile */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+        {/* Real System Status Line (Square dot + Monospace sync timestamp) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span
+            style={{
+              width: '6px',
+              height: '6px',
+              backgroundColor: isConnected ? 'var(--signal-green)' : 'var(--signal-red)',
+              display: 'inline-block',
+            }}
+          />
+          <span
+            className="mono-num"
+            style={{
+              fontSize: '0.72rem',
+              color: isConnected ? 'var(--text-muted)' : 'var(--signal-red)',
+              letterSpacing: '0.02em',
+            }}
+          >
+            {isConnected
+              ? `SYS:SYNC ${timeStr || '11:45:00'} UTC+4 [TCP:5040 OK]`
+              : `SYS:OFFLINE / RECONNECTING [PORT:5040]`}
+          </span>
         </div>
 
+        <div style={{ width: '1px', height: '18px', background: 'var(--line)' }} />
+
+        {/* Action Button: Alerts Notification */}
         <button
           className="btn-ghost"
           style={{
-            padding: '8px',
-            borderRadius: '8px',
+            padding: '4px 6px',
             position: 'relative',
             cursor: 'pointer',
+            border: 'none',
           }}
-          title="Notifications"
+          title="System Alerts"
         >
-          <Bell size={18} />
+          <Bell size={15} color="var(--text-muted)" />
           <span
             style={{
               position: 'absolute',
-              top: '4px',
-              right: '4px',
-              width: '7px',
-              height: '7px',
-              borderRadius: '50%',
-              backgroundColor: 'var(--cyan-accent)',
+              top: '2px',
+              right: '2px',
+              width: '5px',
+              height: '5px',
+              backgroundColor: 'var(--signal-amber)',
             }}
           />
         </button>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ width: '1px', height: '18px', background: 'var(--line)' }} />
+
+        {/* Dispatch Console Operator */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <div
             style={{
-              width: '34px',
-              height: '34px',
-              borderRadius: '50%',
-              background: 'rgba(2, 132, 199, 0.25)',
-              border: '1px solid var(--border-accent)',
+              width: '20px',
+              height: '20px',
+              background: 'var(--bg-raised)',
+              border: '1px solid var(--line)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              fontSize: '0.65rem',
+              fontFamily: 'var(--font-mono)',
+              color: 'var(--text-muted)',
             }}
           >
-            <User size={18} color="#38bdf8" />
+            OP
           </div>
-          <div>
-            <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>Fleet Admin</div>
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>VAVE Logistics</div>
+          <div style={{ lineHeight: 1.2 }}>
+            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+              Dispatcher 01
+            </div>
+            <div
+              className="mono-num"
+              style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}
+            >
+              VAVE LOGISTICS UAE
+            </div>
           </div>
         </div>
       </div>
