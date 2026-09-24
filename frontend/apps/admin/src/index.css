@@ -1,29 +1,59 @@
 /* ==========================================================================
-   RudraNetra SuperAdmin Console — Design Tokens & Core Styles
-   Grounded in Industrial Operations Console Architecture
+   RudraNetra SuperAdmin Console — Daylight Design System
+   Harmonized with Fleet Dispatch Console (Calm, Trustworthy, Professional)
    ========================================================================== */
 
 :root {
-  /* Warm Graphite & Telemetry Palette */
-  --bg-base: #14120F;        /* warm graphite black */
-  --bg-surface: #1C1913;     /* panel surface */
-  --bg-raised: #242017;      /* raised / hover surface */
-  --line: #332D22;           /* hairline borders */
-  --line-strong: #4A4232;    /* prominent dividers */
-  --text-primary: #EDE7D9;   /* warm off-white */
-  --text-muted: #8C8574;     /* muted technical label text */
+  /* Quiet, daylight neutral base */
+  --bg-page: #F5F7F6;
+  --bg-card: #FFFFFF;
+  --bg-subtle: #EDF1EE;
+  --bg-hover: #F0F4F2;
+  --border: #E1E6E3;
+  --border-subtle: #ECEFEF;
+  --border-focus: #2F6F6D;
 
-  /* Operational Status Signals */
-  --signal-amber: #E8A33D;   /* primary accent */
-  --signal-green: #7BBE6E;   /* active / positive */
-  --signal-red: #C4573F;     /* suspended / alert */
-  --signal-blue: #6C93A6;    /* informational */
+  /* Typography Colors */
+  --text-primary: #1E2521;
+  --text-secondary: #5C665F;
+  --text-tertiary: #87948C;
+
+  /* The One Confident Accent: Quiet Teal */
+  --accent: #2F6F6D;
+  --accent-light: #EBF3F2;
+  --accent-hover: #265B59;
+  --accent-contrast: #FFFFFF;
+
+  /* Semantic Status Signals */
+  --good: #3E8E4F;          /* Active / Online / Operational */
+  --good-bg: #EDF7F0;
+  --good-border: #C6E6CD;
+
+  --attention: #C98A2E;     /* Warning / Near Capacity */
+  --attention-bg: #FCF6EC;
+  --attention-border: #F3DEBA;
+
+  --alert: #C1503D;         /* Suspended / Critical */
+  --alert-bg: #FBF0EE;
+  --alert-border: #F1CAC4;
 
   /* Typography */
-  --font-ui: 'Public Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', 'IBM Plex Mono', Consolas, monospace;
+  --font-size-base: 14px;
+  --line-height-body: 1.5;
 
-  --header-height: 48px;
+  --header-height: 64px;
+
+  /* Radius & Shadows */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 9999px;
+
+  --shadow-sm: 0 1px 3px rgba(30, 37, 33, 0.05);
+  --shadow-md: 0 4px 14px rgba(30, 37, 33, 0.07);
+  --shadow-lg: 0 16px 36px rgba(30, 37, 33, 0.12);
 }
 
 * {
@@ -33,82 +63,164 @@
 }
 
 body {
-  font-family: var(--font-ui);
-  background-color: var(--bg-base);
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-body);
+  background-color: var(--bg-page);
   color: var(--text-primary);
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Precision Scrollbars */
+/* Subtle, polished scrollbars */
 ::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--bg-base);
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--line);
+  background: #D4DBD6;
+  border-radius: var(--radius-full);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #B6C2BA;
+}
+
+/* Typography Helpers */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-family);
+  color: var(--text-primary);
+  line-height: 1.25;
 }
 
 .mono-num {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
 }
 
-.mono-num-right {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-  letter-spacing: -0.02em;
+/* Reusable Card Element */
+.admin-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  transition: all 0.2s ease;
+}
+.admin-card:hover {
+  box-shadow: var(--shadow-md);
 }
 
-/* Operational Console Panel */
-.ops-panel {
-  background: var(--bg-surface);
-  border: 1px solid var(--line);
-  border-radius: 0px;
-}
-
-/* Action Buttons */
+/* Buttons */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 6px 14px;
-  border-radius: 0;
-  font-family: var(--font-ui);
-  font-size: 0.775rem;
+  gap: 7px;
+  padding: 8px 16px;
+  border-radius: var(--radius-md);
+  font-family: var(--font-family);
+  font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
   border: 1px solid transparent;
   transition: all 0.15s ease;
   outline: none;
+  text-decoration: none;
 }
 
 .btn-primary {
-  background: var(--signal-amber);
-  color: #14120F;
-  border: 1px solid var(--signal-amber);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border-color: var(--accent);
+}
+.btn-primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  box-shadow: 0 2px 8px rgba(47, 111, 109, 0.25);
 }
 
-.btn-primary:hover {
-  background: #f5ab44;
-  border-color: #f5ab44;
+.btn-secondary {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+.btn-secondary:hover {
+  background: var(--bg-hover);
+  border-color: #CCD4CF;
 }
 
 .btn-ghost {
   background: transparent;
+  color: var(--text-secondary);
+  border-color: transparent;
+}
+.btn-ghost:hover {
+  background: var(--bg-subtle);
   color: var(--text-primary);
-  border: 1px solid var(--line);
 }
 
-.btn-ghost:hover {
-  background: var(--bg-raised);
-  border-color: var(--line-strong);
+/* Form Controls */
+.form-input,
+.form-select {
+  width: 100%;
+  padding: 8px 12px;
+  font-family: var(--font-family);
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.form-input:focus,
+.form-select:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(47, 111, 109, 0.15);
+}
+
+.form-label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 5px;
+}
+
+/* Status Badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.badge-good {
+  background: var(--good-bg);
+  color: var(--good);
+  border: 1px solid var(--good-border);
+}
+.badge-attention {
+  background: var(--attention-bg);
+  color: var(--attention);
+  border: 1px solid var(--attention-border);
+}
+.badge-alert {
+  background: var(--alert-bg);
+  color: var(--alert);
+  border: 1px solid var(--alert-border);
+}
+.badge-subtle {
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
 }
 
 /* Modal Backdrop */
@@ -118,10 +230,12 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(10, 9, 7, 0.85);
+  background: rgba(20, 30, 25, 0.45);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
-  padding: 20px;
+  z-index: 1000;
+  padding: 24px;
 }

@@ -1,9 +1,10 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { CompanyManagerPage } from './pages/CompanyManagerPage';
+import { ExternalLink, ShieldCheck } from 'lucide-react';
 
 const routeTitles: Record<string, string> = {
-  '/companies': 'Company Management',
+  '/companies': 'Organization & Tenant Registry',
 };
 
 const PageTitleManager: React.FC = () => {
@@ -12,9 +13,9 @@ const PageTitleManager: React.FC = () => {
   useEffect(() => {
     const pageName = routeTitles[location.pathname];
     if (pageName) {
-      document.title = `RudraNetra | ${pageName}`;
+      document.title = `RudraNetra · ${pageName}`;
     } else {
-      document.title = 'RudraNetra';
+      document.title = 'RudraNetra · SuperAdmin Console';
     }
   }, [location.pathname]);
 
@@ -25,99 +26,146 @@ export const App: React.FC = () => {
   return (
     <BrowserRouter>
       <PageTitleManager />
-      <div style={{ minHeight: '100vh', background: 'var(--bg-base)', color: 'var(--text-primary)' }}>
-        {/* Industrial SuperAdmin Header */}
+      <div style={{ minHeight: '100vh', background: 'var(--bg-page)', color: 'var(--text-primary)' }}>
+        {/* Daylight SuperAdmin Header */}
         <header
           style={{
             height: 'var(--header-height)',
-            borderBottom: '1px solid var(--line)',
-            padding: '0 24px',
+            borderBottom: '1px solid var(--border)',
+            padding: '0 32px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            background: 'var(--bg-surface)',
+            background: 'var(--bg-card)',
+            boxShadow: 'var(--shadow-sm)',
+            position: 'sticky',
+            top: 0,
+            zIndex: 100,
           }}
         >
           {/* Brand & Console Tag */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
             <div
               style={{
-                background: '#ffffff',
-                borderRadius: '2px',
-                padding: '2px 5px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                border: '1px solid var(--line)',
               }}
             >
               <img
                 src="/RudraNetraLogo.png"
                 alt="RudraNetra Logo"
-                style={{ height: '22px', width: 'auto', objectFit: 'contain' }}
+                style={{ height: '30px', width: 'auto', objectFit: 'contain' }}
               />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span style={{ fontWeight: 800, fontSize: '0.95rem', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+              <span
+                style={{
+                  fontWeight: 800,
+                  fontSize: '1.05rem',
+                  letterSpacing: '-0.02em',
+                  color: 'var(--text-primary)',
+                }}
+              >
                 RudraNetra
               </span>
               <span
                 style={{
-                  fontSize: '0.68rem',
-                  fontFamily: 'var(--font-mono)',
+                  fontSize: '0.72rem',
                   fontWeight: 600,
-                  background: 'var(--bg-raised)',
-                  color: 'var(--signal-amber)',
-                  padding: '2px 8px',
-                  border: '1px solid var(--line)',
-                  letterSpacing: '0.04em',
+                  background: 'var(--accent-light)',
+                  color: 'var(--accent)',
+                  padding: '3px 10px',
+                  borderRadius: 'var(--radius-full)',
+                  border: '1px solid rgba(47, 111, 109, 0.2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
                 }}
               >
-                SUPERADMIN CONSOLE
+                <ShieldCheck size={13} strokeWidth={2.5} />
+                <span>SuperAdmin Platform</span>
               </span>
             </div>
           </div>
 
-          {/* Cluster Status Readout */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {/* Cluster Status Readout & Client Console Switcher */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            {/* Cluster Status Pill */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                background: 'var(--good-bg)',
+                border: '1px solid var(--good-border)',
+                borderRadius: 'var(--radius-full)',
+                padding: '5px 12px',
+              }}
+            >
               <span
                 style={{
-                  width: '6px',
-                  height: '6px',
-                  backgroundColor: 'var(--signal-green)',
+                  width: '7px',
+                  height: '7px',
+                  borderRadius: '50%',
+                  backgroundColor: 'var(--good)',
                   display: 'inline-block',
                 }}
               />
               <span
                 className="mono-num"
-                style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}
+                style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--good)' }}
               >
-                CLUSTER: UAE-PRIMARY &middot; SHARD: 01 &middot; TIMESCALEDB [TCP:5040 OK]
+                UAE Cluster Healthy · Shard 01 · Ingest Active
               </span>
             </div>
 
-            <div style={{ width: '1px', height: '16px', background: 'var(--line)' }} />
+            {/* Quick Switch to Fleet Dispatch Console */}
+            <a
+              href="http://localhost:3000"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-secondary"
+              style={{
+                fontSize: '0.78rem',
+                padding: '6px 12px',
+                gap: '6px',
+                textDecoration: 'none',
+              }}
+            >
+              <span>Fleet Tracking Console</span>
+              <ExternalLink size={13} />
+            </a>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ width: '1px', height: '24px', background: 'var(--border)' }} />
+
+            {/* Admin Profile Chip */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <div
                 style={{
-                  width: '20px',
-                  height: '20px',
-                  background: 'var(--bg-raised)',
-                  border: '1px solid var(--line)',
+                  width: '34px',
+                  height: '34px',
+                  borderRadius: '50%',
+                  background: 'var(--accent-light)',
+                  border: '1px solid rgba(47, 111, 109, 0.3)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: '0.62rem',
-                  fontFamily: 'var(--font-mono)',
-                  color: 'var(--signal-amber)',
+                  fontSize: '0.78rem',
+                  color: 'var(--accent)',
                   fontWeight: 700,
                 }}
               >
                 SA
               </div>
-              <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>SuperAdmin</span>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  Platform Admin
+                </span>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
+                  Root Administrator
+                </span>
+              </div>
             </div>
           </div>
         </header>

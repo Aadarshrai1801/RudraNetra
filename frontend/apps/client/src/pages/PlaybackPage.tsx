@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import maplibregl from 'maplibre-gl';
-import { Play, Pause, RotateCcw, Clock, Gauge, Calendar } from 'lucide-react';
+import { Play, Pause, RotateCcw, Clock, Gauge, Calendar, Layers, Check } from 'lucide-react';
+import { FREE_DUBAI_MAP_STYLES } from '../components/map/LiveMap';
 
 interface HistoryPoint {
   lat: number;
@@ -36,35 +37,56 @@ export const PlaybackPage: React.FC = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [selectedVehicle, setSelectedVehicle] = useState('DXB-A-98124');
+  const [activeStyleId, setActiveStyleId] = useState<string>(() => {
+    const saved = localStorage.getItem('rudra_dubai_map_style');
+    if (saved && FREE_DUBAI_MAP_STYLES.some((s) => s.id === saved)) {
+      return saved;
+    }
+    return FREE_DUBAI_MAP_STYLES[0].id;
+  });
+  const [isStyleMenuOpen, setIsStyleMenuOpen] = useState(false);
 
-  // Initialize Map with Daylight Tiles
+  // Synchronize localStorage if previous selection was removed
+  useEffect(() => {
+    const saved = localStorage.getItem('rudra_dubai_map_style');
+    if (saved && !FREE_DUBAI_MAP_STYLES.some((s) => s.id === saved)) {
+      localStorage.setItem('rudra_dubai_map_style', FREE_DUBAI_MAP_STYLES[0].id);
+    }
+  }, []);
+
+  // Initialize Map with Free Dubai Basemaps
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
+
+    const sourcesObj: Record<string, any> = {};
+    const layersArr: any[] = [];
+
+    FREE_DUBAI_MAP_STYLES.forEach((style) => {
+      sourcesObj[style.id] = {
+        type: 'raster',
+        tiles: style.tiles,
+        tileSize: 256,
+        attribution: style.attribution,
+      };
+
+      layersArr.push({
+        id: style.id,
+        type: 'raster',
+        source: style.id,
+        minzoom: 0,
+        maxzoom: style.maxZoom,
+        layout: {
+          visibility: style.id === activeStyleId ? 'visible' : 'none',
+        },
+      });
+    });
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
       style: {
         version: 8,
-        sources: {
-          'carto-voyager': {
-            type: 'raster',
-            tiles: [
-              'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
-              'https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
-            ],
-            tileSize: 256,
-            attribution: '© OpenStreetMap contributors, © CARTO',
-          },
-        },
-        layers: [
-          {
-            id: 'carto-voyager-layer',
-            type: 'raster',
-            source: 'carto-voyager',
-            minzoom: 0,
-            maxzoom: 19,
-          },
-        ],
+        sources: sourcesObj,
+        layers: layersArr,
       },
       center: [sampleRoute[0].lng, sampleRoute[0].lat],
       zoom: 12.5,
@@ -94,7 +116,7 @@ export const PlaybackPage: React.FC = () => {
         paint: {
           'line-color': '#2F6F6D',
           'line-width': 8,
-          'line-opacity': 0.2,
+          'line-opacity': 0.25,
         },
       });
 
@@ -106,7 +128,7 @@ export const PlaybackPage: React.FC = () => {
         paint: {
           'line-color': '#2F6F6D',
           'line-width': 4,
-          'line-opacity': 0.85,
+          'line-opacity': 0.9,
         },
       });
 
@@ -147,6 +169,25 @@ export const PlaybackPage: React.FC = () => {
     };
   }, []);
 
+  const switchMapStyle = (newStyleId: string) => {
+    setActiveStyleId(newStyleId);
+    localStorage.setItem('rudra_dubai_map_style', newStyleId);
+    setIsStyleMenuOpen(false);
+
+    const map = mapRef.current;
+    if (!map) return;
+
+    FREE_DUBAI_MAP_STYLES.forEach((style) => {
+      if (map.getLayer(style.id)) {
+        map.setLayoutProperty(
+          style.id,
+          'visibility',
+          style.id === newStyleId ? 'visible' : 'none'
+        );
+      }
+    });
+  };
+
   // Animation Loop for Playback
   useEffect(() => {
     let interval: any;
@@ -185,6 +226,9 @@ export const PlaybackPage: React.FC = () => {
   };
 
   const currentPoint = sampleRoute[currentIndex];
+  const currentStyle =
+    FREE_DUBAI_MAP_STYLES.find((s) => s.id === activeStyleId) ||
+    FREE_DUBAI_MAP_STYLES[0];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
@@ -212,6 +256,75 @@ export const PlaybackPage: React.FC = () => {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {/* Dubai Map Free Layer Selector */}
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setIsStyleMenuOpen(!isStyleMenuOpen)}
+              style={{
+                background: 'var(--bg-page)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-md)',
+                padding: '8px 12px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                cursor: 'pointer',
+                fontFamily: 'var(--font-family)',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                color: 'var(--text-primary)',
+              }}
+            >
+              <Layers size={15} color="var(--accent)" />
+              <span>Map: {currentStyle.name}</span>
+            </button>
+
+            {isStyleMenuOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 8px)',
+                  right: '0',
+                  width: '300px',
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-lg)',
+                  boxShadow: 'var(--shadow-lg)',
+                  padding: '10px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
+                  zIndex: 30,
+                }}
+              >
+                {FREE_DUBAI_MAP_STYLES.map((style) => {
+                  const isSelected = style.id === activeStyleId;
+                  return (
+                    <div
+                      key={style.id}
+                      onClick={() => switchMapStyle(style.id)}
+                      style={{
+                        padding: '8px 10px',
+                        borderRadius: 'var(--radius-md)',
+                        background: isSelected ? 'var(--accent-light)' : 'transparent',
+                        border: '1px solid',
+                        borderColor: isSelected ? 'var(--accent)' : 'transparent',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: isSelected ? 'var(--accent)' : 'var(--text-primary)' }}>
+                          {style.name}
+                        </span>
+                        {isSelected && <Check size={14} color="var(--accent)" />}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           {/* Vehicle Selector */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
@@ -239,7 +352,7 @@ export const PlaybackPage: React.FC = () => {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: 'var(--text-secondary)', background: 'var(--bg-page)', padding: '8px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
             <Calendar size={15} />
-            <span>Today, morning shift</span>
+            <span>Today</span>
           </div>
         </div>
       </div>

@@ -4,12 +4,17 @@ import {
   Plus,
   Users,
   Sliders,
-  Shield,
+  ShieldCheck,
   Key,
   X,
   Check,
   Search,
   Copy,
+  Radio,
+  Activity,
+  Mail,
+  Calendar,
+  Database,
 } from 'lucide-react';
 
 export interface TenantCompany {
@@ -132,7 +137,7 @@ export const CompanyManagerPage: React.FC = () => {
       prev.map((c) => (c.id === selectedCompany.id ? ({ ...c, ...editForm } as TenantCompany) : c))
     );
     setIsEditModalOpen(false);
-    showToast(`Tenant "${editForm.name || selectedCompany.name}" updated successfully.`);
+    showToast(`Organization "${editForm.name || selectedCompany.name}" settings saved.`);
   };
 
   const handleCreateCompany = (e: React.FormEvent) => {
@@ -174,7 +179,7 @@ export const CompanyManagerPage: React.FC = () => {
       dbShard: 'pg_shard_uae_01',
       siraRelay: true,
     });
-    showToast(`Tenant "${created.name}" created and provisioned.`);
+    showToast(`Organization "${created.name}" provisioned successfully.`);
   };
 
   const handleCopyApiKey = (key: string) => {
@@ -187,7 +192,7 @@ export const CompanyManagerPage: React.FC = () => {
     if (!selectedCompany) return;
     const freshKey = `RN-DEV-KEY-${selectedCompany.code.toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
     setEditForm((prev) => ({ ...prev, apiKey: freshKey }));
-    showToast('Generated new development API key. Save to persist.');
+    showToast('Generated new API key. Click "Save Configuration" to apply.');
   };
 
   // Filtered companies
@@ -195,7 +200,8 @@ export const CompanyManagerPage: React.FC = () => {
     const matchesSearch =
       c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       c.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.contactPerson.toLowerCase().includes(searchQuery.toLowerCase());
+      c.contactPerson.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      c.contactEmail.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'ALL' || c.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -206,146 +212,225 @@ export const CompanyManagerPage: React.FC = () => {
   const totalUsers = companies.reduce((acc, c) => acc + c.users, 0);
 
   return (
-    <div style={{ padding: '24px 32px', maxWidth: '1440px', margin: '0 auto' }}>
+    <div style={{ padding: '32px', maxWidth: '1440px', margin: '0 auto' }}>
       {/* Toast Notification */}
       {toastMessage && (
         <div
           style={{
             position: 'fixed',
-            top: '56px',
+            top: '80px',
             right: '32px',
-            zIndex: 1000,
-            background: 'var(--bg-raised)',
-            border: '1px solid var(--signal-green)',
+            zIndex: 1100,
+            background: 'var(--bg-card)',
+            border: '1px solid var(--good-border)',
+            borderLeft: '4px solid var(--good)',
             color: 'var(--text-primary)',
-            padding: '10px 16px',
+            padding: '12px 18px',
+            borderRadius: 'var(--radius-md)',
             display: 'flex',
             alignItems: 'center',
             gap: '10px',
-            fontSize: '0.8rem',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+            fontSize: '0.85rem',
+            fontWeight: 500,
+            boxShadow: 'var(--shadow-lg)',
+            animation: 'fadeIn 0.2s ease',
           }}
         >
-          <span style={{ width: '6px', height: '6px', background: 'var(--signal-green)' }} />
+          <div
+            style={{
+              width: '20px',
+              height: '20px',
+              borderRadius: '50%',
+              background: 'var(--good-bg)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Check size={13} color="var(--good)" strokeWidth={2.5} />
+          </div>
           <span>{toastMessage}</span>
         </div>
       )}
 
-      {/* Header Bar */}
+      {/* Page Header Bar */}
       <div
         style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'flex-start',
-          marginBottom: '20px',
-          borderBottom: '1px solid var(--line)',
-          paddingBottom: '16px',
+          marginBottom: '28px',
+          gap: '20px',
+          flexWrap: 'wrap',
         }}
       >
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span
-              style={{
-                width: '6px',
-                height: '6px',
-                backgroundColor: 'var(--signal-amber)',
-                display: 'inline-block',
-              }}
-            />
             <h1
               style={{
-                fontSize: '1.25rem',
+                fontSize: '1.5rem',
                 fontWeight: 800,
-                letterSpacing: '0.02em',
-                textTransform: 'uppercase',
+                letterSpacing: '-0.02em',
+                color: 'var(--text-primary)',
                 margin: 0,
               }}
             >
-              Tenant & Organization Registry
+              Organization & Tenant Registry
             </h1>
           </div>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '6px' }}>
-            Multi-tenant routing, device allocations, SIRA compliance relays, and database sharding.
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: '6px' }}>
+            Multi-tenant routing, hardware device allocations, and SIRA compliance relays across Dubai and the UAE.
           </p>
         </div>
 
         <button
           onClick={() => setIsCreateModalOpen(true)}
           className="btn btn-primary"
-          style={{ padding: '8px 16px', gap: '8px' }}
+          style={{ padding: '10px 18px', gap: '8px', fontSize: '0.88rem' }}
         >
-          <Plus size={15} strokeWidth={2.5} />
-          <span>+ Create Tenant</span>
+          <Plus size={16} strokeWidth={2.5} />
+          <span>Provision Organization</span>
         </button>
       </div>
 
-      {/* Industrial Operational Metrics Strip */}
+      {/* 4 Daylight Operational Metrics Cards */}
       <div
-        className="ops-panel"
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(4, 1fr)',
-          marginBottom: '24px',
-          border: '1px solid var(--line)',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+          gap: '18px',
+          marginBottom: '28px',
         }}
       >
         {/* Metric 1: Total Tenants */}
-        <div style={{ padding: '16px 20px', borderRight: '1px solid var(--line)' }}>
-          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Total Registered Tenants
+        <div className="admin-card" style={{ padding: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              Active Organizations
+            </span>
+            <div
+              style={{
+                width: '34px',
+                height: '34px',
+                borderRadius: 'var(--radius-md)',
+                background: 'var(--accent-light)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Building2 size={18} color="var(--accent)" />
+            </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginTop: '4px' }}>
-            <span className="mono-num" style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
+            <span className="mono-num" style={{ fontSize: '1.85rem', fontWeight: 800, color: 'var(--text-primary)' }}>
               {companies.length}
             </span>
-            <span style={{ fontSize: '0.72rem', color: 'var(--signal-green)' }}>
+            <span className="badge badge-good" style={{ fontSize: '0.72rem', padding: '2px 8px' }}>
               100% Online
             </span>
+          </div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', marginTop: '6px' }}>
+            All tenants routing live telemetry
           </div>
         </div>
 
         {/* Metric 2: Allocated Trackers */}
-        <div style={{ padding: '16px 20px', borderRight: '1px solid var(--line)' }}>
-          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Allocated Trackers / Cap
+        <div className="admin-card" style={{ padding: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              Allocated Trackers
+            </span>
+            <div
+              style={{
+                width: '34px',
+                height: '34px',
+                borderRadius: 'var(--radius-md)',
+                background: 'var(--attention-bg)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Radio size={18} color="var(--attention)" />
+            </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginTop: '4px' }}>
-            <span className="mono-num" style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--signal-amber)' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+            <span className="mono-num" style={{ fontSize: '1.85rem', fontWeight: 800, color: 'var(--text-primary)' }}>
               {totalTrackers}
             </span>
-            <span className="mono-num" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              / {totalMaxTrackers} ({Math.round((totalTrackers / (totalMaxTrackers || 1)) * 100)}%)
+            <span className="mono-num" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+              / {totalMaxTrackers} cap
             </span>
+          </div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', marginTop: '6px' }}>
+            {Math.round((totalTrackers / (totalMaxTrackers || 1)) * 100)}% network capacity utilized
           </div>
         </div>
 
-        {/* Metric 3: Active Operators */}
-        <div style={{ padding: '16px 20px', borderRight: '1px solid var(--line)' }}>
-          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Operator User Seats
+        {/* Metric 3: Active Operator Seats */}
+        <div className="admin-card" style={{ padding: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              Dispatcher Seats
+            </span>
+            <div
+              style={{
+                width: '34px',
+                height: '34px',
+                borderRadius: 'var(--radius-md)',
+                background: 'var(--bg-subtle)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Users size={18} color="var(--text-secondary)" />
+            </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginTop: '4px' }}>
-            <span className="mono-num" style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+            <span className="mono-num" style={{ fontSize: '1.85rem', fontWeight: 800, color: 'var(--text-primary)' }}>
               {totalUsers}
             </span>
-            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-              Assigned across tenants
+            <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+              Active users
             </span>
+          </div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', marginTop: '6px' }}>
+            Assigned across all dispatch consoles
           </div>
         </div>
 
-        {/* Metric 4: Telemetry Load */}
-        <div style={{ padding: '16px 20px' }}>
-          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Cluster Telemetry Ingest
+        {/* Metric 4: Live Telemetry Ingest */}
+        <div className="admin-card" style={{ padding: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              Ingest Throughput
+            </span>
+            <div
+              style={{
+                width: '34px',
+                height: '34px',
+                borderRadius: 'var(--radius-md)',
+                background: 'var(--good-bg)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Activity size={18} color="var(--good)" />
+            </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginTop: '4px' }}>
-            <span className="mono-num" style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--signal-green)' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+            <span className="mono-num" style={{ fontSize: '1.85rem', fontWeight: 800, color: 'var(--text-primary)' }}>
               1,420
             </span>
-            <span className="mono-num" style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-              msgs/sec &middot; TCP:5040
+            <span className="mono-num" style={{ fontSize: '0.82rem', color: 'var(--good)', fontWeight: 600 }}>
+              msgs/sec
             </span>
+          </div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', marginTop: '6px' }}>
+            Port 5040 · Real-time pipeline
           </div>
         </div>
       </div>
@@ -356,7 +441,7 @@ export const CompanyManagerPage: React.FC = () => {
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          marginBottom: '16px',
+          marginBottom: '20px',
           gap: '16px',
           flexWrap: 'wrap',
         }}
@@ -366,171 +451,219 @@ export const CompanyManagerPage: React.FC = () => {
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '8px',
-            background: 'var(--bg-surface)',
-            border: '1px solid var(--line)',
-            padding: '6px 12px',
+            gap: '10px',
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-md)',
+            padding: '8px 14px',
             flex: '1',
-            maxWidth: '380px',
+            maxWidth: '420px',
+            boxShadow: 'var(--shadow-sm)',
           }}
         >
-          <Search size={14} color="var(--text-muted)" />
+          <Search size={16} color="var(--text-tertiary)" />
           <input
             type="text"
-            placeholder="Search tenant name, code, or contact..."
+            placeholder="Search by company name, code, contact or email..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             style={{
               background: 'transparent',
               border: 'none',
               color: 'var(--text-primary)',
-              fontSize: '0.78rem',
+              fontSize: '0.85rem',
               outline: 'none',
               width: '100%',
-              fontFamily: 'var(--font-ui)',
+              fontFamily: 'var(--font-family)',
             }}
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--text-tertiary)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+              }}
             >
-              <X size={12} />
+              <X size={14} />
             </button>
           )}
         </div>
 
-        {/* Status Filter Tabs */}
-        <div style={{ display: 'flex', gap: '0', border: '1px solid var(--line)' }}>
-          {(['ALL', 'Active', 'Suspended'] as const).map((filter) => (
-            <button
-              key={filter}
-              onClick={() => setStatusFilter(filter)}
-              style={{
-                background: statusFilter === filter ? 'var(--bg-raised)' : 'var(--bg-surface)',
-                color: statusFilter === filter ? 'var(--signal-amber)' : 'var(--text-muted)',
-                border: 'none',
-                borderRight: '1px solid var(--line)',
-                padding: '6px 14px',
-                fontSize: '0.72rem',
-                fontFamily: 'var(--font-mono)',
-                fontWeight: 600,
-                cursor: 'pointer',
-                letterSpacing: '0.04em',
-              }}
-            >
-              {filter.toUpperCase()}
-            </button>
-          ))}
+        {/* Status Filter Segmented Control */}
+        <div
+          style={{
+            display: 'flex',
+            background: 'var(--bg-subtle)',
+            padding: '3px',
+            borderRadius: 'var(--radius-md)',
+            border: '1px solid var(--border)',
+          }}
+        >
+          {(['ALL', 'Active', 'Suspended'] as const).map((filter) => {
+            const isSelected = statusFilter === filter;
+            const count =
+              filter === 'ALL'
+                ? companies.length
+                : companies.filter((c) => c.status === filter).length;
+
+            return (
+              <button
+                key={filter}
+                onClick={() => setStatusFilter(filter)}
+                style={{
+                  background: isSelected ? 'var(--bg-card)' : 'transparent',
+                  color: isSelected ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  border: 'none',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '6px 14px',
+                  fontSize: '0.8rem',
+                  fontWeight: isSelected ? 700 : 500,
+                  cursor: 'pointer',
+                  boxShadow: isSelected ? 'var(--shadow-sm)' : 'none',
+                  transition: 'all 0.15s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                <span>{filter === 'ALL' ? 'All Organizations' : filter}</span>
+                <span
+                  style={{
+                    fontSize: '0.72rem',
+                    background: isSelected ? 'var(--accent-light)' : 'rgba(0,0,0,0.05)',
+                    color: isSelected ? 'var(--accent)' : 'var(--text-tertiary)',
+                    padding: '1px 6px',
+                    borderRadius: 'var(--radius-full)',
+                  }}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* Tenant Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '16px' }}>
+      {/* Tenant Organizations Grid */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(430px, 1fr))',
+          gap: '20px',
+        }}
+      >
         {filteredCompanies.map((c) => {
           const usagePercent = Math.min(100, Math.round((c.devices / (c.maxDevices || 1)) * 100));
 
           return (
             <div
               key={c.id}
-              className="ops-panel"
+              className="admin-card"
               style={{
-                padding: '20px',
+                padding: '24px',
                 display: 'flex',
                 flexDirection: 'column',
                 justifyContent: 'space-between',
-                transition: 'border-color 0.15s ease',
               }}
             >
-              {/* Top Row: Organization Identity & Status */}
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
-                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                {/* Organization Identity & Status */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
                     <div
                       style={{
-                        padding: '8px',
-                        background: 'var(--bg-raised)',
-                        border: '1px solid var(--line)',
+                        width: '42px',
+                        height: '42px',
+                        borderRadius: 'var(--radius-md)',
+                        background: 'var(--accent-light)',
+                        border: '1px solid rgba(47, 111, 109, 0.2)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                       }}
                     >
-                      <Building2 size={20} color="var(--signal-amber)" />
+                      <Building2 size={22} color="var(--accent)" />
                     </div>
                     <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <h3 style={{ fontSize: '0.98rem', fontWeight: 700, letterSpacing: '0.01em', margin: 0 }}>
-                          {c.name}
-                        </h3>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '3px' }}>
+                      <h3 style={{ fontSize: '1.05rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
+                        {c.name}
+                      </h3>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
                         <span
                           className="mono-num"
                           style={{
-                            fontSize: '0.68rem',
-                            color: 'var(--text-muted)',
-                            background: 'var(--bg-raised)',
-                            padding: '1px 5px',
-                            border: '1px solid var(--line)',
+                            fontSize: '0.72rem',
+                            fontWeight: 600,
+                            color: 'var(--text-secondary)',
+                            background: 'var(--bg-subtle)',
+                            padding: '2px 7px',
+                            borderRadius: 'var(--radius-sm)',
+                            border: '1px solid var(--border)',
                           }}
                         >
                           {c.code}
                         </span>
-                        <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                          Shard: <span className="mono-num" style={{ color: 'var(--text-primary)' }}>{c.dbShard}</span>
+                        <span
+                          style={{
+                            fontSize: '0.75rem',
+                            color: 'var(--text-tertiary)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <Database size={12} />
+                          <span>{c.dbShard}</span>
                         </span>
                       </div>
                     </div>
                   </div>
 
                   {/* Status Indicator */}
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                      padding: '3px 8px',
-                      background: 'var(--bg-raised)',
-                      border: `1px solid ${c.status === 'Active' ? 'var(--line)' : 'var(--signal-red)'}`,
-                    }}
-                  >
+                  <span className={`badge ${c.status === 'Active' ? 'badge-good' : 'badge-alert'}`}>
                     <span
                       style={{
-                        width: '5px',
-                        height: '5px',
-                        backgroundColor: c.status === 'Active' ? 'var(--signal-green)' : 'var(--signal-red)',
+                        width: '6px',
+                        height: '6px',
+                        borderRadius: '50%',
+                        backgroundColor: c.status === 'Active' ? 'var(--good)' : 'var(--alert)',
                         display: 'inline-block',
                       }}
                     />
-                    <span
-                      className="mono-num"
-                      style={{
-                        fontSize: '0.65rem',
-                        fontWeight: 700,
-                        color: c.status === 'Active' ? 'var(--signal-green)' : 'var(--signal-red)',
-                        letterSpacing: '0.04em',
-                      }}
-                    >
-                      {c.status.toUpperCase()}
-                    </span>
-                  </div>
+                    <span>{c.status}</span>
+                  </span>
                 </div>
 
                 {/* Device Allocation Gauge */}
-                <div style={{ margin: '14px 0', background: 'var(--bg-raised)', padding: '10px 12px', border: '1px solid var(--line)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', marginBottom: '6px' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>Trackers Allocated</span>
-                    <span className="mono-num" style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
-                      {c.devices} / {c.maxDevices} <span style={{ color: 'var(--text-muted)' }}>({usagePercent}%)</span>
+                <div
+                  style={{
+                    margin: '16px 0',
+                    background: 'var(--bg-subtle)',
+                    padding: '12px 16px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-subtle)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '8px' }}>
+                    <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Trackers Assigned</span>
+                    <span className="mono-num" style={{ color: 'var(--text-primary)', fontWeight: 700 }}>
+                      {c.devices} / {c.maxDevices}{' '}
+                      <span style={{ color: 'var(--text-tertiary)', fontWeight: 500 }}>({usagePercent}%)</span>
                     </span>
                   </div>
-                  <div style={{ width: '100%', height: '4px', background: 'var(--bg-base)', overflow: 'hidden' }}>
+                  <div style={{ width: '100%', height: '6px', background: '#DCE4DF', borderRadius: 'var(--radius-full)', overflow: 'hidden' }}>
                     <div
                       style={{
                         width: `${usagePercent}%`,
                         height: '100%',
-                        background: usagePercent > 90 ? 'var(--signal-red)' : 'var(--signal-amber)',
+                        background: usagePercent > 90 ? 'var(--alert)' : 'var(--accent)',
+                        borderRadius: 'var(--radius-full)',
+                        transition: 'width 0.3s ease',
                       }}
                     />
                   </div>
@@ -541,40 +674,60 @@ export const CompanyManagerPage: React.FC = () => {
                   style={{
                     display: 'grid',
                     gridTemplateColumns: '1fr 1fr',
-                    gap: '8px',
-                    fontSize: '0.72rem',
-                    color: 'var(--text-muted)',
-                    marginBottom: '16px',
+                    gap: '10px',
+                    fontSize: '0.78rem',
+                    color: 'var(--text-secondary)',
+                    marginBottom: '18px',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Users size={13} color="var(--text-muted)" />
-                    <span>Users: <strong className="mono-num" style={{ color: 'var(--text-primary)' }}>{c.users} / {c.maxUsers}</strong></span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                    <Users size={14} color="var(--text-tertiary)" />
+                    <span>
+                      Seats: <strong className="mono-num" style={{ color: 'var(--text-primary)' }}>{c.users} / {c.maxUsers}</strong>
+                    </span>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Shield size={13} color={c.siraRelay ? 'var(--signal-green)' : 'var(--text-muted)'} />
-                    <span>SIRA: <strong style={{ color: c.siraRelay ? 'var(--signal-green)' : 'var(--text-muted)' }}>{c.siraRelay ? 'Enabled' : 'Disabled'}</strong></span>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                    <ShieldCheck size={14} color={c.siraRelay ? 'var(--good)' : 'var(--text-tertiary)'} />
+                    <span>
+                      SIRA:{' '}
+                      <strong style={{ color: c.siraRelay ? 'var(--good)' : 'var(--text-tertiary)' }}>
+                        {c.siraRelay ? 'Active Relay' : 'Standard'}
+                      </strong>
+                    </span>
                   </div>
-                  <div style={{ gridColumn: 'span 2', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>Contact:</span>
-                    <span style={{ color: 'var(--text-primary)' }}>{c.contactPerson}</span>
-                    <span style={{ color: 'var(--text-muted)' }}>({c.contactEmail})</span>
+
+                  <div style={{ gridColumn: 'span 2', display: 'flex', alignItems: 'center', gap: '7px' }}>
+                    <Mail size={14} color="var(--text-tertiary)" />
+                    <span style={{ color: 'var(--text-secondary)' }}>
+                      {c.contactPerson} &middot;{' '}
+                      <span style={{ color: 'var(--text-tertiary)' }}>{c.contactEmail}</span>
+                    </span>
                   </div>
                 </div>
               </div>
 
-              {/* Action Bar with FIXED WORKING MANAGE BUTTON */}
+              {/* Action Bar */}
               <div
                 style={{
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  paddingTop: '12px',
-                  borderTop: '1px solid var(--line)',
+                  paddingTop: '14px',
+                  borderTop: '1px solid var(--border)',
                 }}
               >
-                <span className="mono-num" style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                  EST: {c.createdAt}
+                <span
+                  style={{
+                    fontSize: '0.75rem',
+                    color: 'var(--text-tertiary)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                  }}
+                >
+                  <Calendar size={13} />
+                  <span>Added {c.createdAt}</span>
                 </span>
 
                 <button
@@ -582,15 +735,14 @@ export const CompanyManagerPage: React.FC = () => {
                   onClick={() => handleOpenManage(c)}
                   className="btn btn-primary"
                   style={{
-                    padding: '5px 12px',
-                    fontSize: '0.72rem',
-                    gap: '5px',
-                    cursor: 'pointer',
+                    padding: '7px 14px',
+                    fontSize: '0.8rem',
+                    gap: '6px',
                   }}
                   id={`manage-tenant-${c.id}`}
                 >
-                  <Sliders size={13} strokeWidth={2.2} />
-                  <span>Manage Tenant</span>
+                  <Sliders size={14} strokeWidth={2.2} />
+                  <span>Manage Organization</span>
                 </button>
               </div>
             </div>
@@ -598,318 +750,281 @@ export const CompanyManagerPage: React.FC = () => {
         })}
       </div>
 
+      {filteredCompanies.length === 0 && (
+        <div
+          className="admin-card"
+          style={{
+            padding: '48px',
+            textAlign: 'center',
+            marginTop: '20px',
+          }}
+        >
+          <Building2 size={36} color="var(--text-tertiary)" style={{ margin: '0 auto 12px' }} />
+          <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+            No Organizations Found
+          </h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '6px' }}>
+            No tenants match the search filter "{searchQuery}".
+          </p>
+        </div>
+      )}
+
       {/* =========================================================================
-          TENANT MANAGEMENT MODAL (DRAWER CONSOLE)
-          Triggered by clicking "Manage Tenant"
+          MANAGE ORGANIZATION MODAL
           ========================================================================= */}
       {isEditModalOpen && selectedCompany && (
         <div className="modal-overlay" onClick={() => setIsEditModalOpen(false)}>
           <div
-            className="ops-panel"
+            className="admin-card"
             style={{
               width: 'min(640px, 95vw)',
               maxHeight: '90vh',
               overflowY: 'auto',
-              background: 'var(--bg-surface)',
-              border: '1px solid var(--line-strong)',
-              boxShadow: '0 12px 48px rgba(0,0,0,0.8)',
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-lg)',
+              boxShadow: 'var(--shadow-lg)',
             }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
             <div
               style={{
-                padding: '16px 20px',
-                borderBottom: '1px solid var(--line)',
+                padding: '20px 24px',
+                borderBottom: '1px solid var(--border)',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                background: 'var(--bg-raised)',
+                background: 'var(--bg-page)',
+                borderRadius: 'var(--radius-lg) var(--radius-lg) 0 0',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Sliders size={16} color="var(--signal-amber)" />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div
+                  style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: 'var(--radius-md)',
+                    background: 'var(--accent-light)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Sliders size={18} color="var(--accent)" />
+                </div>
                 <div>
-                  <h2 style={{ fontSize: '0.95rem', fontWeight: 800, margin: 0, letterSpacing: '0.02em', textTransform: 'uppercase' }}>
-                    Tenant Provisioning: {selectedCompany.name}
+                  <h2 style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
+                    Manage Organization · {selectedCompany.name}
                   </h2>
-                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                    ID: {selectedCompany.id} &middot; CODE: {selectedCompany.code}
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                    ID: {selectedCompany.id} &middot; Code: <span className="mono-num">{selectedCompany.code}</span>
                   </div>
                 </div>
               </div>
+
               <button
                 type="button"
                 onClick={() => setIsEditModalOpen(false)}
                 className="btn-ghost"
-                style={{ padding: '4px', border: 'none', cursor: 'pointer' }}
+                style={{ padding: '6px', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}
               >
-                <X size={16} color="var(--text-muted)" />
+                <X size={18} color="var(--text-secondary)" />
               </button>
             </div>
 
-            {/* Modal Body / Form */}
-            <form onSubmit={handleSaveManage} style={{ padding: '20px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                {/* General Tenant Identity */}
-                <div style={{ borderBottom: '1px solid var(--line)', paddingBottom: '14px' }}>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--signal-amber)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '10px', letterSpacing: '0.04em' }}>
-                    1. Organization Identity & Status
+            {/* Modal Form */}
+            <form onSubmit={handleSaveManage} style={{ padding: '24px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                {/* Section 1: Organization Details */}
+                <div>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.03em' }}>
+                    1. Identity & Operating Status
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
                     <div>
-                      <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                        Company / Organization Name
-                      </label>
+                      <label className="form-label">Company Name</label>
                       <input
                         type="text"
+                        className="form-input"
                         value={editForm.name || ''}
                         onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
                         required
-                        style={{
-                          width: '100%',
-                          background: 'var(--bg-base)',
-                          border: '1px solid var(--line)',
-                          color: 'var(--text-primary)',
-                          padding: '7px 10px',
-                          fontSize: '0.78rem',
-                          outline: 'none',
-                        }}
                       />
                     </div>
                     <div>
-                      <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                        Tenant Status
-                      </label>
+                      <label className="form-label">Operational Status</label>
                       <select
+                        className="form-select"
                         value={editForm.status || 'Active'}
                         onChange={(e) => setEditForm((prev) => ({ ...prev, status: e.target.value as 'Active' | 'Suspended' }))}
-                        style={{
-                          width: '100%',
-                          background: 'var(--bg-base)',
-                          border: '1px solid var(--line)',
-                          color: 'var(--text-primary)',
-                          padding: '7px 10px',
-                          fontSize: '0.78rem',
-                          outline: 'none',
-                        }}
                       >
-                        <option value="Active">Active (Live Telemetry Routing)</option>
+                        <option value="Active">Active (Routing Live Telemetry)</option>
                         <option value="Suspended">Suspended (Ingest Throttled)</option>
                       </select>
                     </div>
                   </div>
                 </div>
 
-                {/* Hardware & User Limits */}
-                <div style={{ borderBottom: '1px solid var(--line)', paddingBottom: '14px' }}>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--signal-amber)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '10px', letterSpacing: '0.04em' }}>
-                    2. Hardware Quotas & User Allocations
+                <div style={{ height: '1px', background: 'var(--border)' }} />
+
+                {/* Section 2: Quotas & Allocations */}
+                <div>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.03em' }}>
+                    2. Hardware Quotas & Dispatch Seats
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
                     <div>
-                      <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                        Max Device / Tracker Limit
-                      </label>
+                      <label className="form-label">Tracker Limit (Max Devices)</label>
                       <input
                         type="number"
+                        className="form-input mono-num"
                         min={selectedCompany.devices}
                         value={editForm.maxDevices || 100}
                         onChange={(e) => setEditForm((prev) => ({ ...prev, maxDevices: Number(e.target.value) }))}
-                        style={{
-                          width: '100%',
-                          background: 'var(--bg-base)',
-                          border: '1px solid var(--line)',
-                          color: 'var(--text-primary)',
-                          padding: '7px 10px',
-                          fontSize: '0.78rem',
-                          fontFamily: 'var(--font-mono)',
-                          outline: 'none',
-                        }}
                       />
-                      <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
-                        Currently active: {selectedCompany.devices} devices
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginTop: '4px', display: 'block' }}>
+                        Currently assigned: {selectedCompany.devices} trackers
                       </span>
                     </div>
 
                     <div>
-                      <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                        Max User Dispatcher Seats
-                      </label>
+                      <label className="form-label">Dispatcher User Seats</label>
                       <input
                         type="number"
+                        className="form-input mono-num"
                         min={selectedCompany.users}
                         value={editForm.maxUsers || 10}
                         onChange={(e) => setEditForm((prev) => ({ ...prev, maxUsers: Number(e.target.value) }))}
-                        style={{
-                          width: '100%',
-                          background: 'var(--bg-base)',
-                          border: '1px solid var(--line)',
-                          color: 'var(--text-primary)',
-                          padding: '7px 10px',
-                          fontSize: '0.78rem',
-                          fontFamily: 'var(--font-mono)',
-                          outline: 'none',
-                        }}
                       />
-                      <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
-                        Currently active: {selectedCompany.users} users
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginTop: '4px', display: 'block' }}>
+                        Currently active: {selectedCompany.users} operators
                       </span>
                     </div>
                   </div>
                 </div>
 
-                {/* Database Routing & Shard */}
-                <div style={{ borderBottom: '1px solid var(--line)', paddingBottom: '14px' }}>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--signal-amber)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '10px', letterSpacing: '0.04em' }}>
-                    3. Database Partition & Compliance Relays
+                <div style={{ height: '1px', background: 'var(--border)' }} />
+
+                {/* Section 3: Database & Compliance */}
+                <div>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.03em' }}>
+                    3. Database Partition & SIRA Relay
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
                     <div>
-                      <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                        TimescaleDB Routing Shard
-                      </label>
+                      <label className="form-label">TimescaleDB Shard</label>
                       <select
+                        className="form-select mono-num"
                         value={editForm.dbShard || 'pg_shard_uae_01'}
                         onChange={(e) => setEditForm((prev) => ({ ...prev, dbShard: e.target.value }))}
-                        style={{
-                          width: '100%',
-                          background: 'var(--bg-base)',
-                          border: '1px solid var(--line)',
-                          color: 'var(--text-primary)',
-                          padding: '7px 10px',
-                          fontSize: '0.78rem',
-                          outline: 'none',
-                          fontFamily: 'var(--font-mono)',
-                        }}
                       >
-                        <option value="pg_shard_uae_01">pg_shard_uae_01 (Dubai DC)</option>
-                        <option value="pg_shard_uae_02">pg_shard_uae_02 (Abu Dhabi DC)</option>
+                        <option value="pg_shard_uae_01">pg_shard_uae_01 (Dubai Datacenter)</option>
+                        <option value="pg_shard_uae_02">pg_shard_uae_02 (Abu Dhabi Datacenter)</option>
                         <option value="pg_shard_isolated">pg_shard_isolated (Dedicated Hypertable)</option>
                       </select>
                     </div>
 
                     <div>
-                      <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                        SIRA UAE Compliance Forwarder
-                      </label>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', height: '34px' }}>
+                      <label className="form-label">SIRA Telematics Relay</label>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px',
+                          background: 'var(--bg-subtle)',
+                          padding: '8px 12px',
+                          borderRadius: 'var(--radius-sm)',
+                          border: '1px solid var(--border)',
+                          marginTop: '2px',
+                        }}
+                      >
                         <input
                           type="checkbox"
                           id="siraRelayCheck"
                           checked={Boolean(editForm.siraRelay)}
                           onChange={(e) => setEditForm((prev) => ({ ...prev, siraRelay: e.target.checked }))}
-                          style={{ cursor: 'pointer', accentColor: 'var(--signal-amber)' }}
+                          style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: 'var(--accent)' }}
                         />
-                        <label htmlFor="siraRelayCheck" style={{ fontSize: '0.75rem', cursor: 'pointer' }}>
-                          Enable SIRA-V4 Telematics Relay
+                        <label htmlFor="siraRelayCheck" style={{ fontSize: '0.82rem', cursor: 'pointer', fontWeight: 500 }}>
+                          Enable SIRA-V4 UAE Security Relay
                         </label>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Primary Contact Person */}
-                <div style={{ borderBottom: '1px solid var(--line)', paddingBottom: '14px' }}>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--signal-amber)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '10px', letterSpacing: '0.04em' }}>
-                    4. Dispatch Contact Information
+                <div style={{ height: '1px', background: 'var(--border)' }} />
+
+                {/* Section 4: Primary Contact */}
+                <div>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.03em' }}>
+                    4. Dispatch Contact Details
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
                     <div>
-                      <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                        Contact Person
-                      </label>
+                      <label className="form-label">Contact Person</label>
                       <input
                         type="text"
+                        className="form-input"
                         value={editForm.contactPerson || ''}
                         onChange={(e) => setEditForm((prev) => ({ ...prev, contactPerson: e.target.value }))}
-                        style={{
-                          width: '100%',
-                          background: 'var(--bg-base)',
-                          border: '1px solid var(--line)',
-                          color: 'var(--text-primary)',
-                          padding: '7px 10px',
-                          fontSize: '0.78rem',
-                          outline: 'none',
-                        }}
                       />
                     </div>
                     <div>
-                      <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                        Contact Email
-                      </label>
+                      <label className="form-label">Email</label>
                       <input
                         type="email"
+                        className="form-input"
                         value={editForm.contactEmail || ''}
                         onChange={(e) => setEditForm((prev) => ({ ...prev, contactEmail: e.target.value }))}
-                        style={{
-                          width: '100%',
-                          background: 'var(--bg-base)',
-                          border: '1px solid var(--line)',
-                          color: 'var(--text-primary)',
-                          padding: '7px 10px',
-                          fontSize: '0.78rem',
-                          outline: 'none',
-                        }}
                       />
                     </div>
                     <div>
-                      <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                        Phone
-                      </label>
+                      <label className="form-label">Phone</label>
                       <input
                         type="text"
+                        className="form-input"
                         value={editForm.contactPhone || ''}
                         onChange={(e) => setEditForm((prev) => ({ ...prev, contactPhone: e.target.value }))}
-                        style={{
-                          width: '100%',
-                          background: 'var(--bg-base)',
-                          border: '1px solid var(--line)',
-                          color: 'var(--text-primary)',
-                          padding: '7px 10px',
-                          fontSize: '0.78rem',
-                          outline: 'none',
-                        }}
                       />
                     </div>
                   </div>
                 </div>
 
-                {/* API Key Management */}
+                <div style={{ height: '1px', background: 'var(--border)' }} />
+
+                {/* Section 5: API Key */}
                 <div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--signal-amber)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.04em' }}>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.03em' }}>
                     5. Tenant Master API Secret
                   </div>
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                     <input
                       type="text"
                       readOnly
                       value={editForm.apiKey || ''}
-                      className="mono-num"
+                      className="form-input mono-num"
                       style={{
-                        flex: 1,
-                        background: 'var(--bg-base)',
-                        border: '1px solid var(--line)',
-                        color: 'var(--text-muted)',
-                        padding: '7px 10px',
-                        fontSize: '0.75rem',
+                        background: 'var(--bg-subtle)',
+                        color: 'var(--text-secondary)',
                       }}
                     />
                     <button
                       type="button"
                       onClick={() => handleCopyApiKey(editForm.apiKey || '')}
-                      className="btn btn-ghost"
-                      style={{ padding: '7px 12px', fontSize: '0.72rem', gap: '4px' }}
+                      className="btn btn-secondary"
+                      style={{ padding: '8px 14px', fontSize: '0.8rem', gap: '6px' }}
                       title="Copy Key"
                     >
-                      {copiedKey ? <Check size={14} color="var(--signal-green)" /> : <Copy size={14} />}
+                      {copiedKey ? <Check size={14} color="var(--good)" /> : <Copy size={14} />}
                       <span>{copiedKey ? 'Copied' : 'Copy'}</span>
                     </button>
                     <button
                       type="button"
                       onClick={handleRegenerateKey}
-                      className="btn btn-ghost"
-                      style={{ padding: '7px 12px', fontSize: '0.72rem', gap: '4px' }}
+                      className="btn btn-secondary"
+                      style={{ padding: '8px 14px', fontSize: '0.8rem', gap: '6px' }}
                       title="Regenerate Key"
                     >
                       <Key size={14} />
@@ -924,26 +1039,26 @@ export const CompanyManagerPage: React.FC = () => {
                 style={{
                   display: 'flex',
                   justifyContent: 'flex-end',
-                  gap: '10px',
-                  marginTop: '24px',
-                  paddingTop: '16px',
-                  borderTop: '1px solid var(--line)',
+                  gap: '12px',
+                  marginTop: '28px',
+                  paddingTop: '20px',
+                  borderTop: '1px solid var(--border)',
                 }}
               >
                 <button
                   type="button"
                   onClick={() => setIsEditModalOpen(false)}
-                  className="btn btn-ghost"
-                  style={{ padding: '8px 16px' }}
+                  className="btn btn-secondary"
+                  style={{ padding: '9px 18px' }}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   className="btn btn-primary"
-                  style={{ padding: '8px 20px', gap: '6px' }}
+                  style={{ padding: '9px 22px', gap: '6px' }}
                 >
-                  <Check size={14} strokeWidth={2.5} />
+                  <Check size={15} strokeWidth={2.5} />
                   <span>Save Configuration</span>
                 </button>
               </div>
@@ -953,136 +1068,112 @@ export const CompanyManagerPage: React.FC = () => {
       )}
 
       {/* =========================================================================
-          CREATE TENANT MODAL
+          PROVISION NEW TENANT MODAL
           ========================================================================= */}
       {isCreateModalOpen && (
         <div className="modal-overlay" onClick={() => setIsCreateModalOpen(false)}>
           <div
-            className="ops-panel"
+            className="admin-card"
             style={{
-              width: 'min(580px, 95vw)',
+              width: 'min(600px, 95vw)',
               maxHeight: '90vh',
               overflowY: 'auto',
-              background: 'var(--bg-surface)',
-              border: '1px solid var(--line-strong)',
-              boxShadow: '0 12px 48px rgba(0,0,0,0.8)',
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-lg)',
+              boxShadow: 'var(--shadow-lg)',
             }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
             <div
               style={{
-                padding: '16px 20px',
-                borderBottom: '1px solid var(--line)',
+                padding: '20px 24px',
+                borderBottom: '1px solid var(--border)',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                background: 'var(--bg-raised)',
+                background: 'var(--bg-page)',
+                borderRadius: 'var(--radius-lg) var(--radius-lg) 0 0',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Plus size={16} color="var(--signal-amber)" strokeWidth={2.5} />
-                <h2 style={{ fontSize: '0.95rem', fontWeight: 800, margin: 0, textTransform: 'uppercase', letterSpacing: '0.02em' }}>
-                  Provision New Tenant
-                </h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div
+                  style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: 'var(--radius-md)',
+                    background: 'var(--accent-light)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Plus size={18} color="var(--accent)" strokeWidth={2.5} />
+                </div>
+                <div>
+                  <h2 style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
+                    Provision New Organization
+                  </h2>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                    Create dedicated routing, shard allocations, and API keys
+                  </div>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => setIsCreateModalOpen(false)}
                 className="btn-ghost"
-                style={{ padding: '4px', border: 'none', cursor: 'pointer' }}
+                style={{ padding: '6px', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}
               >
-                <X size={16} color="var(--text-muted)" />
+                <X size={18} color="var(--text-secondary)" />
               </button>
             </div>
 
             {/* Form */}
-            <form onSubmit={handleCreateCompany} style={{ padding: '20px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <form onSubmit={handleCreateCompany} style={{ padding: '24px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                      Company Name *
-                    </label>
+                    <label className="form-label">Organization Name *</label>
                     <input
                       type="text"
+                      className="form-input"
                       placeholder="e.g. Emirates Express Cargo"
                       value={newCompany.name || ''}
                       onChange={(e) => setNewCompany((prev) => ({ ...prev, name: e.target.value }))}
                       required
-                      style={{
-                        width: '100%',
-                        background: 'var(--bg-base)',
-                        border: '1px solid var(--line)',
-                        color: 'var(--text-primary)',
-                        padding: '7px 10px',
-                        fontSize: '0.78rem',
-                        outline: 'none',
-                      }}
                     />
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                      Tenant Code * (Unique)
-                    </label>
+                    <label className="form-label">Tenant Code * (Unique)</label>
                     <input
                       type="text"
+                      className="form-input mono-num"
                       placeholder="e.g. EMIRATES_EXP"
                       value={newCompany.code || ''}
                       onChange={(e) => setNewCompany((prev) => ({ ...prev, code: e.target.value }))}
                       required
-                      style={{
-                        width: '100%',
-                        background: 'var(--bg-base)',
-                        border: '1px solid var(--line)',
-                        color: 'var(--text-primary)',
-                        padding: '7px 10px',
-                        fontSize: '0.78rem',
-                        fontFamily: 'var(--font-mono)',
-                        outline: 'none',
-                      }}
                     />
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                      Tracker Limit Quota
-                    </label>
+                    <label className="form-label">Tracker Limit (Hardware Quota)</label>
                     <input
                       type="number"
+                      className="form-input mono-num"
                       value={newCompany.maxDevices || 100}
                       onChange={(e) => setNewCompany((prev) => ({ ...prev, maxDevices: Number(e.target.value) }))}
-                      style={{
-                        width: '100%',
-                        background: 'var(--bg-base)',
-                        border: '1px solid var(--line)',
-                        color: 'var(--text-primary)',
-                        padding: '7px 10px',
-                        fontSize: '0.78rem',
-                        fontFamily: 'var(--font-mono)',
-                        outline: 'none',
-                      }}
                     />
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                      Assigned Database Shard
-                    </label>
+                    <label className="form-label">Assigned Database Shard</label>
                     <select
+                      className="form-select mono-num"
                       value={newCompany.dbShard || 'pg_shard_uae_01'}
                       onChange={(e) => setNewCompany((prev) => ({ ...prev, dbShard: e.target.value }))}
-                      style={{
-                        width: '100%',
-                        background: 'var(--bg-base)',
-                        border: '1px solid var(--line)',
-                        color: 'var(--text-primary)',
-                        padding: '7px 10px',
-                        fontSize: '0.78rem',
-                        outline: 'none',
-                        fontFamily: 'var(--font-mono)',
-                      }}
                     >
                       <option value="pg_shard_uae_01">pg_shard_uae_01 (Dubai DC)</option>
                       <option value="pg_shard_uae_02">pg_shard_uae_02 (Abu Dhabi DC)</option>
@@ -1090,58 +1181,49 @@ export const CompanyManagerPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                      Primary Dispatch Email
-                    </label>
+                    <label className="form-label">Primary Dispatch Email</label>
                     <input
                       type="email"
+                      className="form-input"
                       placeholder="admin@tenant.ae"
                       value={newCompany.contactEmail || ''}
                       onChange={(e) => setNewCompany((prev) => ({ ...prev, contactEmail: e.target.value }))}
-                      style={{
-                        width: '100%',
-                        background: 'var(--bg-base)',
-                        border: '1px solid var(--line)',
-                        color: 'var(--text-primary)',
-                        padding: '7px 10px',
-                        fontSize: '0.78rem',
-                        outline: 'none',
-                      }}
                     />
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                      Contact Person
-                    </label>
+                    <label className="form-label">Contact Person</label>
                     <input
                       type="text"
+                      className="form-input"
                       placeholder="e.g. Operations Director"
                       value={newCompany.contactPerson || ''}
                       onChange={(e) => setNewCompany((prev) => ({ ...prev, contactPerson: e.target.value }))}
-                      style={{
-                        width: '100%',
-                        background: 'var(--bg-base)',
-                        border: '1px solid var(--line)',
-                        color: 'var(--text-primary)',
-                        padding: '7px 10px',
-                        fontSize: '0.78rem',
-                        outline: 'none',
-                      }}
                     />
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    background: 'var(--bg-subtle)',
+                    padding: '10px 14px',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border)',
+                    marginTop: '4px',
+                  }}
+                >
                   <input
                     type="checkbox"
                     id="newSiraCheck"
                     checked={Boolean(newCompany.siraRelay)}
                     onChange={(e) => setNewCompany((prev) => ({ ...prev, siraRelay: e.target.checked }))}
-                    style={{ cursor: 'pointer', accentColor: 'var(--signal-amber)' }}
+                    style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: 'var(--accent)' }}
                   />
-                  <label htmlFor="newSiraCheck" style={{ fontSize: '0.75rem', cursor: 'pointer' }}>
+                  <label htmlFor="newSiraCheck" style={{ fontSize: '0.82rem', cursor: 'pointer', fontWeight: 500 }}>
                     Enable SIRA UAE Security Telematics Relay for this tenant
                   </label>
                 </div>
@@ -1152,26 +1234,26 @@ export const CompanyManagerPage: React.FC = () => {
                 style={{
                   display: 'flex',
                   justifyContent: 'flex-end',
-                  gap: '10px',
-                  marginTop: '20px',
-                  paddingTop: '16px',
-                  borderTop: '1px solid var(--line)',
+                  gap: '12px',
+                  marginTop: '24px',
+                  paddingTop: '20px',
+                  borderTop: '1px solid var(--border)',
                 }}
               >
                 <button
                   type="button"
                   onClick={() => setIsCreateModalOpen(false)}
-                  className="btn btn-ghost"
-                  style={{ padding: '8px 16px' }}
+                  className="btn btn-secondary"
+                  style={{ padding: '9px 18px' }}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   className="btn btn-primary"
-                  style={{ padding: '8px 20px', gap: '6px' }}
+                  style={{ padding: '9px 22px', gap: '6px' }}
                 >
-                  <Plus size={14} strokeWidth={2.5} />
+                  <Plus size={15} strokeWidth={2.5} />
                   <span>Provision Tenant</span>
                 </button>
               </div>
