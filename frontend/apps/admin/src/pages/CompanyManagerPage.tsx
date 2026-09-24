@@ -16,6 +16,7 @@ import {
   Calendar,
   Database,
 } from 'lucide-react';
+import { fetchWithAdminAuth } from '../utils/api';
 
 export interface TenantCompany {
   id: number;
@@ -35,60 +36,30 @@ export interface TenantCompany {
   createdAt: string;
 }
 
-const initialCompanies: TenantCompany[] = [
-  {
-    id: 1,
-    name: 'Allied Transport UAE',
-    code: 'ALLIED_TR',
-    devices: 277,
-    maxDevices: 350,
-    users: 37,
-    maxUsers: 50,
-    status: 'Active',
-    contactPerson: 'Operations Desk',
-    contactEmail: 'info@alliedtransport.ae',
-    contactPhone: '+971-4-8800000',
-    dbShard: 'UAE',
-    siraRelay: true,
-    apiKey: 'RN-KEY-ALLIED-TR-01',
-    createdAt: '2022-09-03',
-  },
-  {
-    id: 2,
-    name: 'EKSC Dubai',
-    code: 'EKSC_UAE',
-    devices: 50,
-    maxDevices: 100,
-    users: 10,
-    maxUsers: 20,
-    status: 'Active',
-    contactPerson: 'Fleet Manager',
-    contactEmail: 'admin@eksc.ae',
-    contactPhone: '+971-4-0000000',
-    dbShard: 'EKSC',
-    siraRelay: true,
-    apiKey: 'RN-KEY-EKSC-02',
-    createdAt: '2022-09-02',
-  },
-];
-
 export const CompanyManagerPage: React.FC = () => {
-  const [companies, setCompanies] = useState<TenantCompany[]>(() => {
-    const saved = localStorage.getItem('rudra_admin_companies');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch (err) {
-        console.warn('Failed to parse saved companies from localStorage', err);
+  const [companies, setCompanies] = useState<TenantCompany[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadCompanies = async () => {
+    setLoading(true);
+    try {
+      const res = await fetchWithAdminAuth('/api/v1/auth/companies');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+          setCompanies(json.data);
+        }
       }
+    } catch (err) {
+      console.error('Failed to load companies from backend:', err);
+    } finally {
+      setLoading(false);
     }
-    return initialCompanies;
-  });
+  };
 
   useEffect(() => {
-    localStorage.setItem('rudra_admin_companies', JSON.stringify(companies));
-  }, [companies]);
+    loadCompanies();
+  }, []);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'Active' | 'Suspended'>('ALL');
@@ -128,57 +99,80 @@ export const CompanyManagerPage: React.FC = () => {
     setIsEditModalOpen(true);
   };
 
-  const handleSaveManage = (e: React.FormEvent) => {
+  const handleSaveManage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedCompany) return;
 
-    setCompanies((prev) =>
-      prev.map((c) => (c.id === selectedCompany.id ? ({ ...c, ...editForm } as TenantCompany) : c))
-    );
-    setIsEditModalOpen(false);
-    showToast(`Organization "${editForm.name || selectedCompany.name}" settings saved.`);
+    try {
+      const res = await fetchWithAdminAuth(`/api/v1/admin/companies/${selectedCompany.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: editForm.name,
+          code: editForm.code,
+          contactPerson: editForm.contactPerson,
+          contactEmail: editForm.contactEmail,
+          contactPhone: editForm.contactPhone,
+          dbShard: editForm.dbShard,
+          status: editForm.status,
+        }),
+      });
+
+      if (res.ok) {
+        showToast(`Organization "${editForm.name || selectedCompany.name}" updated in database.`);
+        setIsEditModalOpen(false);
+        loadCompanies();
+      } else {
+        showToast('Failed to update organization in database.');
+      }
+    } catch (err) {
+      showToast('Network error updating organization.');
+    }
   };
 
-  const handleCreateCompany = (e: React.FormEvent) => {
+  const handleCreateCompany = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCompany.name || !newCompany.code) {
       alert('Please enter both Company Name and Tenant Code.');
       return;
     }
 
-    const created: TenantCompany = {
-      id: Date.now(),
-      name: newCompany.name,
-      code: newCompany.code.toUpperCase().replace(/\s+/g, '_'),
-      devices: 0,
-      maxDevices: Number(newCompany.maxDevices) || 50,
-      users: 1,
-      maxUsers: Number(newCompany.maxUsers) || 10,
-      status: (newCompany.status as 'Active' | 'Suspended') || 'Active',
-      contactPerson: newCompany.contactPerson || 'System Administrator',
-      contactEmail: newCompany.contactEmail || `admin@${newCompany.code.toLowerCase()}.ae`,
-      contactPhone: newCompany.contactPhone || '+971-4-0000000',
-      dbShard: newCompany.dbShard || 'pg_shard_uae_01',
-      siraRelay: Boolean(newCompany.siraRelay),
-      apiKey: `RN-DEV-KEY-${newCompany.code.toUpperCase()}-001`,
-      createdAt: new Date().toISOString().split('T')[0],
-    };
+    try {
+      const res = await fetchWithAdminAuth('/api/v1/admin/companies', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: newCompany.name,
+          code: newCompany.code.toUpperCase().replace(/\s+/g, '_'),
+          contactPerson: newCompany.contactPerson || 'Operations Lead',
+          contactEmail: newCompany.contactEmail || `admin@${newCompany.code.toLowerCase()}.ae`,
+          contactPhone: newCompany.contactPhone || '+971-4-8800000',
+          dbShard: newCompany.dbShard || 'pg_shard_uae_01',
+          status: newCompany.status || 'Active',
+        }),
+      });
 
-    setCompanies((prev) => [...prev, created]);
-    setIsCreateModalOpen(false);
-    setNewCompany({
-      name: '',
-      code: '',
-      maxDevices: 100,
-      maxUsers: 10,
-      status: 'Active',
-      contactPerson: '',
-      contactEmail: '',
-      contactPhone: '',
-      dbShard: 'pg_shard_uae_01',
-      siraRelay: true,
-    });
-    showToast(`Organization "${created.name}" provisioned successfully.`);
+      if (res.ok) {
+        showToast(`Organization "${newCompany.name}" provisioned in PostgreSQL database.`);
+        setIsCreateModalOpen(false);
+        setNewCompany({
+          name: '',
+          code: '',
+          maxDevices: 100,
+          maxUsers: 10,
+          status: 'Active',
+          contactPerson: '',
+          contactEmail: '',
+          contactPhone: '',
+          dbShard: 'pg_shard_uae_01',
+          siraRelay: true,
+        });
+        loadCompanies();
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        showToast(errJson.error || 'Failed to create organization in database.');
+      }
+    } catch (err) {
+      showToast('Network error provisioning organization.');
+    }
   };
 
   const handleCopyApiKey = (key: string) => {
@@ -549,207 +543,17 @@ export const CompanyManagerPage: React.FC = () => {
       </div>
 
       {/* Tenant Organizations Grid */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(430px, 1fr))',
-          gap: '20px',
-        }}
-      >
-        {filteredCompanies.map((c) => {
-          const usagePercent = Math.min(100, Math.round((c.devices / (c.maxDevices || 1)) * 100));
-
-          return (
-            <div
-              key={c.id}
-              className="admin-card"
-              style={{
-                padding: '24px',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between',
-              }}
-            >
-              <div>
-                {/* Organization Identity & Status */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
-                  <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
-                    <div
-                      style={{
-                        width: '42px',
-                        height: '42px',
-                        borderRadius: 'var(--radius-md)',
-                        background: 'var(--accent-light)',
-                        border: '1px solid rgba(47, 111, 109, 0.2)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <Building2 size={22} color="var(--accent)" />
-                    </div>
-                    <div>
-                      <h3 style={{ fontSize: '1.05rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
-                        {c.name}
-                      </h3>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-                        <span
-                          className="mono-num"
-                          style={{
-                            fontSize: '0.72rem',
-                            fontWeight: 600,
-                            color: 'var(--text-secondary)',
-                            background: 'var(--bg-subtle)',
-                            padding: '2px 7px',
-                            borderRadius: 'var(--radius-sm)',
-                            border: '1px solid var(--border)',
-                          }}
-                        >
-                          {c.code}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: '0.75rem',
-                            color: 'var(--text-tertiary)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                          }}
-                        >
-                          <Database size={12} />
-                          <span>{c.dbShard}</span>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Status Indicator */}
-                  <span className={`badge ${c.status === 'Active' ? 'badge-good' : 'badge-alert'}`}>
-                    <span
-                      style={{
-                        width: '6px',
-                        height: '6px',
-                        borderRadius: '50%',
-                        backgroundColor: c.status === 'Active' ? 'var(--good)' : 'var(--alert)',
-                        display: 'inline-block',
-                      }}
-                    />
-                    <span>{c.status}</span>
-                  </span>
-                </div>
-
-                {/* Device Allocation Gauge */}
-                <div
-                  style={{
-                    margin: '16px 0',
-                    background: 'var(--bg-subtle)',
-                    padding: '12px 16px',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--border-subtle)',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '8px' }}>
-                    <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Trackers Assigned</span>
-                    <span className="mono-num" style={{ color: 'var(--text-primary)', fontWeight: 700 }}>
-                      {c.devices} / {c.maxDevices}{' '}
-                      <span style={{ color: 'var(--text-tertiary)', fontWeight: 500 }}>({usagePercent}%)</span>
-                    </span>
-                  </div>
-                  <div style={{ width: '100%', height: '6px', background: '#DCE4DF', borderRadius: 'var(--radius-full)', overflow: 'hidden' }}>
-                    <div
-                      style={{
-                        width: `${usagePercent}%`,
-                        height: '100%',
-                        background: usagePercent > 90 ? 'var(--alert)' : 'var(--accent)',
-                        borderRadius: 'var(--radius-full)',
-                        transition: 'width 0.3s ease',
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {/* Tenant Meta Info Grid */}
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr',
-                    gap: '10px',
-                    fontSize: '0.78rem',
-                    color: 'var(--text-secondary)',
-                    marginBottom: '18px',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-                    <Users size={14} color="var(--text-tertiary)" />
-                    <span>
-                      Seats: <strong className="mono-num" style={{ color: 'var(--text-primary)' }}>{c.users} / {c.maxUsers}</strong>
-                    </span>
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-                    <ShieldCheck size={14} color={c.siraRelay ? 'var(--good)' : 'var(--text-tertiary)'} />
-                    <span>
-                      SIRA:{' '}
-                      <strong style={{ color: c.siraRelay ? 'var(--good)' : 'var(--text-tertiary)' }}>
-                        {c.siraRelay ? 'Active Relay' : 'Standard'}
-                      </strong>
-                    </span>
-                  </div>
-
-                  <div style={{ gridColumn: 'span 2', display: 'flex', alignItems: 'center', gap: '7px' }}>
-                    <Mail size={14} color="var(--text-tertiary)" />
-                    <span style={{ color: 'var(--text-secondary)' }}>
-                      {c.contactPerson} &middot;{' '}
-                      <span style={{ color: 'var(--text-tertiary)' }}>{c.contactEmail}</span>
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Bar */}
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  paddingTop: '14px',
-                  borderTop: '1px solid var(--border)',
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: '0.75rem',
-                    color: 'var(--text-tertiary)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                  }}
-                >
-                  <Calendar size={13} />
-                  <span>Added {c.createdAt}</span>
-                </span>
-
-                <button
-                  type="button"
-                  onClick={() => handleOpenManage(c)}
-                  className="btn btn-primary"
-                  style={{
-                    padding: '7px 14px',
-                    fontSize: '0.8rem',
-                    gap: '6px',
-                  }}
-                  id={`manage-tenant-${c.id}`}
-                >
-                  <Sliders size={14} strokeWidth={2.2} />
-                  <span>Manage Organization</span>
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {filteredCompanies.length === 0 && (
+      {loading ? (
+        <div className="admin-card" style={{ padding: '48px', textAlign: 'center' }}>
+          <Building2 size={36} color="var(--accent)" style={{ margin: '0 auto 12px', opacity: 0.8 }} />
+          <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+            Loading Organizations from Database...
+          </h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '6px' }}>
+            Retrieving live multi-tenant telemetry profiles from PostgreSQL.
+          </p>
+        </div>
+      ) : filteredCompanies.length === 0 ? (
         <div
           className="admin-card"
           style={{
@@ -765,6 +569,206 @@ export const CompanyManagerPage: React.FC = () => {
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '6px' }}>
             No tenants match the search filter "{searchQuery}".
           </p>
+        </div>
+      ) : (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(430px, 1fr))',
+            gap: '20px',
+          }}
+        >
+          {filteredCompanies.map((c) => {
+            const usagePercent = Math.min(100, Math.round((c.devices / (c.maxDevices || 1)) * 100));
+
+            return (
+              <div
+                key={c.id}
+                className="admin-card"
+                style={{
+                  padding: '24px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <div>
+                  {/* Organization Identity & Status */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
+                      <div
+                        style={{
+                          width: '42px',
+                          height: '42px',
+                          borderRadius: 'var(--radius-md)',
+                          background: 'var(--accent-light)',
+                          border: '1px solid rgba(47, 111, 109, 0.2)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Building2 size={22} color="var(--accent)" />
+                      </div>
+                      <div>
+                        <h3 style={{ fontSize: '1.05rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
+                          {c.name}
+                        </h3>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                          <span
+                            className="mono-num"
+                            style={{
+                              fontSize: '0.72rem',
+                              fontWeight: 600,
+                              color: 'var(--text-secondary)',
+                              background: 'var(--bg-subtle)',
+                              padding: '2px 7px',
+                              borderRadius: 'var(--radius-sm)',
+                              border: '1px solid var(--border)',
+                            }}
+                          >
+                            {c.code}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: '0.75rem',
+                              color: 'var(--text-tertiary)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            <Database size={12} />
+                            <span>{c.dbShard}</span>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Status Indicator */}
+                    <span className={`badge ${c.status === 'Active' ? 'badge-good' : 'badge-alert'}`}>
+                      <span
+                        style={{
+                          width: '6px',
+                          height: '6px',
+                          borderRadius: '50%',
+                          backgroundColor: c.status === 'Active' ? 'var(--good)' : 'var(--alert)',
+                          display: 'inline-block',
+                        }}
+                      />
+                      <span>{c.status}</span>
+                    </span>
+                  </div>
+
+                  {/* Device Allocation Gauge */}
+                  <div
+                    style={{
+                      margin: '16px 0',
+                      background: 'var(--bg-subtle)',
+                      padding: '12px 16px',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-subtle)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '8px' }}>
+                      <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Trackers Assigned</span>
+                      <span className="mono-num" style={{ color: 'var(--text-primary)', fontWeight: 700 }}>
+                        {c.devices} / {c.maxDevices}{' '}
+                        <span style={{ color: 'var(--text-tertiary)', fontWeight: 500 }}>({usagePercent}%)</span>
+                      </span>
+                    </div>
+                    <div style={{ width: '100%', height: '6px', background: '#DCE4DF', borderRadius: 'var(--radius-full)', overflow: 'hidden' }}>
+                      <div
+                        style={{
+                          width: `${usagePercent}%`,
+                          height: '100%',
+                          background: usagePercent > 90 ? 'var(--alert)' : 'var(--accent)',
+                          borderRadius: 'var(--radius-full)',
+                          transition: 'width 0.3s ease',
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Tenant Meta Info Grid */}
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr',
+                      gap: '10px',
+                      fontSize: '0.78rem',
+                      color: 'var(--text-secondary)',
+                      marginBottom: '18px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                      <Users size={14} color="var(--text-tertiary)" />
+                      <span>
+                        Seats: <strong className="mono-num" style={{ color: 'var(--text-primary)' }}>{c.users} / {c.maxUsers}</strong>
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                      <ShieldCheck size={14} color={c.siraRelay ? 'var(--good)' : 'var(--text-tertiary)'} />
+                      <span>
+                        SIRA:{' '}
+                        <strong style={{ color: c.siraRelay ? 'var(--good)' : 'var(--text-tertiary)' }}>
+                          {c.siraRelay ? 'Active Relay' : 'Standard'}
+                        </strong>
+                      </span>
+                    </div>
+
+                    <div style={{ gridColumn: 'span 2', display: 'flex', alignItems: 'center', gap: '7px' }}>
+                      <Mail size={14} color="var(--text-tertiary)" />
+                      <span style={{ color: 'var(--text-secondary)' }}>
+                        {c.contactPerson} &middot;{' '}
+                        <span style={{ color: 'var(--text-tertiary)' }}>{c.contactEmail}</span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action Bar */}
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    paddingTop: '14px',
+                    borderTop: '1px solid var(--border)',
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: '0.75rem',
+                      color: 'var(--text-tertiary)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                    }}
+                  >
+                    <Calendar size={13} />
+                    <span>Added {c.createdAt}</span>
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => handleOpenManage(c)}
+                    className="btn btn-primary"
+                    style={{
+                      padding: '7px 14px',
+                      fontSize: '0.8rem',
+                      gap: '6px',
+                    }}
+                    id={`manage-tenant-${c.id}`}
+                  >
+                    <Sliders size={14} strokeWidth={2.2} />
+                    <span>Manage Organization</span>
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 

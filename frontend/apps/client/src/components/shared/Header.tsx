@@ -366,23 +366,24 @@ export const Header: React.FC = () => {
             />
           </button>
 
-          {/* Exit button appears ONLY on clicking Admin */}
+          {/* Exit button appears ONLY on clicking Admin, sized to the length of the word */}
           {isUserMenuOpen && (
             <div
               style={{
                 position: 'absolute',
                 top: 'calc(100% + 8px)',
                 right: '0',
-                width: '170px',
+                width: 'fit-content',
+                minWidth: 'auto',
                 background: 'var(--bg-card)',
                 border: '1px solid var(--border)',
                 borderRadius: 'var(--radius-md)',
                 boxShadow: 'var(--shadow-lg)',
-                padding: '6px',
+                padding: '4px',
                 zIndex: 100,
                 display: 'flex',
-                flexDirection: 'column',
-                gap: '4px',
+                alignItems: 'center',
+                justifyContent: 'center',
               }}
             >
               <button
@@ -392,11 +393,12 @@ export const Header: React.FC = () => {
                 }}
                 title="Sign out of organization"
                 style={{
-                  display: 'flex',
+                  display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '8px',
-                  width: '100%',
-                  padding: '8px 12px',
+                  gap: '6px',
+                  width: 'fit-content',
+                  whiteSpace: 'nowrap',
+                  padding: '6px 12px',
                   background: 'rgba(239, 68, 68, 0.08)',
                   border: '1px solid rgba(239, 68, 68, 0.22)',
                   borderRadius: 'var(--radius-sm)',
@@ -405,7 +407,6 @@ export const Header: React.FC = () => {
                   fontWeight: 600,
                   cursor: 'pointer',
                   transition: 'all 0.15s ease',
-                  textAlign: 'left',
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.background = 'rgba(239, 68, 68, 0.16)';
@@ -416,7 +417,7 @@ export const Header: React.FC = () => {
                   e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.22)';
                 }}
               >
-                <LogOut size={14} />
+                <LogOut size={13} />
                 <span>Exit</span>
               </button>
             </div>

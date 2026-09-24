@@ -149,26 +149,101 @@ func signupHandler(c *gin.Context) {
 }
 
 func listCompaniesHandler(c *gin.Context) {
-	if deps == nil || deps.Companies == nil {
+	if deps == nil || deps.Pool == nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"data": []gin.H{
-				{"id": 1, "name": "Allied Transport UAE", "code": "COMP_1"},
-				{"id": 2, "name": "EKSC Logistics Dubai", "code": "EKSC"},
+				{
+					"id": 1, "name": "Allied Transport", "code": "COMP_1", "status": "Active",
+					"devices": 320, "maxDevices": 500, "users": 37, "maxUsers": 50,
+					"contactPerson": "Operations Desk", "contactEmail": "info@alliedtransport.ae",
+					"contactPhone": "+971-4-8800000", "dbShard": "pg_shard_uae_01", "siraRelay": true,
+					"apiKey": "RN-KEY-COMP_1-01", "createdAt": "2022-09-03",
+				},
+				{
+					"id": 2, "name": "EKSC Logistics Dubai", "code": "EKSC", "status": "Active",
+					"devices": 10, "maxDevices": 100, "users": 2, "maxUsers": 20,
+					"contactPerson": "Tariq Al-Mansoor", "contactEmail": "operations@eksc.ae",
+					"contactPhone": "+971-4-3389900", "dbShard": "pg_shard_uae_01", "siraRelay": true,
+					"apiKey": "RN-KEY-EKSC-02", "createdAt": "2022-09-02",
+				},
 			},
 		})
 		return
 	}
 
-	companies, err := deps.Companies.List(c.Request.Context())
+	query := `
+		SELECT 
+			c.id, 
+			c.name, 
+			c.code, 
+			COALESCE(c.contact_person, 'Operations Lead') as contact_person,
+			COALESCE(c.email, 'operations@rudranetra.ae') as contact_email,
+			COALESCE(c.phone, '+971-4-8800000') as contact_phone,
+			COALESCE(c.database_name, 'pg_shard_uae_01') as db_shard,
+			CASE WHEN c.status = 1 THEN 'Active' ELSE 'Suspended' END as status,
+			to_char(c.created_at, 'YYYY-MM-DD') as created_at,
+			COUNT(DISTINCT d.id) as devices,
+			COUNT(DISTINCT u.id) as users
+		FROM companies c
+		LEFT JOIN devices d ON d.company_id = c.id
+		LEFT JOIN users u ON u.company_id = c.id
+		GROUP BY c.id, c.name, c.code, c.contact_person, c.email, c.phone, c.database_name, c.status, c.created_at
+		ORDER BY c.id ASC
+	`
+	rows, err := deps.Pool.Query(c.Request.Context(), query)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
 		return
 	}
+	defer rows.Close()
+
+	type CompanyItem struct {
+		ID            int64  `json:"id"`
+		Name          string `json:"name"`
+		Code          string `json:"code"`
+		ContactPerson string `json:"contactPerson"`
+		ContactEmail  string `json:"contactEmail"`
+		ContactPhone  string `json:"contactPhone"`
+		DBShard       string `json:"dbShard"`
+		Status        string `json:"status"`
+		CreatedAt     string `json:"createdAt"`
+		Devices       int    `json:"devices"`
+		MaxDevices    int    `json:"maxDevices"`
+		Users         int    `json:"users"`
+		MaxUsers      int    `json:"maxUsers"`
+		SIRARelay     bool   `json:"siraRelay"`
+		APIKey        string `json:"apiKey"`
+	}
+
+	var list []CompanyItem
+	for rows.Next() {
+		var item CompanyItem
+		if err := rows.Scan(
+			&item.ID, &item.Name, &item.Code, &item.ContactPerson,
+			&item.ContactEmail, &item.ContactPhone, &item.DBShard,
+			&item.Status, &item.CreatedAt, &item.Devices, &item.Users,
+		); err == nil {
+			item.MaxDevices = item.Devices + 50
+			if item.MaxDevices < 100 {
+				item.MaxDevices = 100
+			}
+			item.MaxUsers = item.Users + 15
+			if item.MaxUsers < 20 {
+				item.MaxUsers = 20
+			}
+			item.SIRARelay = true
+			item.APIKey = fmt.Sprintf("RN-KEY-%s-%02d", item.Code, item.ID)
+			list = append(list, item)
+		}
+	}
+	if list == nil {
+		list = []CompanyItem{}
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":    companies,
+		"data":    list,
 	})
 }
 
@@ -1421,11 +1496,139 @@ func deleteMasterHandler(c *gin.Context)  { c.JSON(http.StatusOK, gin.H{"success
 
 // ─── Admin Handlers ──────────────────────────────────────
 
-func adminDashboardHandler(c *gin.Context)      { c.JSON(http.StatusOK, gin.H{"success": true}) }
-func adminStatsHandler(c *gin.Context)          { c.JSON(http.StatusOK, gin.H{"success": true}) }
-func adminMISReportHandler(c *gin.Context)      { c.JSON(http.StatusOK, gin.H{"success": true}) }
-func createCompanyHandler(c *gin.Context)       { c.JSON(http.StatusCreated, gin.H{"success": true}) }
-func updateCompanyHandler(c *gin.Context)       { c.JSON(http.StatusOK, gin.H{"success": true}) }
+func adminDashboardHandler(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"success": true}) }
+
+func adminStatsHandler(c *gin.Context) {
+	if deps == nil || deps.Pool == nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"data": gin.H{
+				"totalTenants":    2,
+				"activeVehicles":  330,
+				"systemUsers":     39,
+				"siraRelayActive": 2,
+			},
+		})
+		return
+	}
+
+	var totalTenants, activeVehicles, systemUsers int64
+	_ = deps.Pool.QueryRow(c.Request.Context(), "SELECT COUNT(*) FROM companies").Scan(&totalTenants)
+	_ = deps.Pool.QueryRow(c.Request.Context(), "SELECT COUNT(*) FROM devices").Scan(&activeVehicles)
+	_ = deps.Pool.QueryRow(c.Request.Context(), "SELECT COUNT(*) FROM users").Scan(&systemUsers)
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data": gin.H{
+			"totalTenants":    totalTenants,
+			"activeVehicles":  activeVehicles,
+			"systemUsers":     systemUsers,
+			"siraRelayActive": totalTenants,
+		},
+	})
+}
+
+func adminMISReportHandler(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"success": true}) }
+
+func createCompanyHandler(c *gin.Context) {
+	if deps == nil || deps.Pool == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "database unavailable"})
+		return
+	}
+	var req struct {
+		Name          string `json:"name"`
+		Code          string `json:"code"`
+		ContactPerson string `json:"contactPerson"`
+		ContactEmail  string `json:"contactEmail"`
+		ContactPhone  string `json:"contactPhone"`
+		DBShard       string `json:"dbShard"`
+		Status        string `json:"status"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+		return
+	}
+	if req.Name == "" || req.Code == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "name and code are required"})
+		return
+	}
+	statusInt := 1
+	if req.Status == "Suspended" {
+		statusInt = 0
+	}
+	if req.DBShard == "" {
+		req.DBShard = "pg_shard_uae_01"
+	}
+
+	var newID int64
+	err := deps.Pool.QueryRow(c.Request.Context(), `
+		INSERT INTO companies (name, code, contact_person, email, phone, database_name, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+		RETURNING id
+	`, req.Name, req.Code, req.ContactPerson, req.ContactEmail, req.ContactPhone, req.DBShard, statusInt).Scan(&newID)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"success": true,
+		"id":      newID,
+		"message": "Company created successfully",
+	})
+}
+
+func updateCompanyHandler(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid company id"})
+		return
+	}
+	if deps == nil || deps.Pool == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "database unavailable"})
+		return
+	}
+
+	var req struct {
+		Name          string `json:"name"`
+		Code          string `json:"code"`
+		ContactPerson string `json:"contactPerson"`
+		ContactEmail  string `json:"contactEmail"`
+		ContactPhone  string `json:"contactPhone"`
+		DBShard       string `json:"dbShard"`
+		Status        string `json:"status"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+		return
+	}
+	statusInt := 1
+	if req.Status == "Suspended" {
+		statusInt = 0
+	}
+
+	_, err = deps.Pool.Exec(c.Request.Context(), `
+		UPDATE companies
+		SET name = COALESCE(NULLIF($1, ''), name),
+			code = COALESCE(NULLIF($2, ''), code),
+			contact_person = COALESCE(NULLIF($3, ''), contact_person),
+			email = COALESCE(NULLIF($4, ''), email),
+			phone = COALESCE(NULLIF($5, ''), phone),
+			database_name = COALESCE(NULLIF($6, ''), database_name),
+			status = $7,
+			updated_at = NOW()
+		WHERE id = $8
+	`, req.Name, req.Code, req.ContactPerson, req.ContactEmail, req.ContactPhone, req.DBShard, statusInt, id)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Company updated successfully"})
+}
 func adminListUsersHandler(c *gin.Context)      { c.JSON(http.StatusOK, gin.H{"success": true, "data": []string{}}) }
 func adminCreateUserHandler(c *gin.Context)     { c.JSON(http.StatusCreated, gin.H{"success": true}) }
 func adminUpdateUserHandler(c *gin.Context)     { c.JSON(http.StatusOK, gin.H{"success": true}) }

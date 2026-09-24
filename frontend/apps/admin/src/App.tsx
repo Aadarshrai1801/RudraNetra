@@ -1,7 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { CompanyManagerPage } from './pages/CompanyManagerPage';
-import { ExternalLink, ShieldCheck } from 'lucide-react';
+import { ExternalLink, ShieldCheck, ChevronDown, LogOut } from 'lucide-react';
 
 const routeTitles: Record<string, string> = {
   '/companies': 'Organization & Tenant Registry',
@@ -23,6 +23,25 @@ const PageTitleManager: React.FC = () => {
 };
 
 export const App: React.FC = () => {
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleExit = () => {
+    localStorage.removeItem('rudra_admin_token');
+    localStorage.removeItem('rudra_auth_token');
+    window.location.href = 'http://localhost:3000/login';
+  };
+
   return (
     <BrowserRouter>
       <PageTitleManager />
@@ -89,9 +108,8 @@ export const App: React.FC = () => {
             </div>
           </div>
 
-          {/* Client Console Switcher */}
+          {/* Client Console Switcher & User Profile */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-
             {/* Quick Switch to Fleet Dispatch Console */}
             <a
               href="http://localhost:3000"
@@ -111,33 +129,116 @@ export const App: React.FC = () => {
 
             <div style={{ width: '1px', height: '24px', background: 'var(--border)' }} />
 
-            {/* Admin Profile Chip */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div
+            {/* Admin Profile Chip with Exit button appearing on clicking Admin */}
+            <div style={{ position: 'relative' }} ref={userMenuRef}>
+              <button
+                onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                aria-label="Superadmin account menu"
                 style={{
-                  width: '34px',
-                  height: '34px',
-                  borderRadius: '50%',
-                  background: 'var(--accent-light)',
-                  border: '1px solid rgba(47, 111, 109, 0.3)',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '0.78rem',
-                  color: 'var(--accent)',
-                  fontWeight: 700,
+                  gap: '10px',
+                  background: isUserMenuOpen ? 'var(--bg-hover)' : 'transparent',
+                  border: '1px solid',
+                  borderColor: isUserMenuOpen ? 'var(--border)' : 'transparent',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '4px 8px',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
                 }}
               >
-                SA
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                  Platform Admin
-                </span>
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
-                  Root Administrator
-                </span>
-              </div>
+                <div
+                  style={{
+                    width: '34px',
+                    height: '34px',
+                    borderRadius: '50%',
+                    background: 'var(--accent-light)',
+                    border: '1px solid rgba(47, 111, 109, 0.3)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '0.78rem',
+                    color: 'var(--accent)',
+                    fontWeight: 700,
+                  }}
+                >
+                  SA
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', textAlign: 'left' }}>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    Platform Admin
+                  </span>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
+                    Root Administrator
+                  </span>
+                </div>
+                <ChevronDown
+                  size={14}
+                  color="var(--text-secondary)"
+                  style={{
+                    transform: isUserMenuOpen ? 'rotate(180deg)' : 'none',
+                    transition: 'transform 0.15s ease',
+                    marginLeft: '2px',
+                  }}
+                />
+              </button>
+
+              {/* Exit button sized to the length of the word only */}
+              {isUserMenuOpen && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 'calc(100% + 8px)',
+                    right: '0',
+                    width: 'fit-content',
+                    minWidth: 'auto',
+                    background: 'var(--bg-card)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-md)',
+                    boxShadow: 'var(--shadow-lg)',
+                    padding: '4px',
+                    zIndex: 100,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <button
+                    onClick={() => {
+                      setIsUserMenuOpen(false);
+                      handleExit();
+                    }}
+                    title="Sign out of SuperAdmin console"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      width: 'fit-content',
+                      whiteSpace: 'nowrap',
+                      padding: '6px 12px',
+                      background: 'rgba(239, 68, 68, 0.08)',
+                      border: '1px solid rgba(239, 68, 68, 0.22)',
+                      borderRadius: 'var(--radius-sm)',
+                      color: '#dc2626',
+                      fontSize: '0.825rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'rgba(239, 68, 68, 0.16)';
+                      e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)';
+                      e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.22)';
+                    }}
+                  >
+                    <LogOut size={13} />
+                    <span>Exit</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </header>
