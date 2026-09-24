@@ -17,8 +17,24 @@ export const Sidebar: React.FC = () => {
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
-        <div className="brand-icon">
-          <Navigation size={22} color="#ffffff" />
+        <div
+          className="brand-icon"
+          style={{
+            background: '#ffffff',
+            borderRadius: '10px',
+            padding: '3px 4px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 0 16px rgba(249, 115, 22, 0.4)',
+            border: '1px solid rgba(255, 255, 255, 0.3)',
+          }}
+        >
+          <img
+            src="/RudraNetraLogo.png"
+            alt="RudraNetra"
+            style={{ width: '32px', height: 'auto', objectFit: 'contain' }}
+          />
         </div>
         <div>
           <div className="brand-title">RudraNetra</div>

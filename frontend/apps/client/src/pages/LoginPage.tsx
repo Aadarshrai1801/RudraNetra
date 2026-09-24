@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Navigation, Lock, User, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Lock, User, ArrowRight, ShieldCheck } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
   const [username, setUsername] = useState('admin');
@@ -71,10 +71,25 @@ export const LoginPage: React.FC = () => {
       >
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           <div
-            className="brand-icon"
-            style={{ width: '48px', height: '48px', margin: '0 auto 16px auto', borderRadius: '14px' }}
+            style={{
+              width: '64px',
+              height: '64px',
+              margin: '0 auto 16px auto',
+              borderRadius: '16px',
+              background: '#ffffff',
+              padding: '6px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 0 25px rgba(249, 115, 22, 0.45)',
+              border: '1px solid rgba(255, 255, 255, 0.4)',
+            }}
           >
-            <Navigation size={26} color="#ffffff" />
+            <img
+              src="/RudraNetraLogo.png"
+              alt="RudraNetra Logo"
+              style={{ width: '52px', height: 'auto', objectFit: 'contain' }}
+            />
           </div>
           <h2 style={{ fontSize: '1.6rem', fontWeight: 800 }}>RudraNetra</h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '6px' }}>

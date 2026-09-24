@@ -23,3 +23,38 @@ export const Button: React.FC<ButtonProps> = ({ variant = 'primary', children, s
     </button>
   );
 };
+
+export interface RudraNetraLogoProps {
+  size?: number;
+  variant?: 'original' | 'transparent' | 'dark';
+  className?: string;
+  style?: React.CSSProperties;
+}
+
+export const RudraNetraLogo: React.FC<RudraNetraLogoProps> = ({
+  size = 36,
+  variant = 'original',
+  className,
+  style,
+}) => {
+  const filename =
+    variant === 'dark'
+      ? 'RudraNetraLogo_darkmode.png'
+      : variant === 'transparent'
+      ? 'RudraNetraLogo_transparent.png'
+      : 'RudraNetraLogo.png';
+
+  return (
+    <img
+      src={`/${filename}`}
+      alt="RudraNetra"
+      className={className}
+      style={{
+        height: `${size}px`,
+        width: 'auto',
+        objectFit: 'contain',
+        ...style,
+      }}
+    />
+  );
+};
