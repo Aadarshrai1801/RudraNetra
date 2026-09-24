@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { useVehicleStore, VehiclePosition } from '../store/vehicleStore';
+import { useVehicleStore } from '../store/vehicleStore';
+import { useAuthStore } from '../store/authStore';
 import { Link } from 'react-router-dom';
 import {
   Download,
@@ -13,8 +14,11 @@ import {
 
 export const DashboardPage: React.FC = () => {
   const vehiclesMap = useVehicleStore((state) => state.vehicles);
-  const updatePosition = useVehicleStore((state) => state.updatePosition);
   const selectVehicle = useVehicleStore((state) => state.selectVehicle);
+  const fetchVehicles = useVehicleStore((state) => state.fetchVehicles);
+
+  const token = useAuthStore((state) => state.token);
+  const user = useAuthStore((state) => state.user);
 
   const [isDispatchModalOpen, setIsDispatchModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -30,107 +34,18 @@ export const DashboardPage: React.FC = () => {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Ensure default vehicles are present with plain language metadata
+  // Fetch real organization fleet vehicles
   useEffect(() => {
-    if (vehiclesMap.size === 0) {
-      const realVehicles: VehiclePosition[] = [
-        {
-          device_id: 101,
-          reg_number: '95321',
-          name: 'Volvo FH400',
-          driver_name: 'Yog Raj Sharma',
-          driver_phone: '+971 50 1000050',
-          location_name: 'Allied Logistics Depot, DWC Dubai',
-          lat: 24.89521,
-          lng: 55.14203,
-          speed: 68.4,
-          heading: 238,
-          ignition: true,
-          status: 'moving',
-          timestamp: new Date().toISOString(),
-          odometer: 1425800,
-          temperature: 24.5,
-        },
-        {
-          device_id: 102,
-          reg_number: '82561',
-          name: 'Volvo FH400',
-          driver_name: 'Abdul Jelil',
-          driver_phone: '+971 50 1000051',
-          location_name: 'New Batha In Transit Corridor',
-          lat: 24.125437,
-          lng: 51.583673,
-          speed: 0,
-          heading: 318,
-          ignition: true,
-          status: 'idle',
-          idle_duration_min: 25,
-          timestamp: new Date().toISOString(),
-          odometer: 457530,
-          temperature: 22.0,
-        },
-        {
-          device_id: 106,
-          reg_number: '84707',
-          name: 'Volvo FH400',
-          driver_name: 'Muhammad Rizwan',
-          driver_phone: '+971 50 1000057',
-          location_name: 'E11 Highway towards Abu Dhabi Corridor',
-          lat: 24.450785,
-          lng: 51.073105,
-          speed: 90.0,
-          heading: 290,
-          ignition: true,
-          status: 'moving',
-          timestamp: new Date().toISOString(),
-          odometer: 555700,
-          temperature: 25.8,
-        },
-        {
-          device_id: 104,
-          reg_number: '99292',
-          name: 'Volvo FH400',
-          driver_name: 'Abu Taleb Baker',
-          driver_phone: '+971 50 1000054',
-          location_name: 'Allied DWC Fleet Terminal Yard',
-          lat: 24.879943,
-          lng: 55.131872,
-          speed: 0,
-          heading: 355,
-          ignition: false,
-          status: 'stopped',
-          parked_duration_min: 120,
-          timestamp: new Date(Date.now() - 3600000).toISOString(),
-          odometer: 4256550,
-          temperature: 27.5,
-        },
-        {
-          device_id: 184,
-          reg_number: '33566',
-          name: 'Mercedes-Benz 1843',
-          driver_name: 'Salman Moufid',
-          driver_phone: '+971 50 1000078',
-          location_name: 'Jebel Ali Free Zone Gate 4 Port Entry',
-          lat: 24.982437,
-          lng: 55.074723,
-          speed: 65.0,
-          heading: 20,
-          ignition: true,
-          status: 'moving',
-          timestamp: new Date().toISOString(),
-          odometer: 1783790,
-          temperature: 23.5,
-        }
-      ];
-      realVehicles.forEach((v) => updatePosition(v));
+    if (token) {
+      fetchVehicles(token, user?.company_id);
     }
-  }, [vehiclesMap.size, updatePosition]);
+  }, [token, user?.company_id, fetchVehicles]);
 
   const vehicleList = Array.from(vehiclesMap.values());
-  const movingCount = vehicleList.filter((v) => v.status === 'moving').length || 2;
-  const waitingCount = vehicleList.filter((v) => v.status === 'idle').length || 1;
-  const parkedCount = vehicleList.filter((v) => v.status === 'stopped').length || 1;
-  const totalCount = vehicleList.length || 4;
+  const movingCount = vehicleList.filter((v) => v.status === 'moving').length;
+  const waitingCount = vehicleList.filter((v) => v.status === 'idle').length;
+  const parkedCount = vehicleList.filter((v) => v.status === 'stopped' || v.status === 'offline').length;
+  const totalCount = vehicleList.length;
 
   const handleExportSummary = () => {
     const csvHeader = 'Vehicle Plate,Vehicle Model,Driver,Status,Speed,Current Location,Total Distance (km),Last Checked\n';
@@ -216,7 +131,7 @@ export const DashboardPage: React.FC = () => {
       >
         <div>
           <h1 style={{ fontSize: '1.65rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px' }}>
-            Your fleet today
+            Your fleet today · {user?.company_name || (user?.company_id === 2 ? 'EKSC Logistics Dubai' : 'Allied Transport UAE')}
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
             Live status of your {totalCount} vehicles and today’s deliveries.

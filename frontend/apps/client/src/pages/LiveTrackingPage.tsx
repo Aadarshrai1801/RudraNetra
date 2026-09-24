@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { LiveMap } from '../components/map/LiveMap';
-import { useVehicleStore, VehiclePosition } from '../store/vehicleStore';
+import { useVehicleStore } from '../store/vehicleStore';
+import { useAuthStore } from '../store/authStore';
 import {
   Search,
   Phone,
@@ -11,110 +12,54 @@ export const LiveTrackingPage: React.FC = () => {
   const vehiclesMap = useVehicleStore((state) => state.vehicles);
   const selectedDeviceId = useVehicleStore((state) => state.selectedDeviceId);
   const selectVehicle = useVehicleStore((state) => state.selectVehicle);
-  const updatePosition = useVehicleStore((state) => state.updatePosition);
   const filterStatus = useVehicleStore((state) => state.filterStatus);
   const setFilterStatus = useVehicleStore((state) => state.setFilterStatus);
   const searchQuery = useVehicleStore((state) => state.searchQuery);
   const setSearchQuery = useVehicleStore((state) => state.setSearchQuery);
+  const fetchVehicles = useVehicleStore((state) => state.fetchVehicles);
+
+  const token = useAuthStore((state) => state.token);
+  const user = useAuthStore((state) => state.user);
+  const setAuth = useAuthStore((state) => state.setAuth);
 
   const [expandedDetailsId, setExpandedDetailsId] = useState<number | null>(null);
 
-  // Seed sample Dubai fleet vehicles with friendly plain-language attributes
+  // Load organization-scoped fleet vehicles
   useEffect(() => {
-    if (vehiclesMap.size === 0) {
-      const realVehicles: VehiclePosition[] = [
-        {
-          device_id: 101,
-          reg_number: '95321',
-          name: 'Volvo FH400',
-          driver_name: 'Yog Raj Sharma',
-          driver_phone: '+971 50 1000050',
-          location_name: 'Allied Logistics Depot, DWC Dubai',
-          lat: 24.89521,
-          lng: 55.14203,
-          speed: 68.4,
-          heading: 238,
-          ignition: true,
-          status: 'moving',
-          timestamp: new Date().toISOString(),
-          odometer: 1425800,
-          temperature: 24.5,
-        },
-        {
-          device_id: 102,
-          reg_number: '82561',
-          name: 'Volvo FH400',
-          driver_name: 'Abdul Jelil',
-          driver_phone: '+971 50 1000051',
-          location_name: 'New Batha In Transit Corridor',
-          lat: 24.125437,
-          lng: 51.583673,
-          speed: 0,
-          heading: 318,
-          ignition: true,
-          status: 'idle',
-          idle_duration_min: 25,
-          timestamp: new Date().toISOString(),
-          odometer: 457530,
-          temperature: 22.0,
-        },
-        {
-          device_id: 106,
-          reg_number: '84707',
-          name: 'Volvo FH400',
-          driver_name: 'Muhammad Rizwan',
-          driver_phone: '+971 50 1000057',
-          location_name: 'E11 Highway towards Abu Dhabi Corridor',
-          lat: 24.450785,
-          lng: 51.073105,
-          speed: 90.0,
-          heading: 290,
-          ignition: true,
-          status: 'moving',
-          timestamp: new Date().toISOString(),
-          odometer: 555700,
-          temperature: 25.8,
-        },
-        {
-          device_id: 104,
-          reg_number: '99292',
-          name: 'Volvo FH400',
-          driver_name: 'Abu Taleb Baker',
-          driver_phone: '+971 50 1000054',
-          location_name: 'Allied DWC Fleet Terminal Yard',
-          lat: 24.879943,
-          lng: 55.131872,
-          speed: 0,
-          heading: 355,
-          ignition: false,
-          status: 'stopped',
-          parked_duration_min: 120,
-          timestamp: new Date(Date.now() - 3600000).toISOString(),
-          odometer: 4256550,
-          temperature: 27.5,
-        },
-        {
-          device_id: 184,
-          reg_number: '33566',
-          name: 'Mercedes-Benz 1843',
-          driver_name: 'Salman Moufid',
-          driver_phone: '+971 50 1000078',
-          location_name: 'Jebel Ali Free Zone Gate 4 Port Entry',
-          lat: 24.982437,
-          lng: 55.074723,
-          speed: 65.0,
-          heading: 20,
-          ignition: true,
-          status: 'moving',
-          timestamp: new Date().toISOString(),
-          odometer: 1783790,
-          temperature: 23.5,
-        }
-      ];
+    const init = async () => {
+      let activeToken = token;
+      let activeCompany = user?.company_id;
 
-      realVehicles.forEach((v) => updatePosition(v));
-    }
-  }, [vehiclesMap.size, updatePosition]);
+      // If user is not yet logged in, auto-login with default credentials
+      if (!activeToken) {
+        try {
+          const host =
+            window.location.port !== '8080' && window.location.hostname === 'localhost'
+              ? 'http://localhost:8080'
+              : '';
+          const res = await fetch(`${host}/api/v1/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: 'admin', password: 'password' }),
+          });
+          const data = await res.json();
+          if (data.success && data.token) {
+            setAuth(data.token, data.user);
+            activeToken = data.token;
+            activeCompany = data.user.company_id;
+          }
+        } catch (e) {
+          console.warn('Auto-login error:', e);
+        }
+      }
+
+      if (activeToken) {
+        fetchVehicles(activeToken, activeCompany);
+      }
+    };
+
+    init();
+  }, [token, user?.company_id, fetchVehicles, setAuth]);
 
   const vehicleList = useMemo(() => {
     const list = Array.from(vehiclesMap.values());
@@ -145,10 +90,10 @@ export const LiveTrackingPage: React.FC = () => {
       else parked++;
     });
     return {
-      total: vehiclesMap.size || 4,
-      moving: moving || 2,
-      waiting: waiting || 1,
-      parked: parked || 1,
+      total: vehiclesMap.size,
+      moving,
+      waiting,
+      parked,
     };
   }, [vehiclesMap]);
 
@@ -159,9 +104,14 @@ export const LiveTrackingPage: React.FC = () => {
         {/* Drawer Header */}
         <div style={{ padding: '20px 20px 16px 20px', borderBottom: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-            <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-              Your vehicles ({counts.total})
-            </h2>
+            <div>
+              <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                {user?.company_name || (user?.company_id === 2 ? 'EKSC Logistics Dubai' : 'Allied Transport UAE')} ({counts.total})
+              </h2>
+              <span style={{ fontSize: '0.75rem', color: 'var(--cyan-accent)', fontWeight: 600 }}>
+                {user?.company_id === 2 ? '🏢 Organization 2 Fleet' : '🏢 Organization 1 Fleet'}
+              </span>
+            </div>
             <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
               Live location
             </span>

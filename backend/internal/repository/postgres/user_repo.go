@@ -70,3 +70,66 @@ func (r *UserRepository) UpdatePassword(ctx context.Context, userID int64, newHa
 	_, err := r.pool.Exec(ctx, query, newHash, userID)
 	return err
 }
+
+// Create inserts a new user record.
+func (r *UserRepository) Create(ctx context.Context, u *domain.User) (*domain.User, error) {
+	query := `
+		INSERT INTO users (
+			company_id, username, password_hash, full_name, email, phone, role, is_active
+		) VALUES (
+			$1, $2, $3, $4, $5, $6, $7, $8
+		)
+		RETURNING id, created_at
+	`
+	err := r.pool.QueryRow(ctx, query,
+		u.CompanyID,
+		u.Username,
+		u.PasswordHash,
+		u.FullName,
+		u.Email,
+		u.Phone,
+		u.Role,
+		u.IsActive,
+	).Scan(&u.ID, &u.CreatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create user: %w", err)
+	}
+	return u, nil
+}
+
+// GetByID returns a User by their primary key.
+func (r *UserRepository) GetByID(ctx context.Context, id int64) (*domain.User, error) {
+	query := `
+		SELECT id, COALESCE(company_id, 0), username, password_hash,
+		       COALESCE(full_name, ''), COALESCE(email, ''), COALESCE(phone, ''),
+		       role, COALESCE(permissions, '{}'), is_active, last_login_at, expires_at, created_at
+		FROM users
+		WHERE id = $1
+	`
+	var u domain.User
+	var permBytes []byte
+	err := r.pool.QueryRow(ctx, query, id).Scan(
+		&u.ID,
+		&u.CompanyID,
+		&u.Username,
+		&u.PasswordHash,
+		&u.FullName,
+		&u.Email,
+		&u.Phone,
+		&u.Role,
+		&permBytes,
+		&u.IsActive,
+		&u.LastLoginAt,
+		&u.ExpiresAt,
+		&u.CreatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("user not found: %w", err)
+	}
+
+	if len(permBytes) > 0 {
+		_ = json.Unmarshal(permBytes, &u.Permissions)
+	}
+
+	return &u, nil
+}

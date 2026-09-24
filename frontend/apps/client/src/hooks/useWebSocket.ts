@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useVehicleStore, VehiclePosition } from '../store/vehicleStore';
+import { useAuthStore } from '../store/authStore';
 
 export function useWebSocket() {
   const [isConnected, setIsConnected] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
   const updatePosition = useVehicleStore((state) => state.updatePosition);
+  const token = useAuthStore((state) => state.token);
+  const user = useAuthStore((state) => state.user);
 
   const connect = useCallback(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -12,14 +15,19 @@ export function useWebSocket() {
       window.location.port !== '8080' && window.location.hostname === 'localhost'
         ? 'localhost:8080'
         : window.location.host;
-    const wsUrl = `${protocol}//${host}/ws/tracking`;
+
+    const params = new URLSearchParams();
+    if (token) params.set('token', token);
+    if (user?.company_id) params.set('company_id', String(user.company_id));
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const wsUrl = `${protocol}//${host}/ws/tracking${qs}`;
 
     const ws = new WebSocket(wsUrl);
     socketRef.current = ws;
 
     ws.onopen = () => {
       setIsConnected(true);
-      // Subscribe to all updates
+      // Subscribe to all updates for this company
       ws.send(JSON.stringify({ action: 'subscribe_all' }));
     };
 
@@ -27,18 +35,25 @@ export function useWebSocket() {
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === 'position' || msg.lat !== undefined) {
+          const payload = msg.payload || msg;
           const pos: VehiclePosition = {
-            device_id: msg.device_id,
-            reg_number: msg.reg_number || `DEV-${msg.device_id}`,
-            lat: msg.lat,
-            lng: msg.lng,
-            speed: msg.speed || 0,
-            heading: msg.heading || 0,
-            ignition: Boolean(msg.ignition),
-            status: msg.status || (msg.speed > 2 ? 'moving' : msg.ignition ? 'idle' : 'stopped'),
-            timestamp: msg.timestamp || new Date().toISOString(),
-            odometer: msg.odometer,
-            temperature: msg.temperature,
+            device_id: payload.device_id,
+            reg_number: payload.reg_number || `DEV-${payload.device_id}`,
+            lat: payload.lat,
+            lng: payload.lng,
+            speed: payload.speed || 0,
+            heading: payload.heading || 0,
+            ignition: Boolean(payload.ignition),
+            status:
+              payload.status ||
+              (payload.speed > 2
+                ? 'moving'
+                : payload.ignition
+                ? 'idle'
+                : 'stopped'),
+            timestamp: payload.timestamp || new Date().toISOString(),
+            odometer: payload.odometer,
+            temperature: payload.temperature,
           };
           updatePosition(pos);
         }
@@ -49,15 +64,15 @@ export function useWebSocket() {
 
     ws.onclose = () => {
       setIsConnected(false);
-      // Reconnect after 3 seconds
-      setTimeout(connect, 3000);
+      // Reconnect after 4 seconds
+      setTimeout(connect, 4000);
     };
 
     ws.onerror = (err) => {
       console.warn('WebSocket connection error:', err);
       ws.close();
     };
-  }, [updatePosition]);
+  }, [updatePosition, token, user?.company_id]);
 
   useEffect(() => {
     connect();

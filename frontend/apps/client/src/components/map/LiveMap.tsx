@@ -147,6 +147,14 @@ export const LiveMap: React.FC = () => {
     const map = mapRef.current;
     if (!map) return;
 
+    // Clean up markers for vehicles no longer in current organization's fleet
+    markersRef.current.forEach((marker, devId) => {
+      if (!vehicles.has(devId)) {
+        marker.remove();
+        markersRef.current.delete(devId);
+      }
+    });
+
     vehicles.forEach((v: VehiclePosition) => {
       const isSelected = selectedDeviceId === v.device_id;
       let marker = markersRef.current.get(v.device_id);

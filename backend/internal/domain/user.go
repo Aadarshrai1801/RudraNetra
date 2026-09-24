@@ -27,6 +27,16 @@ type LoginRequest struct {
 	Password string `json:"password" binding:"required"`
 }
 
+// SignupRequest is the payload for registering a new user under an organization.
+type SignupRequest struct {
+	Username  string `json:"username" binding:"required"`
+	Password  string `json:"password" binding:"required,min=6"`
+	FullName  string `json:"full_name" binding:"required"`
+	Email     string `json:"email" binding:"required"`
+	Phone     string `json:"phone"`
+	CompanyID int64  `json:"company_id" binding:"required"`
+}
+
 // TokenPair holds JWT access and refresh tokens.
 type TokenPair struct {
 	AccessToken  string `json:"access_token"`

@@ -17,6 +17,8 @@ import (
 	"github.com/rudra-netra/backend/internal/config"
 	"github.com/rudra-netra/backend/internal/handler"
 	"github.com/rudra-netra/backend/internal/handler/middleware"
+	"github.com/rudra-netra/backend/internal/repository/postgres"
+	"github.com/rudra-netra/backend/internal/service"
 	ws "github.com/rudra-netra/backend/internal/websocket"
 )
 
@@ -31,14 +33,21 @@ func main() {
 		logger.Fatal("failed to load config", zap.Error(err))
 	}
 
-	// TODO: Initialize database connection pool (pgx)
-	// db, err := pgxpool.New(context.Background(), cfg.Database.DSN())
+	// Initialize database connection pool (PostgreSQL)
+	db, err := postgres.NewDB(context.Background(), &cfg.Database, logger)
+	if err != nil {
+		logger.Fatal("failed to connect to postgres", zap.Error(err))
+	}
+	defer db.Close()
 
-	// TODO: Initialize Redis client
-	// rdb := redis.NewClient(&redis.Options{Addr: cfg.Redis.Addr})
+	// Initialize repositories & services
+	userRepo := postgres.NewUserRepository(db.Pool)
+	vehicleRepo := postgres.NewVehicleRepository(db.Pool)
+	companyRepo := postgres.NewCompanyRepository(db.Pool)
+	authService := service.NewAuthService(userRepo, &cfg.JWT)
 
-	// TODO: Initialize NATS connection
-	// nc, err := nats.Connect(cfg.NATS.URL)
+	// Set JWT secret for auth middleware
+	middleware.JWTSecret = []byte(cfg.JWT.Secret)
 
 	// Initialize WebSocket hub
 	hub := ws.NewHub(logger)
@@ -54,7 +63,15 @@ func main() {
 	router.Use(middleware.CORS(cfg.Server.CorsOrigins))
 
 	// Register API routes
-	handler.RegisterRoutes(router, hub, logger)
+	deps := &handler.Dependencies{
+		Hub:       hub,
+		Logger:    logger,
+		Auth:      authService,
+		Users:     userRepo,
+		Vehicles:  vehicleRepo,
+		Companies: companyRepo,
+	}
+	handler.RegisterRoutes(router, deps)
 
 	// Create HTTP server
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)

@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Bell } from 'lucide-react';
+import { Search, Bell, Building2, LogOut } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useWebSocket } from '../../hooks/useWebSocket';
+import { useAuthStore } from '../../store/authStore';
+import { useVehicleStore } from '../../store/vehicleStore';
 
 export interface UserNotification {
   id: number;
@@ -36,6 +39,31 @@ const defaultNotifications: UserNotification[] = [
 
 export const Header: React.FC = () => {
   const { isConnected } = useWebSocket();
+  const navigate = useNavigate();
+  const user = useAuthStore((state) => state.user);
+  const logout = useAuthStore((state) => state.logout);
+  const clearVehicles = useVehicleStore((state) => state.clearVehicles);
+  const vehiclesMap = useVehicleStore((state) => state.vehicles);
+  const totalCount = useVehicleStore((state) => state.totalCount);
+
+  const vehicleCount = totalCount || vehiclesMap.size;
+  const companyName = user?.company_name || (user?.company_id === 2 ? 'EKSC Logistics Dubai' : 'Allied Transport UAE');
+  const userDisplayName = user?.full_name || user?.username || 'Fleet Operator';
+  const userRole = user?.role ? (user.role.charAt(0).toUpperCase() + user.role.slice(1)) : 'Admin';
+  const userInitials = userDisplayName
+    .split(' ')
+    .filter(Boolean)
+    .map((n) => n[0])
+    .join('')
+    .substring(0, 2)
+    .toUpperCase() || 'OP';
+
+  const handleLogout = () => {
+    logout();
+    clearVehicles();
+    navigate('/login');
+  };
+
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<UserNotification[]>(() => {
     const saved = localStorage.getItem('rudra_user_notifications');
@@ -253,12 +281,42 @@ export const Header: React.FC = () => {
         {/* Divider */}
         <div style={{ width: '1px', height: '24px', background: 'var(--border)' }} />
 
+        {/* Organization Tenant Badge */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '5px 12px',
+            background: 'rgba(0, 242, 254, 0.08)',
+            border: '1px solid rgba(0, 242, 254, 0.25)',
+            borderRadius: 'var(--radius-full)',
+          }}
+        >
+          <Building2 size={14} color="var(--cyan-accent)" />
+          <span style={{ fontSize: '0.825rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+            {companyName}
+          </span>
+          <span
+            style={{
+              fontSize: '0.725rem',
+              fontWeight: 700,
+              padding: '2px 8px',
+              borderRadius: '10px',
+              background: user?.company_id === 2 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(0, 242, 254, 0.2)',
+              color: user?.company_id === 2 ? '#34d399' : 'var(--cyan-accent)',
+            }}
+          >
+            {vehicleCount} Vehicles
+          </span>
+        </div>
+
         {/* User Profile */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div
             style={{
-              width: '38px',
-              height: '38px',
+              width: '36px',
+              height: '36px',
               borderRadius: 'var(--radius-full)',
               background: 'var(--accent-light)',
               color: 'var(--accent)',
@@ -266,21 +324,44 @@ export const Header: React.FC = () => {
               alignItems: 'center',
               justifyContent: 'center',
               fontWeight: 700,
-              fontSize: '0.9rem',
+              fontSize: '0.85rem',
               border: '1px solid var(--border)',
             }}
           >
-            SK
+            {userInitials}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-              Sanjay Kumar
+            <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+              {userDisplayName}
             </span>
-            <span style={{ fontSize: '0.775rem', color: 'var(--text-secondary)' }}>
-              Fleet Dispatcher
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+              {userRole}
             </span>
           </div>
         </div>
+
+        {/* Logout / Switch Account */}
+        <button
+          onClick={handleLogout}
+          title="Sign out of organization"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            background: 'rgba(239, 68, 68, 0.1)',
+            border: '1px solid rgba(239, 68, 68, 0.25)',
+            borderRadius: 'var(--radius-md)',
+            padding: '6px 10px',
+            color: '#f87171',
+            fontSize: '0.775rem',
+            fontWeight: 600,
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
+          }}
+        >
+          <LogOut size={13} />
+          <span>Exit</span>
+        </button>
       </div>
     </header>
   );

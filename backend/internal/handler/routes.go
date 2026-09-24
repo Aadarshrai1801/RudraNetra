@@ -5,20 +5,26 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 
 	"github.com/rudra-netra/backend/internal/handler/middleware"
-	ws "github.com/rudra-netra/backend/internal/websocket"
 )
 
 // RegisterRoutes sets up all API route groups on the Gin router.
-func RegisterRoutes(router *gin.Engine, hub *ws.Hub, logger *zap.Logger) {
+func RegisterRoutes(router *gin.Engine, d *Dependencies) {
+	SetDependencies(d)
+	hub := d.Hub
+	logger := d.Logger
+
 	// Health check (no auth)
 	router.GET("/health", func(c *gin.Context) {
+		wsCount := 0
+		if hub != nil {
+			wsCount = hub.ConnectedCount()
+		}
 		c.JSON(http.StatusOK, gin.H{
 			"status":     "ok",
 			"service":    "rudra-api",
-			"ws_clients": hub.ConnectedCount(),
+			"ws_clients": wsCount,
 		})
 	})
 
@@ -26,6 +32,9 @@ func RegisterRoutes(router *gin.Engine, hub *ws.Hub, logger *zap.Logger) {
 	auth := router.Group("/api/v1/auth")
 	{
 		auth.POST("/login", loginHandler)
+		auth.POST("/signup", signupHandler)
+		auth.POST("/register", signupHandler)
+		auth.GET("/companies", listCompaniesHandler)
 		auth.POST("/refresh", refreshTokenHandler)
 	}
 

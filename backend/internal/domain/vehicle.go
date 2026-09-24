@@ -41,3 +41,30 @@ type VehicleModel struct {
 	BrandID int64  `json:"brand_id" db:"brand_id"`
 	Name    string `json:"name" db:"name"`
 }
+
+// VehicleWithTelemetry extends Vehicle with the latest GPS tracking data and driver details.
+type VehicleWithTelemetry struct {
+	ID           int64      `json:"id"`
+	CompanyID    int64      `json:"company_id"`
+	DeviceID     *int64     `json:"device_id,omitempty"`
+	RegNumber    string     `json:"reg_number"`
+	Make         string     `json:"make"`
+	Model        string     `json:"model"`
+	Variant      string     `json:"variant"`
+	BodyType     string     `json:"body_type"`
+	FuelType     string     `json:"fuel_type"`
+	MaxSpeed     int        `json:"max_speed"`
+	Odometer     int64      `json:"odometer"`
+	IconType     string     `json:"icon_type"`
+	Status       string     `json:"status"` // moving, idle, stopped, offline
+	DriverName   string     `json:"driver_name,omitempty"`
+	DriverPhone  string     `json:"driver_phone,omitempty"`
+	LocationName string     `json:"location_name,omitempty"`
+	Lat          *float64   `json:"lat,omitempty"`
+	Lng          *float64   `json:"lng,omitempty"`
+	Speed        *float64   `json:"speed,omitempty"`
+	Heading      *float64   `json:"heading,omitempty"`
+	Ignition     *bool      `json:"ignition,omitempty"`
+	Temperature  *float64   `json:"temperature,omitempty"`
+	Timestamp    *time.Time `json:"timestamp,omitempty"`
+}

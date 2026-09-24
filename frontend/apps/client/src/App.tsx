@@ -12,6 +12,7 @@ import { FleetPage } from './pages/FleetPage';
 import { AlertsPage } from './pages/AlertsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { LoginPage } from './pages/LoginPage';
+import { SignupPage } from './pages/SignupPage';
 
 const routeTitles: Record<string, string> = {
   '/live': 'Vehicles',
@@ -25,6 +26,8 @@ const routeTitles: Record<string, string> = {
   '/alerts': 'Alerts',
   '/settings': 'Settings',
   '/login': 'Login',
+  '/signup': 'Create Account',
+  '/register': 'Create Account',
 };
 
 const PageTitleManager: React.FC = () => {
@@ -61,6 +64,8 @@ export const App: React.FC = () => {
       <PageTitleManager />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+        <Route path="/register" element={<SignupPage />} />
         
         <Route
           path="/live"

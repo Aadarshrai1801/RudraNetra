@@ -25,10 +25,16 @@ interface VehicleState {
   selectedDeviceId: number | null;
   filterStatus: string;
   searchQuery: string;
+  loading: boolean;
+  error: string | null;
+  totalCount: number;
+  companyId: number | null;
   updatePosition: (pos: VehiclePosition) => void;
   selectVehicle: (deviceId: number | null) => void;
   setFilterStatus: (status: string) => void;
   setSearchQuery: (query: string) => void;
+  fetchVehicles: (token: string, companyId?: number) => Promise<void>;
+  clearVehicles: () => void;
 }
 
 export const useVehicleStore = create<VehicleState>((set) => ({
@@ -36,6 +42,10 @@ export const useVehicleStore = create<VehicleState>((set) => ({
   selectedDeviceId: null,
   filterStatus: 'all',
   searchQuery: '',
+  loading: false,
+  error: null,
+  totalCount: 0,
+  companyId: null,
 
   updatePosition: (pos) =>
     set((state) => {
@@ -47,4 +57,83 @@ export const useVehicleStore = create<VehicleState>((set) => ({
   selectVehicle: (deviceId) => set({ selectedDeviceId: deviceId }),
   setFilterStatus: (filterStatus) => set({ filterStatus }),
   setSearchQuery: (searchQuery) => set({ searchQuery }),
+
+  clearVehicles: () =>
+    set({
+      vehicles: new Map<number, VehiclePosition>(),
+      selectedDeviceId: null,
+      totalCount: 0,
+      companyId: null,
+    }),
+
+  fetchVehicles: async (token: string, companyId?: number) => {
+    set({ loading: true, error: null });
+    try {
+      const host =
+        window.location.port !== '8080' && window.location.hostname === 'localhost'
+          ? 'http://localhost:8080'
+          : '';
+      const url = `${host}/api/v1/vehicles?limit=500${companyId ? `&company_id=${companyId}` : ''}`;
+      
+      const res = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!res.ok) {
+        throw new Error(`Failed to load vehicles: ${res.statusText}`);
+      }
+
+      const json = await res.json();
+      if (!json.success || !Array.isArray(json.data)) {
+        throw new Error(json.error || 'Invalid vehicles payload');
+      }
+
+      const map = new Map<number, VehiclePosition>();
+      json.data.forEach((v: any) => {
+        const devId = v.device_id || v.id;
+        const lat = v.lat !== undefined && v.lat !== null ? v.lat : 24.8952;
+        const lng = v.lng !== undefined && v.lng !== null ? v.lng : 55.142;
+        const speed = v.speed ?? 0;
+        const ignition = Boolean(v.ignition);
+        const status =
+          v.status || (speed > 2 ? 'moving' : ignition ? 'idle' : 'stopped');
+
+        const pos: VehiclePosition = {
+          device_id: devId,
+          reg_number: v.reg_number,
+          name: `${v.make || ''} ${v.model || ''}`.trim() || v.reg_number,
+          driver_name: v.driver_name,
+          driver_phone: v.driver_phone,
+          lat,
+          lng,
+          speed,
+          heading: v.heading ?? 0,
+          ignition,
+          status,
+          timestamp: v.timestamp || new Date().toISOString(),
+          odometer: v.odometer,
+          temperature: v.temperature,
+          location_name:
+            v.location_name ||
+            (v.lat
+              ? `${v.lat.toFixed(4)}°N, ${v.lng.toFixed(4)}°E`
+              : 'Fleet Depot, UAE'),
+        };
+        map.set(devId, pos);
+      });
+
+      set({
+        vehicles: map,
+        totalCount: json.total || map.size,
+        companyId: json.company_id || companyId || null,
+        loading: false,
+      });
+    } catch (err: any) {
+      console.error('Failed to fetch organization vehicles', err);
+      set({ error: err.message, loading: false });
+    }
+  },
 }));
