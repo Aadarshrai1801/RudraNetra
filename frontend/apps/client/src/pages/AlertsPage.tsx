@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Bell, Plus, CheckCircle2, MessageSquare, Mail } from 'lucide-react';
+import { Bell, Plus, CheckCircle2, MessageSquare, Mail, X, Check, AlertTriangle } from 'lucide-react';
 
 interface AlertItem {
   id: number;
@@ -103,6 +103,22 @@ export const AlertsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'log' | 'rules' | 'sms'>('log');
   const [alerts, setAlerts] = useState<AlertItem[]>(mockAlerts);
   const [rules, setRules] = useState<AlertRule[]>(mockRules);
+  const [isCreateRuleModalOpen, setIsCreateRuleModalOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const [newRule, setNewRule] = useState({
+    name: '',
+    type: 'Overspeed',
+    threshold: 'Speed > 80 km/h for 15s',
+    smsEnabled: true,
+    emailEnabled: true,
+    recipients: '+971-50-1234567, ops@vaveuae.ae',
+  });
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
 
   const toggleRule = (id: number) => {
     setRules((prev) =>
@@ -114,6 +130,38 @@ export const AlertsPage: React.FC = () => {
     setAlerts((prev) =>
       prev.map((a) => (a.id === id ? { ...a, acknowledged: true } : a))
     );
+    showToast('Alert incident acknowledged.');
+  };
+
+  const handleCreateRule = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newRule.name) return;
+    const created: AlertRule = {
+      id: Date.now(),
+      name: newRule.name,
+      type: newRule.type,
+      threshold: newRule.threshold,
+      smsEnabled: newRule.smsEnabled,
+      emailEnabled: newRule.emailEnabled,
+      recipients: newRule.recipients,
+      isActive: true,
+    };
+    setRules((prev) => [...prev, created]);
+    setIsCreateRuleModalOpen(false);
+    setNewRule({
+      name: '',
+      type: 'Overspeed',
+      threshold: 'Speed > 80 km/h for 15s',
+      smsEnabled: true,
+      emailEnabled: true,
+      recipients: '+971-50-1234567, ops@vaveuae.ae',
+    });
+    showToast(`Rule "${created.name}" created and active.`);
+  };
+
+  const handleSaveGateway = (e: React.FormEvent) => {
+    e.preventDefault();
+    showToast('Sigma SMS Gateway parameters saved successfully.');
   };
 
   return (
@@ -123,10 +171,14 @@ export const AlertsPage: React.FC = () => {
         <div>
           <h1 style={{ fontSize: '1.75rem', fontWeight: 800 }}>Alerts, Rules & SMS Configuration</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginTop: '4px' }}>
-            Real-time event trigger engine replacing legacy SmsConfig.ashx & Alert rules.
+            Real-time event trigger engine, overspeed alerts, and geofence notifications.
           </p>
         </div>
-        <button className="btn btn-primary" style={{ gap: '8px' }}>
+        <button
+          onClick={() => setIsCreateRuleModalOpen(true)}
+          className="btn btn-primary"
+          style={{ gap: '8px' }}
+        >
           <Plus size={16} />
           Create Alert Rule
         </button>
@@ -358,9 +410,205 @@ export const AlertsPage: React.FC = () => {
               />
             </div>
 
-            <button className="btn btn-primary" style={{ alignSelf: 'flex-start' }}>
-              Save Gateway Configuration
+            <button
+              type="button"
+              onClick={handleSaveGateway}
+              className="btn btn-primary"
+              style={{ alignSelf: 'flex-start', gap: '6px' }}
+            >
+              <Check size={14} strokeWidth={2.5} />
+              <span>Save Gateway Configuration</span>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '56px',
+            right: '24px',
+            zIndex: 1000,
+            background: 'var(--bg-raised)',
+            border: '1px solid var(--signal-green)',
+            color: 'var(--text-primary)',
+            padding: '10px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            fontSize: '0.8rem',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+          }}
+        >
+          <span style={{ width: '6px', height: '6px', background: 'var(--signal-green)' }} />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Create Alert Rule Modal */}
+      {isCreateRuleModalOpen && (
+        <div className="modal-overlay" onClick={() => setIsCreateRuleModalOpen(false)}>
+          <div
+            className="ops-panel"
+            style={{
+              width: 'min(500px, 95vw)',
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--line-strong)',
+              boxShadow: '0 12px 48px rgba(0,0,0,0.8)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                padding: '14px 18px',
+                borderBottom: '1px solid var(--line)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                background: 'var(--bg-raised)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <AlertTriangle size={16} color="var(--signal-amber)" />
+                <h2 style={{ fontSize: '0.9rem', fontWeight: 800, margin: 0, textTransform: 'uppercase' }}>
+                  Create Telematics Alert Rule
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCreateRuleModalOpen(false)}
+                className="btn-ghost"
+                style={{ padding: '4px', border: 'none', cursor: 'pointer' }}
+              >
+                <X size={16} color="var(--text-muted)" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateRule} style={{ padding: '18px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                    Rule Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Excessive Idle Detection"
+                    value={newRule.name}
+                    onChange={(e) => setNewRule((prev) => ({ ...prev, name: e.target.value }))}
+                    style={{
+                      width: '100%',
+                      background: 'var(--bg-base)',
+                      border: '1px solid var(--line)',
+                      color: 'var(--text-primary)',
+                      padding: '8px 10px',
+                      fontSize: '0.8rem',
+                      outline: 'none',
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                      Alert Trigger Category
+                    </label>
+                    <select
+                      value={newRule.type}
+                      onChange={(e) => setNewRule((prev) => ({ ...prev, type: e.target.value }))}
+                      style={{
+                        width: '100%',
+                        background: 'var(--bg-base)',
+                        border: '1px solid var(--line)',
+                        color: 'var(--text-primary)',
+                        padding: '8px 10px',
+                        fontSize: '0.8rem',
+                        outline: 'none',
+                      }}
+                    >
+                      <option value="Overspeed">Overspeed Limit</option>
+                      <option value="Geofence Exit">Geofence Exit Breach</option>
+                      <option value="Excessive Idling">Excessive Idling</option>
+                      <option value="Panic Button">SOS / Panic Button</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                      Threshold Condition
+                    </label>
+                    <input
+                      type="text"
+                      value={newRule.threshold}
+                      onChange={(e) => setNewRule((prev) => ({ ...prev, threshold: e.target.value }))}
+                      style={{
+                        width: '100%',
+                        background: 'var(--bg-base)',
+                        border: '1px solid var(--line)',
+                        color: 'var(--text-primary)',
+                        padding: '8px 10px',
+                        fontSize: '0.8rem',
+                        outline: 'none',
+                        fontFamily: 'var(--font-mono)',
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                    Alert Recipients (Phones & Emails)
+                  </label>
+                  <input
+                    type="text"
+                    value={newRule.recipients}
+                    onChange={(e) => setNewRule((prev) => ({ ...prev, recipients: e.target.value }))}
+                    style={{
+                      width: '100%',
+                      background: 'var(--bg-base)',
+                      border: '1px solid var(--line)',
+                      color: 'var(--text-primary)',
+                      padding: '8px 10px',
+                      fontSize: '0.8rem',
+                      outline: 'none',
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '20px', marginTop: '4px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={newRule.smsEnabled}
+                      onChange={(e) => setNewRule((prev) => ({ ...prev, smsEnabled: e.target.checked }))}
+                      style={{ accentColor: 'var(--signal-amber)' }}
+                    />
+                    Enable SMS Alert
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={newRule.emailEnabled}
+                      onChange={(e) => setNewRule((prev) => ({ ...prev, emailEnabled: e.target.checked }))}
+                      style={{ accentColor: 'var(--signal-amber)' }}
+                    />
+                    Enable Email Alert
+                  </label>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px', paddingTop: '14px', borderTop: '1px solid var(--line)' }}>
+                <button type="button" onClick={() => setIsCreateRuleModalOpen(false)} className="btn btn-ghost" style={{ padding: '6px 14px' }}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" style={{ padding: '6px 18px', gap: '6px' }}>
+                  <Check size={14} strokeWidth={2.5} />
+                  <span>Activate Rule</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
