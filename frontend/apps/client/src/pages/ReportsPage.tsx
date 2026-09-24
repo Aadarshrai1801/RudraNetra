@@ -109,7 +109,7 @@ export const ReportsPage: React.FC = () => {
         <div>
           <h1 style={{ fontSize: '1.75rem', fontWeight: 800 }}>Fleet Telematics Reports</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginTop: '4px' }}>
-            High-speed query engine replacing legacy monolithic 332KB ShowReport.ashx.
+            High-speed telemetry analytics, trip logs, and compliance export engine.
           </p>
         </div>
         <button

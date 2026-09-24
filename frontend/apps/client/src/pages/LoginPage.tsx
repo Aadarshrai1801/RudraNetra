@@ -93,7 +93,7 @@ export const LoginPage: React.FC = () => {
           </div>
           <h2 style={{ fontSize: '1.6rem', fontWeight: 800 }}>RudraNetra</h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '6px' }}>
-            Next-Gen GPS Telematics & Fleet Platform
+            Real-Time GPS Telematics & Fleet Platform
           </p>
         </div>
 
@@ -168,7 +168,7 @@ export const LoginPage: React.FC = () => {
         <div style={{ marginTop: '28px', paddingTop: '20px', borderTop: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
           <ShieldCheck size={16} color="var(--cyan-accent)" />
           <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            Replaces legacy ASP.NET WebServiceLogCred
+            Enterprise Dispatch & Fleet Management
           </span>
         </div>
       </div>

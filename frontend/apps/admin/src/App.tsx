@@ -25,55 +25,99 @@ export const App: React.FC = () => {
   return (
     <BrowserRouter>
       <PageTitleManager />
-      <div style={{ minHeight: '100vh', background: 'var(--bg-main)', color: '#f8fafc' }}>
+      <div style={{ minHeight: '100vh', background: 'var(--bg-base)', color: 'var(--text-primary)' }}>
+        {/* Industrial SuperAdmin Header */}
         <header
           style={{
-            height: '64px',
-            borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-            padding: '0 32px',
+            height: 'var(--header-height)',
+            borderBottom: '1px solid var(--line)',
+            padding: '0 24px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            background: 'rgba(15, 23, 42, 0.7)',
-            backdropFilter: 'blur(10px)',
+            background: 'var(--bg-surface)',
           }}
         >
+          {/* Brand & Console Tag */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
             <div
               style={{
                 background: '#ffffff',
-                borderRadius: '8px',
-                padding: '3px 5px',
+                borderRadius: '2px',
+                padding: '2px 5px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: '0 0 15px rgba(249, 115, 22, 0.35)',
+                border: '1px solid var(--line)',
               }}
             >
               <img
                 src="/RudraNetraLogo.png"
                 alt="RudraNetra Logo"
-                style={{ height: '28px', width: 'auto', objectFit: 'contain' }}
+                style={{ height: '22px', width: 'auto', objectFit: 'contain' }}
               />
             </div>
-            <div>
-              <span style={{ fontWeight: 800, fontSize: '1.15rem', letterSpacing: '-0.02em' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontWeight: 800, fontSize: '0.95rem', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
                 RudraNetra
               </span>
               <span
                 style={{
-                  marginLeft: '8px',
-                  fontSize: '0.75rem',
+                  fontSize: '0.68rem',
+                  fontFamily: 'var(--font-mono)',
                   fontWeight: 600,
-                  background: 'rgba(56, 189, 248, 0.15)',
-                  color: '#38bdf8',
+                  background: 'var(--bg-raised)',
+                  color: 'var(--signal-amber)',
                   padding: '2px 8px',
-                  borderRadius: '12px',
-                  border: '1px solid rgba(56, 189, 248, 0.3)',
+                  border: '1px solid var(--line)',
+                  letterSpacing: '0.04em',
                 }}
               >
-                SuperAdmin Portal
+                SUPERADMIN CONSOLE
               </span>
+            </div>
+          </div>
+
+          {/* Cluster Status Readout */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span
+                style={{
+                  width: '6px',
+                  height: '6px',
+                  backgroundColor: 'var(--signal-green)',
+                  display: 'inline-block',
+                }}
+              />
+              <span
+                className="mono-num"
+                style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}
+              >
+                CLUSTER: UAE-PRIMARY &middot; SHARD: 01 &middot; TIMESCALEDB [TCP:5040 OK]
+              </span>
+            </div>
+
+            <div style={{ width: '1px', height: '16px', background: 'var(--line)' }} />
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div
+                style={{
+                  width: '20px',
+                  height: '20px',
+                  background: 'var(--bg-raised)',
+                  border: '1px solid var(--line)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '0.62rem',
+                  fontFamily: 'var(--font-mono)',
+                  color: 'var(--signal-amber)',
+                  fontWeight: 700,
+                }}
+              >
+                SA
+              </div>
+              <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>SuperAdmin</span>
             </div>
           </div>
         </header>

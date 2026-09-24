@@ -34,14 +34,8 @@ export const Sidebar: React.FC = () => {
             style={{ width: '28px', height: 'auto', objectFit: 'contain' }}
           />
         </div>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+        <div>
           <span className="brand-title">RudraNetra</span>
-          <span
-            className="mono-num"
-            style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}
-          >
-            OPS v2.4
-          </span>
         </div>
       </div>
 
