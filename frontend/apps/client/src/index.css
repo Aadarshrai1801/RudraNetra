@@ -451,3 +451,34 @@ p, span, div, label {
     scroll-behavior: auto !important;
   }
 }
+
+/* Mobile Responsive Adaptations */
+@media (max-width: 768px) {
+  :root {
+    --sidebar-width: 64px;
+  }
+  .sidebar {
+    width: 64px !important;
+    align-items: center;
+  }
+  .sidebar-brand div:last-child,
+  .nav-link span,
+  .sidebar-status > div:last-child {
+    display: none;
+  }
+  .sidebar-brand {
+    padding: 16px 8px !important;
+    justify-content: center;
+  }
+  .nav-link {
+    justify-content: center;
+    padding: 12px !important;
+  }
+  .page-container {
+    padding: 16px 12px !important;
+  }
+  .header {
+    padding: 0 14px !important;
+  }
+}
+

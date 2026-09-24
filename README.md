@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="#-overview">Overview</a> •
-  <a href="#-visual-showcase">Showcase</a> •
+  <a href="#-screenshots">Screenshots</a> •
   <a href="#%EF%B8%8F-system-architecture">Architecture</a> •
   <a href="#-core-capabilities">Capabilities</a> •
   <a href="#-tech-stack">Tech Stack</a> •
@@ -29,6 +29,10 @@
   <img src="https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker" />
 </p>
 
+<p align="center">
+  <img src="assets/screenshots/live-tracking-map.png" alt="RudraNetra Real-Time Telematics & Fleet Tracking Map" width="100%" />
+</p>
+
 ---
 
 ## 📖 Overview
@@ -43,85 +47,67 @@
 
 ---
 
-## 📸 Visual Showcase
+## 📸 Screenshots
 
-### Live Tracking & Real-Time Fleet Map
-*Sub-second position updates over WebSockets, animated heading orientation, vehicle telemetry drawer, and status clustering.*
+### Executive Fleet Dashboard
+*Real-time operational KPI rollup: active moving vehicles, idle fuel waste estimations, stopped fleet units, and fleet health.*
 
 <p align="center">
-  <img src="docs/assets/screenshot_live_map.png" alt="RudraNetra Live Tracking Map" width="100%" />
+  <img src="assets/screenshots/dashboard-view.png" alt="RudraNetra Executive Fleet Dashboard and Operational KPIs" width="100%" />
 </p>
 
 ---
 
-### Executive Fleet Intelligence
-*Real-time operational KPI rollup: active moving vehicles, idle fuel waste estimations, stopped fleet units, and ingestion health.*
+### Historical Route Replay & Timeline Scrubbing
+*Full route playback with 1x–5x speed controls, distance metrics, top speed profile, and timeline step scrubbing.*
 
 <p align="center">
-  <img src="docs/assets/screenshot_dashboard.png" alt="RudraNetra Executive Dashboard" width="100%" />
+  <img src="assets/screenshots/route-playback.png" alt="Historical GPS Route Playback and Timeline Scrubbing Interface" width="100%" />
 </p>
 
 ---
 
-### Historical Route Replay & Scrubbing
-*Full route playback with 1x–10x playback speed, distance metrics, top speed profile, and timeline step scrubbing.*
+### Spatial Intelligence & Fleet Operations
 
-<p align="center">
-  <img src="docs/assets/screenshot_playback.png" alt="RudraNetra Route Playback" width="100%" />
-</p>
-
----
-
-### PostGIS Polygon Geofences & Proximity Engine
-*Spatial boundary polygon zones with automated enter/exit events, speed-limit enforcement, and live `ST_Contains` containment testing.*
-
-<p align="center">
-  <img src="docs/assets/screenshot_geofences.png" alt="RudraNetra Geofences" width="100%" />
-</p>
+| PostGIS Polygon Geofences & Proximity Engine | Fleet Operations & Dispatch Management |
+| :---: | :---: |
+| <img src="assets/screenshots/geofences-view.png" alt="PostGIS Spatial Boundary Polygon Geofences and Containment Testing" width="100%" /> | <img src="assets/screenshots/fleet-operations.png" alt="Fleet Operations, Gate Passes, and Loading Receipts" width="100%" /> |
+| *Spatial boundary polygon zones with automated enter/exit events and live containment testing.* | *Gate pass lifecycle tracking, loading receipts (LR), destination routing, and driver assignments.* |
 
 ---
 
-### Fleet Operations & Dispatch Management
-*Gate pass lifecycle tracking, loading receipts (LR), destination routing, and driver RFID credential assignments.*
+### Incident Monitoring & Telematics Audit Ledger
 
-<p align="center">
-  <img src="docs/assets/screenshot_fleet.png" alt="RudraNetra Fleet Operations & Dispatch" width="100%" />
-</p>
-
----
-
-### Alerts & Real-Time Incident Rules
-*Multi-tier telemetry alert automation, speed threshold breaches, unauthorized zone exits, and SMS/Email escalation.*
-
-<p align="center">
-  <img src="docs/assets/screenshot_alerts.png" alt="RudraNetra Alerts & Real-Time Rules" width="100%" />
-</p>
+| Alerts & Real-Time Incident Rules | Telematics Reports & Fleet Audit Ledger |
+| :---: | :---: |
+| <img src="assets/screenshots/alerts-monitoring.png" alt="Real-Time Incident Rules and Telemetry Alert Configuration" width="100%" /> | <img src="assets/screenshots/reports-ledger.png" alt="Comprehensive Distance Telemetry and Fuel Audit Ledger" width="100%" /> |
+| *Multi-tier telemetry alert automation, speed threshold breaches, and incident tracking.* | *Comprehensive distance telemetry ledger, odometer verification, and trip duration analytics.* |
 
 ---
 
-### Telematics Reports & Fleet Audit Ledger
-*Comprehensive distance telemetry ledger, odometer verification, trip durations, and idle fuel waste analytics.*
-
-<p align="center">
-  <img src="docs/assets/screenshot_reports.png" alt="RudraNetra Telematics Reports" width="100%" />
-</p>
-
----
-
-### Hardware Registry & Multi-Tenant SuperAdmin Console
-*Teltonika AVL tracker provisioning, device quotas, SIRA compliance relays, and multi-tenant organization sharding.*
+### Hardware Provisioning & SuperAdmin Console
 
 | GPS Hardware Registry & Provisioning | SuperAdmin Multi-Tenant Operations Console |
 | :---: | :---: |
-| <img src="docs/assets/screenshot_devices.png" alt="Hardware Registry" width="100%" /> | <img src="docs/assets/screenshot_admin.png" alt="SuperAdmin Multi-Tenant Management" width="100%" /> |
+| <img src="assets/screenshots/devices-registry.png" alt="GPS Hardware Tracker Provisioning and Device Registry" width="100%" /> | <img src="assets/screenshots/superadmin-console.png" alt="SuperAdmin Multi-Tenant Organization and Shard Registry" width="100%" /> |
+| *Teltonika AVL tracker provisioning, device status monitoring, and hardware allocations.* | *Multi-tenant organization sharding, dispatcher seat limits, and SIRA compliance relays.* |
 
 ---
 
-### System & Fleet Telematics Configuration
-*Multi-tenant profile tuning, TCP `:5040` ingestion configuration, TimescaleDB chunk partitions, and idle thresholds.*
+### Configuration & Mobile Responsive Experience
+
+| System & Telematics Configuration | Responsive Mobile Fleet Dispatcher View |
+| :---: | :---: |
+| <img src="assets/screenshots/settings-config.png" alt="System Telematics Configuration and Threshold Settings" width="100%" /> | <img src="assets/screenshots/mobile-responsive.png" alt="Responsive Mobile View for Dispatchers on Handheld Devices" width="100%" /> |
+| *Multi-tenant profile tuning, TCP :5040 ingestion configuration, and idle thresholds.* | *Optimized responsive interface for dispatchers managing fleet movements on mobile viewports.* |
+
+---
+
+### Authenticated Dispatch Portal
+*Role-based JWT authentication portal for dispatchers and fleet administrators.*
 
 <p align="center">
-  <img src="docs/assets/screenshot_settings.png" alt="RudraNetra System Settings" width="100%" />
+  <img src="assets/screenshots/login-screen.png" alt="Secure Authenticated Dispatch Portal Login Screen" width="75%" />
 </p>
 
 ---

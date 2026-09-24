@@ -21,8 +21,7 @@ export const FREE_DUBAI_MAP_STYLES: DubaiMapStyle[] = [
     description: 'High-contrast road network, exit numbers (E11, E311), and landmark labels',
     attribution: '© OpenStreetMap contributors, © CARTO',
     tiles: [
-      'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
-      'https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
+      'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     ],
     maxZoom: 19,
   },
