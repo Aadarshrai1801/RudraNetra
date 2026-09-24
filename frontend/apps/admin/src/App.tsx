@@ -1,10 +1,30 @@
-import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { CompanyManagerPage } from './pages/CompanyManagerPage';
+
+const routeTitles: Record<string, string> = {
+  '/companies': 'Company Management',
+};
+
+const PageTitleManager: React.FC = () => {
+  const location = useLocation();
+
+  useEffect(() => {
+    const pageName = routeTitles[location.pathname];
+    if (pageName) {
+      document.title = `RudraNetra | ${pageName}`;
+    } else {
+      document.title = 'RudraNetra';
+    }
+  }, [location.pathname]);
+
+  return null;
+};
 
 export const App: React.FC = () => {
   return (
     <BrowserRouter>
+      <PageTitleManager />
       <div style={{ minHeight: '100vh', background: 'var(--bg-main)', color: '#f8fafc' }}>
         <header
           style={{

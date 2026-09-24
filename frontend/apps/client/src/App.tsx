@@ -1,5 +1,5 @@
-import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Sidebar } from './components/shared/Sidebar';
 import { Header } from './components/shared/Header';
 import { LiveTrackingPage } from './pages/LiveTrackingPage';
@@ -12,6 +12,34 @@ import { FleetPage } from './pages/FleetPage';
 import { AlertsPage } from './pages/AlertsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { LoginPage } from './pages/LoginPage';
+
+const routeTitles: Record<string, string> = {
+  '/live': 'Live Tracking',
+  '/dashboard': 'Dashboard',
+  '/playback': 'Route Playback',
+  '/geofences': 'Geofences & POI',
+  '/devices': 'Devices & Hardware',
+  '/fleet': 'Fleet Operations',
+  '/reports': 'Reports & Analytics',
+  '/alerts': 'Alerts & Rules',
+  '/settings': 'System Settings',
+  '/login': 'Login',
+};
+
+const PageTitleManager: React.FC = () => {
+  const location = useLocation();
+
+  useEffect(() => {
+    const pageName = routeTitles[location.pathname];
+    if (pageName) {
+      document.title = `RudraNetra | ${pageName}`;
+    } else {
+      document.title = 'RudraNetra';
+    }
+  }, [location.pathname]);
+
+  return null;
+};
 
 // Authenticated layout wrapper
 const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -29,6 +57,7 @@ const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ children }) 
 export const App: React.FC = () => {
   return (
     <BrowserRouter>
+      <PageTitleManager />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         
