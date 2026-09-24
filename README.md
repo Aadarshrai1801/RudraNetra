@@ -5,7 +5,7 @@
 <h1 align="center">RudraNetra</h1>
 
 <p align="center">
-  <strong>Next-Generation Enterprise Telematics, GPS Ingestion Engine & Spatial Fleet Intelligence</strong>
+  <strong>Real-Time Enterprise Telematics, GPS Ingestion Engine & Spatial Fleet Intelligence</strong>
 </p>
 
 <p align="center">
@@ -81,50 +81,43 @@
 
 ---
 
-### Hardware Registry & Multi-Tenant Administration
-*Teltonika AVL tracker provisioning and multi-organization tenant separation.*
+### Hardware Registry & Multi-Tenant SuperAdmin Console
+*Teltonika AVL tracker provisioning, device quotas, SIRA compliance relays, and multi-tenant organization sharding.*
 
-| GPS Hardware & Device Provisioning | Multi-Tenant Organization Management |
+| GPS Hardware Registry & Provisioning | SuperAdmin Multi-Tenant Operations Console |
 | :---: | :---: |
-| <img src="docs/assets/screenshot_devices.png" alt="Hardware Registry" width="100%" /> | <img src="docs/assets/screenshot_admin.png" alt="Tenant Management" width="100%" /> |
+| <img src="docs/assets/screenshot_devices.png" alt="Hardware Registry" width="100%" /> | <img src="docs/assets/screenshot_admin.png" alt="SuperAdmin Multi-Tenant Management" width="100%" /> |
 
 ---
 
 ## 🏛️ System Architecture
 
-```
-                       ┌───────────────────────────────┐
-                       │   Teltonika GPS Tracker Units │
-                       │    (FMB920 / FMB120 / FMC130) │
-                       └───────────────┬───────────────┘
-                                       │ Raw Binary TCP (:5040)
-                                       ▼
-                       ┌───────────────────────────────┐
-                       │       rudra-ingest (Go)       │
-                       │   Zero-alloc Codec 8 Parser   │
-                       └───────────────┬───────────────┘
-                                       │ NATS JetStream ('telemetry.positions')
-                                       ▼
-        ┌─────────────────────────────────────────────────────────────┐
-        │                      rudra-api (Go)                         │
-        │   REST API (:8080)        •   WebSocket Gateway (/ws/track) │
-        │   PostGIS Spatial Query   •   Multi-tenant JWT Auth         │
-        └──────────────┬───────────────────────────────┬──────────────┘
-                       │                               │
-                       ▼                               ▼
-       ┌───────────────────────────────┐   ┌───────────────────────────────┐
-       │     PostgreSQL 16 + PostGIS   │   │            Redis 7            │
-       │   TimescaleDB Hypertables     │   │   Live Spatial Position Cache │
-       │   Multi-tenant Partitioning   │   │   Sub-millisecond Read Latency│
-       └───────────────────────────────┘   └───────────────────────────────┘
-                       ▲                               ▲
-                       │                               │
-        ┌──────────────┴───────────────────────────────┴──────────────┐
-        │                      React 19 Frontend                      │
-        │   • Client App (:3000): MapLibre GL, Live Telemetry, Playback│
-        │   • Admin App (:3001): Multi-tenant Company Administration  │
-        └─────────────────────────────────────────────────────────────┘
-```
+<p align="center">
+  <img src="docs/assets/system_architecture.png" alt="RudraNetra Distributed Real-time Telematics Architecture" width="100%" />
+</p>
+
+### Distributed Component Topology
+
+1. **Ingestion Tier (`rudra-ingest` on TCP `:5040`)**:
+   - Zero-allocation Go TCP server parsing Teltonika Codec 8 / Codec 8 Extended AVL binary packets.
+   - Computes CRC16 validation, decodes variable-length IO elements (ignition, analog fuel, temperature, battery), and returns immediate binary record-count acknowledgements to IoT modems.
+
+2. **Event Streaming Bus (NATS JetStream 2.10)**:
+   - High-throughput message broker streaming decoded AVL records on subject `telemetry.positions`.
+   - Decouples continuous device ingestion from database write amplification and alert processing.
+
+3. **API & Real-Time Gateway (`rudra-api` on HTTP `:8080`)**:
+   - High-performance Gin web service managing multi-tenant JWT authorization, REST query endpoints, and spatial queries.
+   - Live WebSocket broadcast hub (`/ws/track`) delivering sub-200ms position updates directly to dispatch operators.
+
+4. **Persistence & Spatial Storage Tier**:
+   - **TimescaleDB Hypertables (PostgreSQL 16)**: Time-series hypertables partitioned into 7-day chunks with automated compression for sub-second range queries across tens of millions of coordinates.
+   - **PostGIS 3.4**: Spatial indexing (`GIST`) evaluating polygon geofence containment (`ST_Contains`) and proximity triggers on every AVL ping.
+   - **Redis 7 Live Cache**: Sub-millisecond in-memory cache maintaining the latest vehicle coordinate, speed, ignition, and heading vector.
+
+5. **Operations Consoles (React 19 + TypeScript)**:
+   - **Client Operations Console (`:5173`)**: Full-bleed MapLibre GL vector tracking, interactive route playback, geofence polygon testing, and automated dispatch management.
+   - **SuperAdmin Console (`:3001`)**: Multi-tenant registry, hardware quota management, SIRA UAE compliance relays, and database shard routing.
 
 ---
 

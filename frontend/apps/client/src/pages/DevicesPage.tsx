@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Cpu, Plus, ShieldCheck, Wifi, Link2 } from 'lucide-react';
+import { Cpu, Plus, ShieldCheck, Wifi, Link2, X, Check } from 'lucide-react';
 
 interface DeviceItem {
   id: number;
@@ -56,8 +56,50 @@ const initialDevices: DeviceItem[] = [
 ];
 
 export const DevicesPage: React.FC = () => {
-  const [devices] = useState<DeviceItem[]>(initialDevices);
+  const [devices, setDevices] = useState<DeviceItem[]>(initialDevices);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const [newTracker, setNewTracker] = useState({
+    imei: '',
+    protocol: 'TELTONIKA_FMB920',
+    simNo: '+97150',
+    port: 5040,
+    assignedVehicle: 'DXB-E-55102',
+  });
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const handleRegisterSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTracker.imei) return;
+
+    const created: DeviceItem = {
+      id: 100 + devices.length + 1,
+      imei: newTracker.imei,
+      protocol: newTracker.protocol,
+      simNo: newTracker.simNo,
+      port: Number(newTracker.port) || 5040,
+      assignedVehicle: newTracker.assignedVehicle,
+      status: 'active',
+      warrantyEnd: '2028-12-31',
+    };
+
+    setDevices((prev) => [...prev, created]);
+    setIsRegisterModalOpen(false);
+    setNewTracker({
+      imei: '',
+      protocol: 'TELTONIKA_FMB920',
+      simNo: '+97150',
+      port: 5040,
+      assignedVehicle: '',
+    });
+    showToast(`Tracker IMEI ${created.imei} provisioned on TCP :5040.`);
+  };
 
   const filtered = devices.filter(
     (d) =>
@@ -72,10 +114,14 @@ export const DevicesPage: React.FC = () => {
         <div>
           <h1 style={{ fontSize: '1.75rem', fontWeight: 800 }}>GPS Hardware & Devices</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginTop: '4px' }}>
-            Hardware provision registry replacing legacy Devices.ashx & ControlPanel.ashx.
+            Hardware telemetry registry, sensor calibration, and protocol provisioning.
           </p>
         </div>
-        <button className="btn btn-primary" style={{ gap: '8px' }}>
+        <button
+          onClick={() => setIsRegisterModalOpen(true)}
+          className="btn btn-primary"
+          style={{ gap: '8px' }}
+        >
           <Plus size={16} />
           Register Tracker
         </button>
@@ -182,6 +228,200 @@ export const DevicesPage: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '56px',
+            right: '24px',
+            zIndex: 1000,
+            background: 'var(--bg-raised)',
+            border: '1px solid var(--signal-green)',
+            color: 'var(--text-primary)',
+            padding: '10px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            fontSize: '0.8rem',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+          }}
+        >
+          <span style={{ width: '6px', height: '6px', background: 'var(--signal-green)' }} />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Register Tracker Modal */}
+      {isRegisterModalOpen && (
+        <div className="modal-overlay" onClick={() => setIsRegisterModalOpen(false)}>
+          <div
+            className="ops-panel"
+            style={{
+              width: 'min(500px, 95vw)',
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--line-strong)',
+              boxShadow: '0 12px 48px rgba(0,0,0,0.8)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                padding: '14px 18px',
+                borderBottom: '1px solid var(--line)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                background: 'var(--bg-raised)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Cpu size={16} color="var(--signal-amber)" />
+                <h2 style={{ fontSize: '0.9rem', fontWeight: 800, margin: 0, textTransform: 'uppercase' }}>
+                  Register Telematics Tracker
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsRegisterModalOpen(false)}
+                className="btn-ghost"
+                style={{ padding: '4px', border: 'none', cursor: 'pointer' }}
+              >
+                <X size={16} color="var(--text-muted)" />
+              </button>
+            </div>
+
+            <form onSubmit={handleRegisterSubmit} style={{ padding: '18px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                    15-Digit IMEI Identifier *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. 869234051284999"
+                    value={newTracker.imei}
+                    onChange={(e) => setNewTracker((prev) => ({ ...prev, imei: e.target.value }))}
+                    style={{
+                      width: '100%',
+                      background: 'var(--bg-base)',
+                      border: '1px solid var(--line)',
+                      color: 'var(--text-primary)',
+                      padding: '8px 10px',
+                      fontSize: '0.8rem',
+                      fontFamily: 'var(--font-mono)',
+                      outline: 'none',
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                      Protocol / Hardware Model
+                    </label>
+                    <select
+                      value={newTracker.protocol}
+                      onChange={(e) => setNewTracker((prev) => ({ ...prev, protocol: e.target.value }))}
+                      style={{
+                        width: '100%',
+                        background: 'var(--bg-base)',
+                        border: '1px solid var(--line)',
+                        color: 'var(--text-primary)',
+                        padding: '8px 10px',
+                        fontSize: '0.8rem',
+                        outline: 'none',
+                      }}
+                    >
+                      <option value="TELTONIKA_FMB920">Teltonika FMB920 (Codec 8)</option>
+                      <option value="TELTONIKA_FMB120">Teltonika FMB120</option>
+                      <option value="TELTONIKA_FMC130">Teltonika FMC130 (4G Cat1)</option>
+                      <option value="GPS103_TCP">GPS103 Protocol</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                      TCP Listener Port
+                    </label>
+                    <input
+                      type="number"
+                      value={newTracker.port}
+                      onChange={(e) => setNewTracker((prev) => ({ ...prev, port: Number(e.target.value) }))}
+                      style={{
+                        width: '100%',
+                        background: 'var(--bg-base)',
+                        border: '1px solid var(--line)',
+                        color: 'var(--text-primary)',
+                        padding: '8px 10px',
+                        fontSize: '0.8rem',
+                        fontFamily: 'var(--font-mono)',
+                        outline: 'none',
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                      M2M SIM Card Number
+                    </label>
+                    <input
+                      type="text"
+                      value={newTracker.simNo}
+                      onChange={(e) => setNewTracker((prev) => ({ ...prev, simNo: e.target.value }))}
+                      style={{
+                        width: '100%',
+                        background: 'var(--bg-base)',
+                        border: '1px solid var(--line)',
+                        color: 'var(--text-primary)',
+                        padding: '8px 10px',
+                        fontSize: '0.8rem',
+                        fontFamily: 'var(--font-mono)',
+                        outline: 'none',
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                      Assigned Vehicle Plate
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. DXB-E-55102"
+                      value={newTracker.assignedVehicle}
+                      onChange={(e) => setNewTracker((prev) => ({ ...prev, assignedVehicle: e.target.value }))}
+                      style={{
+                        width: '100%',
+                        background: 'var(--bg-base)',
+                        border: '1px solid var(--line)',
+                        color: 'var(--text-primary)',
+                        padding: '8px 10px',
+                        fontSize: '0.8rem',
+                        outline: 'none',
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px', paddingTop: '14px', borderTop: '1px solid var(--line)' }}>
+                <button type="button" onClick={() => setIsRegisterModalOpen(false)} className="btn btn-ghost" style={{ padding: '6px 14px' }}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" style={{ padding: '6px 18px', gap: '6px' }}>
+                  <Check size={14} strokeWidth={2.5} />
+                  <span>Provision Unit</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

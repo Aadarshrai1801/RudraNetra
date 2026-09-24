@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Layers, Plus, MapPin, Compass } from 'lucide-react';
+import { Layers, Plus, MapPin, Compass, X, Check, Edit2, Eye } from 'lucide-react';
 
 interface GeofenceItem {
   id: number;
@@ -21,7 +21,7 @@ interface POIItem {
   address: string;
 }
 
-const mockGeofences: GeofenceItem[] = [
+const initialGeofences: GeofenceItem[] = [
   {
     id: 1,
     name: 'Jebel Ali Port & Freezone',
@@ -62,15 +62,72 @@ const mockPOIs: POIItem[] = [
 ];
 
 export const GeofencesPage: React.FC = () => {
+  const [geofences, setGeofences] = useState<GeofenceItem[]>(initialGeofences);
   const [activeTab, setActiveTab] = useState<'geofences' | 'poi'>('geofences');
   const [testLat, setTestLat] = useState('25.0000');
   const [testLng, setTestLng] = useState('55.0500');
   const [containmentResult, setContainmentResult] = useState<string | null>(null);
 
+  // Modal states
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [editingGeofence, setEditingGeofence] = useState<GeofenceItem | null>(null);
+  const [viewingPOI, setViewingPOI] = useState<POIItem | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // New Geofence Form State
+  const [newZone, setNewZone] = useState({
+    name: '',
+    type: 'Polygon Zone',
+    speedLimit: 40,
+    areaKm2: 5.0,
+    alertOnEnter: true,
+    alertOnExit: true,
+  });
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const handleCreateZone = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newZone.name) return;
+    const created: GeofenceItem = {
+      id: Date.now(),
+      name: newZone.name,
+      type: newZone.type,
+      speedLimit: Number(newZone.speedLimit) || 40,
+      areaKm2: Number(newZone.areaKm2) || 4.5,
+      alertOnEnter: newZone.alertOnEnter,
+      alertOnExit: newZone.alertOnExit,
+      activeVehicles: 0,
+    };
+    setGeofences((prev) => [...prev, created]);
+    setIsCreateModalOpen(false);
+    setNewZone({
+      name: '',
+      type: 'Polygon Zone',
+      speedLimit: 40,
+      areaKm2: 5.0,
+      alertOnEnter: true,
+      alertOnExit: true,
+    });
+    showToast(`Geofence Zone "${created.name}" registered successfully.`);
+  };
+
+  const handleSaveEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingGeofence) return;
+    setGeofences((prev) =>
+      prev.map((g) => (g.id === editingGeofence.id ? editingGeofence : g))
+    );
+    setEditingGeofence(null);
+    showToast(`Updated boundaries for "${editingGeofence.name}".`);
+  };
+
   const checkContainment = () => {
     const lat = parseFloat(testLat);
     const lng = parseFloat(testLng);
-    // Simple bounding check for Jebel Ali Zone (55.030 to 55.080, 24.960 to 25.020)
     if (lng >= 55.030 && lng <= 55.080 && lat >= 24.960 && lat <= 25.020) {
       setContainmentResult('✅ Coordinate is INSIDE "Jebel Ali Port & Freezone" (PostGIS ST_Contains matched)');
     } else {
@@ -88,7 +145,11 @@ export const GeofencesPage: React.FC = () => {
             PostGIS spatial engine powering automatic enter/exit boundary events and proximity queries.
           </p>
         </div>
-        <button className="btn btn-primary" style={{ gap: '8px' }}>
+        <button
+          onClick={() => setIsCreateModalOpen(true)}
+          className="btn btn-primary"
+          style={{ gap: '8px' }}
+        >
           <Plus size={16} />
           Create Geofence Zone
         </button>
@@ -105,7 +166,7 @@ export const GeofencesPage: React.FC = () => {
             padding: '8px 18px',
           }}
         >
-          Active Geofences ({mockGeofences.length})
+          Active Geofences ({geofences.length})
         </button>
         <button
           onClick={() => setActiveTab('poi')}
@@ -123,7 +184,7 @@ export const GeofencesPage: React.FC = () => {
       {/* Geofences Tab */}
       {activeTab === 'geofences' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
-          {mockGeofences.map((g) => (
+          {geofences.map((g) => (
             <div key={g.id} className="glass-panel" style={{ padding: '20px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
@@ -152,13 +213,19 @@ export const GeofencesPage: React.FC = () => {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '0.8rem', marginTop: '16px' }}>
                 <div>Speed Limit: <strong style={{ color: '#fff' }}>{g.speedLimit} km/h</strong></div>
                 <div>Area: <strong style={{ color: '#fff' }}>{g.areaKm2} km²</strong></div>
-                <div>Enter Alert: <strong style={{ color: '#10b981' }}>Enabled</strong></div>
-                <div>Exit Alert: <strong style={{ color: '#10b981' }}>Enabled</strong></div>
+                <div>Enter Alert: <strong style={{ color: g.alertOnEnter ? '#10b981' : '#64748b' }}>{g.alertOnEnter ? 'Enabled' : 'Disabled'}</strong></div>
+                <div>Exit Alert: <strong style={{ color: g.alertOnExit ? '#10b981' : '#64748b' }}>{g.alertOnExit ? 'Enabled' : 'Disabled'}</strong></div>
               </div>
 
               <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
-                <span style={{ color: 'var(--text-muted)' }}>PostGIS Polygon (4326)</span>
-                <span style={{ color: 'var(--cyan-accent)', cursor: 'pointer', fontWeight: 600 }}>Edit Boundaries →</span>
+                <span style={{ color: 'var(--text-muted)' }}>PostGIS Polygon (SRID 4326)</span>
+                <span
+                  onClick={() => setEditingGeofence(g)}
+                  style={{ color: 'var(--cyan-accent)', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}
+                >
+                  <Edit2 size={12} />
+                  <span>Edit Boundaries →</span>
+                </span>
               </div>
             </div>
           ))}
@@ -191,8 +258,13 @@ export const GeofencesPage: React.FC = () => {
                   <td style={{ padding: '14px 10px', fontFamily: 'var(--font-mono)' }}>{poi.lat.toFixed(4)}, {poi.lng.toFixed(4)}</td>
                   <td style={{ padding: '14px 10px', color: 'var(--text-muted)' }}>{poi.address}</td>
                   <td style={{ padding: '14px 10px' }}>
-                    <button className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: '0.75rem' }}>
-                      View on Map
+                    <button
+                      onClick={() => setViewingPOI(poi)}
+                      className="btn btn-ghost"
+                      style={{ padding: '4px 10px', fontSize: '0.75rem', gap: '4px' }}
+                    >
+                      <Eye size={12} />
+                      <span>View on Map</span>
                     </button>
                   </td>
                 </tr>
@@ -258,6 +330,353 @@ export const GeofencesPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '56px',
+            right: '24px',
+            zIndex: 1000,
+            background: 'var(--bg-raised)',
+            border: '1px solid var(--signal-green)',
+            color: 'var(--text-primary)',
+            padding: '10px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            fontSize: '0.8rem',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+          }}
+        >
+          <span style={{ width: '6px', height: '6px', background: 'var(--signal-green)' }} />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Create Geofence Modal */}
+      {isCreateModalOpen && (
+        <div className="modal-overlay" onClick={() => setIsCreateModalOpen(false)}>
+          <div
+            className="ops-panel"
+            style={{
+              width: 'min(500px, 95vw)',
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--line-strong)',
+              boxShadow: '0 12px 48px rgba(0,0,0,0.8)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                padding: '14px 18px',
+                borderBottom: '1px solid var(--line)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                background: 'var(--bg-raised)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Layers size={16} color="var(--signal-amber)" />
+                <h2 style={{ fontSize: '0.9rem', fontWeight: 800, margin: 0, textTransform: 'uppercase' }}>
+                  Create Geofence Zone
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCreateModalOpen(false)}
+                className="btn-ghost"
+                style={{ padding: '4px', border: 'none', cursor: 'pointer' }}
+              >
+                <X size={16} color="var(--text-muted)" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateZone} style={{ padding: '18px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                    Zone Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Dubai South Logistics Hub"
+                    value={newZone.name}
+                    onChange={(e) => setNewZone((prev) => ({ ...prev, name: e.target.value }))}
+                    style={{
+                      width: '100%',
+                      background: 'var(--bg-base)',
+                      border: '1px solid var(--line)',
+                      color: 'var(--text-primary)',
+                      padding: '8px 10px',
+                      fontSize: '0.8rem',
+                      outline: 'none',
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                      Zone Classification
+                    </label>
+                    <select
+                      value={newZone.type}
+                      onChange={(e) => setNewZone((prev) => ({ ...prev, type: e.target.value }))}
+                      style={{
+                        width: '100%',
+                        background: 'var(--bg-base)',
+                        border: '1px solid var(--line)',
+                        color: 'var(--text-primary)',
+                        padding: '8px 10px',
+                        fontSize: '0.8rem',
+                        outline: 'none',
+                      }}
+                    >
+                      <option value="Polygon Zone">Polygon Zone</option>
+                      <option value="Depot / Depot Yard">Depot / Yard</option>
+                      <option value="Port & Customs">Port & Customs</option>
+                      <option value="Restricted Zone">Restricted Zone</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                      Speed Limit (km/h)
+                    </label>
+                    <input
+                      type="number"
+                      value={newZone.speedLimit}
+                      onChange={(e) => setNewZone((prev) => ({ ...prev, speedLimit: Number(e.target.value) }))}
+                      style={{
+                        width: '100%',
+                        background: 'var(--bg-base)',
+                        border: '1px solid var(--line)',
+                        color: 'var(--text-primary)',
+                        padding: '8px 10px',
+                        fontSize: '0.8rem',
+                        outline: 'none',
+                        fontFamily: 'var(--font-mono)',
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '20px', marginTop: '6px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={newZone.alertOnEnter}
+                      onChange={(e) => setNewZone((prev) => ({ ...prev, alertOnEnter: e.target.checked }))}
+                      style={{ accentColor: 'var(--signal-amber)' }}
+                    />
+                    Alert on Entry
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={newZone.alertOnExit}
+                      onChange={(e) => setNewZone((prev) => ({ ...prev, alertOnExit: e.target.checked }))}
+                      style={{ accentColor: 'var(--signal-amber)' }}
+                    />
+                    Alert on Exit
+                  </label>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px', paddingTop: '14px', borderTop: '1px solid var(--line)' }}>
+                <button type="button" onClick={() => setIsCreateModalOpen(false)} className="btn btn-ghost" style={{ padding: '6px 14px' }}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" style={{ padding: '6px 18px', gap: '6px' }}>
+                  <Check size={14} strokeWidth={2.5} />
+                  <span>Save Geofence</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Boundaries Modal */}
+      {editingGeofence && (
+        <div className="modal-overlay" onClick={() => setEditingGeofence(null)}>
+          <div
+            className="ops-panel"
+            style={{
+              width: 'min(500px, 95vw)',
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--line-strong)',
+              boxShadow: '0 12px 48px rgba(0,0,0,0.8)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                padding: '14px 18px',
+                borderBottom: '1px solid var(--line)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                background: 'var(--bg-raised)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Edit2 size={16} color="var(--signal-amber)" />
+                <h2 style={{ fontSize: '0.9rem', fontWeight: 800, margin: 0 }}>
+                  Edit Boundary: {editingGeofence.name}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingGeofence(null)}
+                className="btn-ghost"
+                style={{ padding: '4px', border: 'none', cursor: 'pointer' }}
+              >
+                <X size={16} color="var(--text-muted)" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} style={{ padding: '18px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                    Zone Label
+                  </label>
+                  <input
+                    type="text"
+                    value={editingGeofence.name}
+                    onChange={(e) => setEditingGeofence({ ...editingGeofence, name: e.target.value })}
+                    style={{
+                      width: '100%',
+                      background: 'var(--bg-base)',
+                      border: '1px solid var(--line)',
+                      color: 'var(--text-primary)',
+                      padding: '8px 10px',
+                      fontSize: '0.8rem',
+                      outline: 'none',
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                      Speed Limit (km/h)
+                    </label>
+                    <input
+                      type="number"
+                      value={editingGeofence.speedLimit}
+                      onChange={(e) => setEditingGeofence({ ...editingGeofence, speedLimit: Number(e.target.value) })}
+                      style={{
+                        width: '100%',
+                        background: 'var(--bg-base)',
+                        border: '1px solid var(--line)',
+                        color: 'var(--text-primary)',
+                        padding: '8px 10px',
+                        fontSize: '0.8rem',
+                        outline: 'none',
+                        fontFamily: 'var(--font-mono)',
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                      Enclosed Area (km²)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={editingGeofence.areaKm2}
+                      onChange={(e) => setEditingGeofence({ ...editingGeofence, areaKm2: Number(e.target.value) })}
+                      style={{
+                        width: '100%',
+                        background: 'var(--bg-base)',
+                        border: '1px solid var(--line)',
+                        color: 'var(--text-primary)',
+                        padding: '8px 10px',
+                        fontSize: '0.8rem',
+                        outline: 'none',
+                        fontFamily: 'var(--font-mono)',
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px', paddingTop: '14px', borderTop: '1px solid var(--line)' }}>
+                <button type="button" onClick={() => setEditingGeofence(null)} className="btn btn-ghost" style={{ padding: '6px 14px' }}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" style={{ padding: '6px 18px', gap: '6px' }}>
+                  <Check size={14} strokeWidth={2.5} />
+                  <span>Update Polygon</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* POI View on Map Modal */}
+      {viewingPOI && (
+        <div className="modal-overlay" onClick={() => setViewingPOI(null)}>
+          <div
+            className="ops-panel"
+            style={{
+              width: 'min(460px, 95vw)',
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--line-strong)',
+              boxShadow: '0 12px 48px rgba(0,0,0,0.8)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                padding: '14px 18px',
+                borderBottom: '1px solid var(--line)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                background: 'var(--bg-raised)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <MapPin size={16} color="var(--signal-amber)" />
+                <h2 style={{ fontSize: '0.9rem', fontWeight: 800, margin: 0 }}>
+                  POI: {viewingPOI.name}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewingPOI(null)}
+                className="btn-ghost"
+                style={{ padding: '4px', border: 'none', cursor: 'pointer' }}
+              >
+                <X size={16} color="var(--text-muted)" />
+              </button>
+            </div>
+
+            <div style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '0.8rem' }}>
+              <div>Category: <strong style={{ color: 'var(--signal-amber)' }}>{viewingPOI.category}</strong></div>
+              <div>Coordinates: <span className="mono-num" style={{ color: 'var(--text-primary)' }}>{viewingPOI.lat.toFixed(4)}°N, {viewingPOI.lng.toFixed(4)}°E</span></div>
+              <div>Address: <span style={{ color: 'var(--text-muted)' }}>{viewingPOI.address}</span></div>
+              <div style={{ padding: '10px', background: 'var(--bg-base)', border: '1px solid var(--line)', color: 'var(--signal-green)' }}>
+                Spatial Index GIST matched. Proximity radius: 500m.
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
+                <button onClick={() => setViewingPOI(null)} className="btn btn-primary" style={{ padding: '6px 16px' }}>
+                  Close Inspector
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
