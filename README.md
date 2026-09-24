@@ -81,12 +81,48 @@
 
 ---
 
+### Fleet Operations & Dispatch Management
+*Gate pass lifecycle tracking, loading receipts (LR), destination routing, and driver RFID credential assignments.*
+
+<p align="center">
+  <img src="docs/assets/screenshot_fleet.png" alt="RudraNetra Fleet Operations & Dispatch" width="100%" />
+</p>
+
+---
+
+### Alerts & Real-Time Incident Rules
+*Multi-tier telemetry alert automation, speed threshold breaches, unauthorized zone exits, and SMS/Email escalation.*
+
+<p align="center">
+  <img src="docs/assets/screenshot_alerts.png" alt="RudraNetra Alerts & Real-Time Rules" width="100%" />
+</p>
+
+---
+
+### Telematics Reports & Fleet Audit Ledger
+*Comprehensive distance telemetry ledger, odometer verification, trip durations, and idle fuel waste analytics.*
+
+<p align="center">
+  <img src="docs/assets/screenshot_reports.png" alt="RudraNetra Telematics Reports" width="100%" />
+</p>
+
+---
+
 ### Hardware Registry & Multi-Tenant SuperAdmin Console
 *Teltonika AVL tracker provisioning, device quotas, SIRA compliance relays, and multi-tenant organization sharding.*
 
 | GPS Hardware Registry & Provisioning | SuperAdmin Multi-Tenant Operations Console |
 | :---: | :---: |
 | <img src="docs/assets/screenshot_devices.png" alt="Hardware Registry" width="100%" /> | <img src="docs/assets/screenshot_admin.png" alt="SuperAdmin Multi-Tenant Management" width="100%" /> |
+
+---
+
+### System & Fleet Telematics Configuration
+*Multi-tenant profile tuning, TCP `:5040` ingestion configuration, TimescaleDB chunk partitions, and idle thresholds.*
+
+<p align="center">
+  <img src="docs/assets/screenshot_settings.png" alt="RudraNetra System Settings" width="100%" />
+</p>
 
 ---
 
