@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import maplibregl from 'maplibre-gl';
-import { Play, Pause, RotateCcw, Clock, Gauge } from 'lucide-react';
+import { Play, Pause, RotateCcw, Clock, Gauge, Calendar } from 'lucide-react';
 
 interface HistoryPoint {
   lat: number;
@@ -9,22 +9,22 @@ interface HistoryPoint {
   time: string;
 }
 
-// 20 realistic route points along Sheikh Zayed Road (Dubai)
+// Realistic route points along Sheikh Zayed Road (Dubai)
 const sampleRoute: HistoryPoint[] = [
-  { lat: 25.1200, lng: 55.2200, speed: 65, time: '09:00:00' },
-  { lat: 25.1230, lng: 55.2225, speed: 72, time: '09:02:00' },
-  { lat: 25.1280, lng: 55.2260, speed: 78, time: '09:04:00' },
-  { lat: 25.1340, lng: 55.2300, speed: 82, time: '09:06:00' },
-  { lat: 25.1410, lng: 55.2350, speed: 75, time: '09:08:00' },
-  { lat: 25.1490, lng: 55.2410, speed: 70, time: '09:10:00' },
-  { lat: 25.1560, lng: 55.2460, speed: 68, time: '09:12:00' },
-  { lat: 25.1630, lng: 55.2510, speed: 74, time: '09:14:00' },
-  { lat: 25.1710, lng: 55.2560, speed: 80, time: '09:16:00' },
-  { lat: 25.1790, lng: 55.2610, speed: 84, time: '09:18:00' },
-  { lat: 25.1860, lng: 55.2650, speed: 76, time: '09:20:00' },
-  { lat: 25.1930, lng: 55.2700, speed: 60, time: '09:22:00' },
-  { lat: 25.1990, lng: 55.2740, speed: 45, time: '09:24:00' },
-  { lat: 25.2048, lng: 55.2708, speed: 30, time: '09:26:00' },
+  { lat: 25.1200, lng: 55.2200, speed: 65, time: '09:00 am' },
+  { lat: 25.1230, lng: 55.2225, speed: 72, time: '09:02 am' },
+  { lat: 25.1280, lng: 55.2260, speed: 78, time: '09:04 am' },
+  { lat: 25.1340, lng: 55.2300, speed: 82, time: '09:06 am' },
+  { lat: 25.1410, lng: 55.2350, speed: 75, time: '09:08 am' },
+  { lat: 25.1490, lng: 55.2410, speed: 70, time: '09:10 am' },
+  { lat: 25.1560, lng: 55.2460, speed: 68, time: '09:12 am' },
+  { lat: 25.1630, lng: 55.2510, speed: 74, time: '09:14 am' },
+  { lat: 25.1710, lng: 55.2560, speed: 80, time: '09:16 am' },
+  { lat: 25.1790, lng: 55.2610, speed: 84, time: '09:18 am' },
+  { lat: 25.1860, lng: 55.2650, speed: 76, time: '09:20 am' },
+  { lat: 25.1930, lng: 55.2700, speed: 60, time: '09:22 am' },
+  { lat: 25.1990, lng: 55.2740, speed: 45, time: '09:24 am' },
+  { lat: 25.2048, lng: 55.2708, speed: 30, time: '09:26 am' },
 ];
 
 export const PlaybackPage: React.FC = () => {
@@ -37,7 +37,7 @@ export const PlaybackPage: React.FC = () => {
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [selectedVehicle, setSelectedVehicle] = useState('DXB-A-98124');
 
-  // Initialize Map
+  // Initialize Map with Daylight Tiles
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
@@ -46,29 +46,31 @@ export const PlaybackPage: React.FC = () => {
       style: {
         version: 8,
         sources: {
-          'carto-dark': {
+          'carto-voyager': {
             type: 'raster',
             tiles: [
-              'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
-              'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+              'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
+              'https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
             ],
             tileSize: 256,
+            attribution: '© OpenStreetMap contributors, © CARTO',
           },
         },
         layers: [
           {
-            id: 'carto-dark-layer',
+            id: 'carto-voyager-layer',
             type: 'raster',
-            source: 'carto-dark',
+            source: 'carto-voyager',
+            minzoom: 0,
+            maxzoom: 19,
           },
         ],
       },
       center: [sampleRoute[0].lng, sampleRoute[0].lat],
-      zoom: 12,
+      zoom: 12.5,
     });
 
     map.on('load', () => {
-      // Add route polyline
       const coordinates = sampleRoute.map((p) => [p.lng, p.lat]);
 
       map.addSource('route', {
@@ -83,15 +85,16 @@ export const PlaybackPage: React.FC = () => {
         },
       });
 
+      // Soft quiet teal route line
       map.addLayer({
         id: 'route-line-bg',
         type: 'line',
         source: 'route',
         layout: { 'line-join': 'round', 'line-cap': 'round' },
         paint: {
-          'line-color': '#0284c7',
+          'line-color': '#2F6F6D',
           'line-width': 8,
-          'line-opacity': 0.4,
+          'line-opacity': 0.2,
         },
       });
 
@@ -101,24 +104,33 @@ export const PlaybackPage: React.FC = () => {
         source: 'route',
         layout: { 'line-join': 'round', 'line-cap': 'round' },
         paint: {
-          'line-color': '#00f2fe',
+          'line-color': '#2F6F6D',
           'line-width': 4,
-          'line-dasharray': [1, 0],
+          'line-opacity': 0.85,
         },
       });
 
-      // Animated vehicle marker
+      // Moving Vehicle Marker Element
       const el = document.createElement('div');
-      el.style.width = '30px';
-      el.style.height = '30px';
-      el.style.borderRadius = '50%';
-      el.style.background = 'radial-gradient(circle, #00f2fe 30%, #0f172a 100%)';
-      el.style.border = '2px solid #00f2fe';
-      el.style.boxShadow = '0 0 16px #00f2fe';
-      el.style.display = 'flex';
-      el.style.alignItems = 'center';
-      el.style.justifyContent = 'center';
-      el.innerHTML = '🚗';
+      el.className = 'vehicle-playback-marker';
+      el.innerHTML = `
+        <div style="
+          width: 34px;
+          height: 34px;
+          background: #2F6F6D;
+          border: 3px solid #FFFFFF;
+          border-radius: 50%;
+          box-shadow: 0 4px 12px rgba(47, 111, 109, 0.4);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #FFFFFF;
+        ">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12 2 22 22 12 17 2 22 12 2" />
+          </svg>
+        </div>
+      `;
 
       const marker = new maplibregl.Marker({ element: el })
         .setLngLat([sampleRoute[0].lng, sampleRoute[0].lat])
@@ -135,10 +147,9 @@ export const PlaybackPage: React.FC = () => {
     };
   }, []);
 
-  // Handle Playback Interval
+  // Animation Loop for Playback
   useEffect(() => {
-    let interval: ReturnType<typeof setInterval> | null = null;
-
+    let interval: any;
     if (isPlaying) {
       interval = setInterval(() => {
         setCurrentIndex((prev) => {
@@ -158,10 +169,7 @@ export const PlaybackPage: React.FC = () => {
         });
       }, 1000 / playbackSpeed);
     }
-
-    return () => {
-      if (interval) clearInterval(interval);
-    };
+    return () => clearInterval(interval);
   }, [isPlaying, playbackSpeed]);
 
   const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -182,60 +190,57 @@ export const PlaybackPage: React.FC = () => {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
       {/* Top Filter Bar */}
       <div
-        className="glass-panel"
         style={{
-          margin: '16px 16px 0 16px',
-          padding: '12px 20px',
+          padding: '16px 28px',
+          background: 'var(--bg-card)',
+          borderBottom: '1px solid var(--border)',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           flexWrap: 'wrap',
-          gap: '12px',
+          gap: '16px',
           zIndex: 10,
         }}
       >
-        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)' }}>Vehicle</label>
+        <div>
+          <h1 style={{ fontSize: '1.35rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+            Trip history
+          </h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginTop: '2px' }}>
+            Review past routes, stops, and driving speed step-by-step.
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {/* Vehicle Selector */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
+              Vehicle:
+            </span>
             <select
               value={selectedVehicle}
               onChange={(e) => setSelectedVehicle(e.target.value)}
               style={{
-                background: 'rgba(0,0,0,0.4)',
-                border: '1px solid var(--border-subtle)',
-                color: '#fff',
-                padding: '6px 10px',
-                borderRadius: '6px',
-                fontSize: '0.85rem',
+                padding: '8px 12px',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--border)',
+                background: 'var(--bg-page)',
+                fontSize: '0.875rem',
+                fontFamily: 'var(--font-family)',
+                color: 'var(--text-primary)',
               }}
             >
-              <option value="DXB-A-98124">DXB-A-98124 (Actros Heavy)</option>
+              <option value="DXB-A-98124">DXB-A-98124 (Mercedes Actros)</option>
               <option value="DXB-B-43210">DXB-B-43210 (Volvo FH16)</option>
               <option value="AUH-C-11029">AUH-C-11029 (Isuzu Reefer)</option>
+              <option value="SHJ-D-77123">SHJ-D-77123 (Toyota Hilux)</option>
             </select>
           </div>
 
-          <div>
-            <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)' }}>Date</label>
-            <input
-              type="date"
-              defaultValue="2026-09-24"
-              style={{
-                background: 'rgba(0,0,0,0.4)',
-                border: '1px solid var(--border-subtle)',
-                color: '#fff',
-                padding: '6px 10px',
-                borderRadius: '6px',
-                fontSize: '0.85rem',
-              }}
-            />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: 'var(--text-secondary)', background: 'var(--bg-page)', padding: '8px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
+            <Calendar size={15} />
+            <span>Today, morning shift</span>
           </div>
-        </div>
-
-        <div style={{ display: 'flex', gap: '20px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-          <div>Distance: <strong style={{ color: 'var(--cyan-accent)' }}>42.8 km</strong></div>
-          <div>Max Speed: <strong style={{ color: '#fff' }}>84.0 km/h</strong></div>
-          <div>Duration: <strong style={{ color: '#fff' }}>26 min</strong></div>
         </div>
       </div>
 
@@ -244,14 +249,17 @@ export const PlaybackPage: React.FC = () => {
 
       {/* Floating Bottom Playback Controls */}
       <div
-        className="glass-panel"
         style={{
           position: 'absolute',
           bottom: '24px',
           left: '50%',
           transform: 'translateX(-50%)',
-          width: 'min(760px, 92%)',
-          padding: '16px 24px',
+          width: 'min(780px, 92%)',
+          background: 'var(--bg-card)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-lg)',
+          boxShadow: 'var(--shadow-lg)',
+          padding: '18px 24px',
           zIndex: 20,
           display: 'flex',
           flexDirection: 'column',
@@ -259,8 +267,8 @@ export const PlaybackPage: React.FC = () => {
         }}
       >
         {/* Progress Slider */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <span style={{ fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: 'var(--cyan-accent)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--accent)', minWidth: '65px' }}>
             {currentPoint.time}
           </span>
           <input
@@ -269,52 +277,56 @@ export const PlaybackPage: React.FC = () => {
             max={sampleRoute.length - 1}
             value={currentIndex}
             onChange={handleSliderChange}
-            style={{ flex: 1, accentColor: 'var(--cyan-accent)', cursor: 'pointer' }}
+            style={{
+              flex: 1,
+              accentColor: 'var(--accent)',
+              cursor: 'pointer',
+              height: '6px',
+            }}
           />
-          <span style={{ fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+          <span style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', minWidth: '65px', textAlign: 'right' }}>
             {sampleRoute[sampleRoute.length - 1].time}
           </span>
         </div>
 
         {/* Buttons and Stats */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <button
               onClick={() => {
                 setCurrentIndex(0);
                 if (markerRef.current) markerRef.current.setLngLat([sampleRoute[0].lng, sampleRoute[0].lat]);
               }}
-              className="btn btn-ghost"
-              style={{ padding: '6px 10px' }}
-              title="Reset"
+              className="btn btn-secondary btn-sm"
+              title="Reset to beginning"
             >
-              <RotateCcw size={16} />
+              <RotateCcw size={15} />
             </button>
 
             <button
               onClick={() => setIsPlaying(!isPlaying)}
               className="btn btn-primary"
-              style={{ padding: '8px 20px', gap: '8px' }}
+              style={{ minHeight: '38px', padding: '6px 18px', gap: '8px' }}
             >
               {isPlaying ? <Pause size={16} /> : <Play size={16} />}
-              {isPlaying ? 'Pause' : 'Play Track'}
+              <span>{isPlaying ? 'Pause' : 'Play route'}</span>
             </button>
 
             {/* Speed Multiplier */}
-            <div style={{ display: 'flex', gap: '4px' }}>
-              {[1, 2, 5, 10].map((s) => (
+            <div style={{ display: 'flex', gap: '4px', background: 'var(--bg-page)', padding: '3px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+              {[1, 2, 5].map((s) => (
                 <button
                   key={s}
                   onClick={() => setPlaybackSpeed(s)}
                   style={{
-                    padding: '4px 8px',
-                    borderRadius: '4px',
-                    fontSize: '0.7rem',
-                    background: playbackSpeed === s ? 'var(--cyan-accent)' : 'rgba(255,255,255,0.05)',
-                    color: playbackSpeed === s ? '#000' : '#fff',
+                    padding: '4px 10px',
+                    borderRadius: 'var(--radius-sm)',
+                    fontSize: '0.75rem',
+                    background: playbackSpeed === s ? 'var(--accent)' : 'transparent',
+                    color: playbackSpeed === s ? '#FFFFFF' : 'var(--text-secondary)',
                     border: 'none',
                     cursor: 'pointer',
-                    fontWeight: 700,
+                    fontWeight: 600,
                   }}
                 >
                   {s}x
@@ -323,14 +335,16 @@ export const PlaybackPage: React.FC = () => {
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '0.85rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '20px', fontSize: '0.875rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Gauge size={16} color="var(--cyan-accent)" />
-              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{currentPoint.speed} km/h</span>
+              <Gauge size={16} color="var(--accent)" />
+              <span className="tabular-num" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                {currentPoint.speed} km/h
+              </span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
               <Clock size={16} />
-              <span>Step {currentIndex + 1} of {sampleRoute.length}</span>
+              <span>Point {currentIndex + 1} of {sampleRoute.length}</span>
             </div>
           </div>
         </div>

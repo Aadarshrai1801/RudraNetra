@@ -14,15 +14,16 @@ import { SettingsPage } from './pages/SettingsPage';
 import { LoginPage } from './pages/LoginPage';
 
 const routeTitles: Record<string, string> = {
-  '/live': 'Live Tracking',
-  '/dashboard': 'Dashboard',
-  '/playback': 'Route Playback',
-  '/geofences': 'Geofences & POI',
-  '/devices': 'Devices & Hardware',
+  '/live': 'Vehicles',
+  '/vehicles': 'Vehicles',
+  '/dashboard': 'Overview',
+  '/playback': 'Trip History',
+  '/geofences': 'Zones',
+  '/devices': 'Settings',
   '/fleet': 'Fleet Operations',
-  '/reports': 'Reports & Analytics',
-  '/alerts': 'Alerts & Rules',
-  '/settings': 'System Settings',
+  '/reports': 'Reports',
+  '/alerts': 'Alerts',
+  '/settings': 'Settings',
   '/login': 'Login',
 };
 
@@ -143,6 +144,7 @@ export const App: React.FC = () => {
         />
 
         {/* Fallback & Redirects */}
+        <Route path="/vehicles" element={<Navigate to="/live" replace />} />
         <Route path="/" element={<Navigate to="/live" replace />} />
         <Route path="*" element={<Navigate to="/live" replace />} />
       </Routes>

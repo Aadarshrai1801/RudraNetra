@@ -1,43 +1,38 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Search, Bell } from 'lucide-react';
 import { useWebSocket } from '../../hooks/useWebSocket';
 
-export interface SystemNotification {
+export interface UserNotification {
   id: number;
   title: string;
   message: string;
   time: string;
-  severity: 'alert' | 'warn' | 'info';
   read: boolean;
 }
 
 export const Header: React.FC = () => {
   const { isConnected } = useWebSocket();
-  const [timeStr, setTimeStr] = useState<string>('');
   const [showNotifications, setShowNotifications] = useState(false);
-  const [notifications, setNotifications] = useState<SystemNotification[]>([
+  const [notifications, setNotifications] = useState<UserNotification[]>([
     {
       id: 1,
-      title: 'Overspeed Violation',
-      message: 'DXB-A-98124 exceeded 80 km/h limit on Sheikh Zayed Rd (84.1 km/h).',
-      time: '12:42:10',
-      severity: 'alert',
+      title: 'Vehicle on route',
+      message: 'DXB-A-98124 left the yard and is heading along Sheikh Zayed Road.',
+      time: '12:42 pm',
       read: false,
     },
     {
       id: 2,
-      title: 'Geofence Boundary Transit',
-      message: 'AUH-C-11029 departed Jebel Ali Port & Freezone boundary.',
-      time: '12:35:00',
-      severity: 'warn',
+      title: 'Zone departure',
+      message: 'AUH-C-11029 departed the Jebel Ali Port area.',
+      time: '12:35 pm',
       read: false,
     },
     {
       id: 3,
-      title: 'Ingestion TCP Listener',
-      message: 'Zero-alloc Teltonika Codec 8 parser synchronized on :5040.',
-      time: '12:15:22',
-      severity: 'info',
+      title: 'Engine idle reminder',
+      message: 'DXB-B-43210 has been waiting with engine running for 25 minutes at Al Quoz.',
+      time: '12:15 pm',
       read: true,
     },
   ]);
@@ -54,107 +49,107 @@ export const Header: React.FC = () => {
     );
   };
 
-  useEffect(() => {
-    const updateTime = () => {
-      const now = new Date();
-      setTimeStr(
-        now.toLocaleTimeString('en-GB', {
-          hour12: false,
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-        })
-      );
-    };
-    updateTime();
-    const interval = setInterval(updateTime, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
   return (
     <header className="header">
-      {/* Flush Inline Search */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, maxWidth: '420px' }}>
-        <Search size={14} color="var(--text-muted)" />
-        <input
-          type="text"
-          placeholder="Filter plate, IMEI, driver, or geofence..."
+      {/* Search Bar with Plain Words */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, maxWidth: '440px' }}>
+        <div
           style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
             width: '100%',
-            background: 'transparent',
-            border: 'none',
-            borderBottom: '1px solid transparent',
-            color: 'var(--text-primary)',
-            fontSize: '0.8rem',
-            fontFamily: 'var(--font-ui)',
-            outline: 'none',
-            padding: '4px 0',
+            background: 'var(--bg-page)',
+            borderRadius: 'var(--radius-md)',
+            padding: '8px 14px',
+            border: '1px solid var(--border)',
             transition: 'border-color 0.15s ease',
           }}
-          onFocus={(e) => (e.target.style.borderBottom = '1px solid var(--line-strong)')}
-          onBlur={(e) => (e.target.style.borderBottom = '1px solid transparent')}
-        />
-      </div>
-
-      {/* Right System Telemetry Status & Operator Profile */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-        {/* Real System Status Line (Square dot + Monospace sync timestamp) */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span
+        >
+          <Search size={16} color="var(--text-secondary)" />
+          <input
+            type="text"
+            placeholder="Search by vehicle name or driver"
             style={{
-              width: '6px',
-              height: '6px',
-              backgroundColor: isConnected ? 'var(--signal-green)' : 'var(--signal-red)',
-              display: 'inline-block',
+              width: '100%',
+              background: 'transparent',
+              border: 'none',
+              outline: 'none',
+              color: 'var(--text-primary)',
+              fontSize: '0.9rem',
+              fontFamily: 'var(--font-family)',
             }}
           />
-          <span
-            className="mono-num"
+        </div>
+      </div>
+
+      {/* Right Side: Calm Status (Only if reconnecting), Notifications, and User Profile */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '18px' }}>
+        {/* Calm reconnecting notice — only shown if disconnected, never alarming red */}
+        {!isConnected && (
+          <div
             style={{
-              fontSize: '0.72rem',
-              color: isConnected ? 'var(--text-muted)' : 'var(--signal-red)',
-              letterSpacing: '0.02em',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '6px 12px',
+              background: 'var(--attention-bg)',
+              border: '1px solid var(--attention-border)',
+              borderRadius: 'var(--radius-full)',
+              color: 'var(--attention)',
+              fontSize: '0.825rem',
+              fontWeight: 500,
             }}
           >
-            {isConnected
-              ? `SYS:SYNC ${timeStr || '11:45:00'} UTC+4 [TCP:5040 OK]`
-              : `SYS:OFFLINE / RECONNECTING [PORT:5040]`}
-          </span>
-        </div>
+            <span
+              style={{
+                width: '7px',
+                height: '7px',
+                borderRadius: '50%',
+                backgroundColor: 'var(--attention)',
+                display: 'inline-block',
+              }}
+            />
+            <span>Reconnecting to your fleet…</span>
+          </div>
+        )}
 
-        <div style={{ width: '1px', height: '18px', background: 'var(--line)' }} />
-
-        {/* Action Button: Alerts Notification with Interactive Dropdown */}
+        {/* Notifications Icon with Flyout */}
         <div style={{ position: 'relative' }}>
           <button
             onClick={() => setShowNotifications(!showNotifications)}
-            className="btn-ghost"
+            aria-label="View notifications"
             style={{
-              padding: '4px 6px',
-              position: 'relative',
+              width: '42px',
+              height: '42px',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--border)',
+              background: showNotifications ? 'var(--bg-hover)' : 'var(--bg-card)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               cursor: 'pointer',
-              border: 'none',
-              background: showNotifications ? 'var(--bg-raised)' : 'transparent',
+              position: 'relative',
+              transition: 'all 0.15s ease',
             }}
-            title="System Alerts & Notifications"
           >
-            <Bell size={15} color={unreadCount > 0 ? 'var(--signal-amber)' : 'var(--text-muted)'} />
+            <Bell size={18} color="var(--text-secondary)" />
             {unreadCount > 0 && (
               <span
                 style={{
                   position: 'absolute',
-                  top: '2px',
-                  right: '2px',
-                  width: '6px',
-                  height: '6px',
-                  backgroundColor: 'var(--signal-amber)',
-                  borderRadius: '0px',
+                  top: '9px',
+                  right: '9px',
+                  width: '7px',
+                  height: '7px',
+                  borderRadius: '50%',
+                  backgroundColor: 'var(--accent)',
                 }}
               />
             )}
           </button>
 
-          {/* Notification Center Flyout */}
+          {/* Notifications Dropdown */}
           {showNotifications && (
             <div
               style={{
@@ -162,44 +157,33 @@ export const Header: React.FC = () => {
                 top: 'calc(100% + 8px)',
                 right: '0',
                 width: '360px',
-                background: 'var(--bg-surface)',
-                border: '1px solid var(--line-strong)',
-                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.75)',
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-lg)',
+                boxShadow: 'var(--shadow-lg)',
                 zIndex: 100,
                 display: 'flex',
                 flexDirection: 'column',
+                overflow: 'hidden',
               }}
             >
-              {/* Flyout Header */}
               <div
                 style={{
-                  padding: '12px 14px',
-                  borderBottom: '1px solid var(--line)',
+                  padding: '14px 18px',
+                  borderBottom: '1px solid var(--border)',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  background: 'var(--bg-raised)',
+                  background: 'var(--bg-page)',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span
-                    style={{
-                      width: '5px',
-                      height: '5px',
-                      background: 'var(--signal-amber)',
-                      display: 'inline-block',
-                    }}
-                  />
-                  <span
-                    style={{
-                      fontSize: '0.72rem',
-                      fontWeight: 700,
-                      fontFamily: 'var(--font-mono)',
-                      letterSpacing: '0.04em',
-                    }}
-                  >
-                    SYSTEM ALERTS ({unreadCount})
-                  </span>
+                <div>
+                  <h4 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                    Notifications
+                  </h4>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                    {unreadCount > 0 ? `${unreadCount} new updates` : 'All caught up'}
+                  </p>
                 </div>
                 {unreadCount > 0 && (
                   <button
@@ -207,11 +191,10 @@ export const Header: React.FC = () => {
                     style={{
                       background: 'none',
                       border: 'none',
-                      color: 'var(--signal-amber)',
-                      fontSize: '0.68rem',
-                      cursor: 'pointer',
-                      fontFamily: 'var(--font-ui)',
+                      color: 'var(--accent)',
+                      fontSize: '0.8rem',
                       fontWeight: 600,
+                      cursor: 'pointer',
                     }}
                   >
                     Mark all read
@@ -219,120 +202,66 @@ export const Header: React.FC = () => {
                 )}
               </div>
 
-              {/* Notification Items List */}
               <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
-                {notifications.length === 0 ? (
-                  <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-                    No active alerts. All systems operational.
-                  </div>
-                ) : (
-                  notifications.map((n) => (
-                    <div
-                      key={n.id}
-                      style={{
-                        padding: '10px 14px',
-                        borderBottom: '1px solid var(--line)',
-                        background: n.read ? 'transparent' : 'rgba(232, 163, 61, 0.05)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '4px',
-                        cursor: 'pointer',
-                        transition: 'background 0.15s ease',
-                      }}
-                      onClick={() => markItemRead(n.id)}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                        <span
-                          style={{
-                            fontSize: '0.75rem',
-                            fontWeight: n.read ? 500 : 700,
-                            color: n.severity === 'alert' ? 'var(--signal-red)' : n.severity === 'warn' ? 'var(--signal-amber)' : 'var(--text-primary)',
-                          }}
-                        >
-                          {n.title}
-                        </span>
-                        <span className="mono-num" style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
-                          {n.time}
-                        </span>
-                      </div>
-                      <p style={{ margin: 0, fontSize: '0.7rem', color: 'var(--text-muted)', lineHeight: 1.3 }}>
-                        {n.message}
-                      </p>
+                {notifications.map((item) => (
+                  <div
+                    key={item.id}
+                    onClick={() => markItemRead(item.id)}
+                    style={{
+                      padding: '14px 18px',
+                      borderBottom: '1px solid var(--border-subtle)',
+                      background: item.read ? 'transparent' : 'var(--accent-light)',
+                      cursor: 'pointer',
+                      transition: 'background 0.15s ease',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                        {item.title}
+                      </span>
+                      <span style={{ fontSize: '0.775rem', color: 'var(--text-tertiary)' }}>
+                        {item.time}
+                      </span>
                     </div>
-                  ))
-                )}
-              </div>
-
-              {/* Flyout Footer */}
-              <div
-                style={{
-                  padding: '8px 14px',
-                  background: 'var(--bg-raised)',
-                  borderTop: '1px solid var(--line)',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                }}
-              >
-                <a
-                  href="/alerts"
-                  style={{
-                    fontSize: '0.68rem',
-                    color: 'var(--signal-amber)',
-                    textDecoration: 'none',
-                    fontWeight: 600,
-                  }}
-                  onClick={() => setShowNotifications(false)}
-                >
-                  Configure Alert Rules →
-                </a>
-                <button
-                  onClick={() => setShowNotifications(false)}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--text-muted)',
-                    fontSize: '0.68rem',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Close
-                </button>
+                    <p style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                      {item.message}
+                    </p>
+                  </div>
+                ))}
               </div>
             </div>
           )}
         </div>
 
-        <div style={{ width: '1px', height: '18px', background: 'var(--line)' }} />
+        {/* Divider */}
+        <div style={{ width: '1px', height: '24px', background: 'var(--border)' }} />
 
-        {/* Dispatch Console Operator */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {/* User Profile */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div
             style={{
-              width: '20px',
-              height: '20px',
-              background: 'var(--bg-raised)',
-              border: '1px solid var(--line)',
+              width: '38px',
+              height: '38px',
+              borderRadius: 'var(--radius-full)',
+              background: 'var(--accent-light)',
+              color: 'var(--accent)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: '0.65rem',
-              fontFamily: 'var(--font-mono)',
-              color: 'var(--text-muted)',
+              fontWeight: 700,
+              fontSize: '0.9rem',
+              border: '1px solid var(--border)',
             }}
           >
-            OP
+            SK
           </div>
-          <div style={{ lineHeight: 1.2 }}>
-            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-              Dispatcher 01
-            </div>
-            <div
-              className="mono-num"
-              style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}
-            >
-              VAVE LOGISTICS UAE
-            </div>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+              Sanjay Kumar
+            </span>
+            <span style={{ fontSize: '0.775rem', color: 'var(--text-secondary)' }}>
+              Fleet Dispatcher
+            </span>
           </div>
         </div>
       </div>

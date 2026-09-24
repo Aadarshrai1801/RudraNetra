@@ -3,6 +3,10 @@ import { create } from 'zustand';
 export interface VehiclePosition {
   device_id: number;
   reg_number: string;
+  name?: string;
+  driver_name?: string;
+  driver_phone?: string;
+  location_name?: string;
   lat: number;
   lng: number;
   speed: number;
@@ -12,6 +16,8 @@ export interface VehiclePosition {
   timestamp: string;
   odometer?: number;
   temperature?: number;
+  idle_duration_min?: number;
+  parked_duration_min?: number;
 }
 
 interface VehicleState {

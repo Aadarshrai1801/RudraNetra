@@ -1,31 +1,60 @@
 /* ==========================================================================
-   RudraNetra Industrial Operations Console — Design Tokens & Core Styles
-   Grounded in UAE Desert-at-Night & High-Reliability Telemetry
+   RudraNetra — Fleet Tracking Platform
+   Calm, clear, trustworthy interface for dispatchers and fleet owners.
    ========================================================================== */
 
 :root {
-  /* Color Palette — Grounded Warm Graphite & Telemetry Signals */
-  --bg-base: #14120F;        /* warm graphite black (brown undertone, not blue-black) */
-  --bg-surface: #1C1913;     /* panel surface */
-  --bg-raised: #242017;      /* raised / hover surface */
-  --line: #332D22;           /* hairline borders / dividers */
-  --line-strong: #4A4232;    /* prominent dividers */
-  --text-primary: #EDE7D9;   /* warm off-white */
-  --text-muted: #8C8574;     /* muted technical label text */
+  /* Quiet, daylight neutral base — not warm cream, not stark white */
+  --bg-page: #F5F7F6;
+  --bg-card: #FFFFFF;
+  --bg-subtle: #EDF1EE;
+  --bg-hover: #F0F4F2;
+  --border: #E1E6E3;
+  --border-subtle: #ECEFEF;
+  --border-focus: #2F6F6D;
 
-  /* Operational Status Signals (Desaturated & Functional) */
-  --signal-amber: #E8A33D;   /* primary accent, live / active / selected */
-  --signal-green: #7BBE6E;   /* moving, positive */
-  --signal-red: #C4573F;     /* stopped / alert, muted brick red */
-  --signal-blue: #6C93A6;    /* idle / informational */
+  /* Typography Colors */
+  --text-primary: #1E2521;
+  --text-secondary: #5C665F;
+  --text-tertiary: #87948C;
 
-  /* Typography */
-  --font-ui: 'Public Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'JetBrains Mono', 'IBM Plex Mono', Consolas, monospace;
+  /* The One Confident Accent: Quiet Teal (primary actions, active items) */
+  --accent: #2F6F6D;
+  --accent-light: #EBF3F2;
+  --accent-hover: #265B59;
+  --accent-contrast: #FFFFFF;
+
+  /* Plain semantic statuses: always paired with plain words */
+  --good: #3E8E4F;          /* Moving / on schedule */
+  --good-bg: #EDF7F0;
+  --good-border: #C6E6CD;
+
+  --attention: #C98A2E;     /* Waiting / idling */
+  --attention-bg: #FCF6EC;
+  --attention-border: #F3DEBA;
+
+  --alert: #C1503D;         /* Parked / stopped / needs attention */
+  --alert-bg: #FBF0EE;
+  --alert-border: #F1CAC4;
+
+  /* Humanist Sans Typography — Plus Jakarta Sans */
+  --font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --line-height-body: 1.5;
+  --font-size-base: 15px;
 
   /* Layout dimensions */
-  --sidebar-width: 240px;
-  --header-height: 48px;
+  --sidebar-width: 250px;
+  --header-height: 64px;
+
+  /* Radius & Shadows — Soft, calm, non-skeuomorphic */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 9999px;
+
+  --shadow-sm: 0 1px 3px rgba(30, 37, 33, 0.05);
+  --shadow-md: 0 4px 12px rgba(30, 37, 33, 0.07);
+  --shadow-lg: 0 12px 28px rgba(30, 37, 33, 0.09);
 }
 
 * {
@@ -35,8 +64,10 @@
 }
 
 body {
-  font-family: var(--font-ui);
-  background-color: var(--bg-base);
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-body);
+  background-color: var(--bg-page);
   color: var(--text-primary);
   min-height: 100vh;
   overflow-x: hidden;
@@ -44,49 +75,59 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Industrial Precision Scrollbars */
+/* Subtle, unobtrusive scrollbars */
 ::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--bg-base);
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--line);
-  border-radius: 0;
+  background: #D4DBD6;
+  border-radius: var(--radius-full);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--line-strong);
+  background: #B6C2BA;
 }
 
 /* Typography Hierarchy */
 h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-ui);
-  font-weight: 700;
+  font-family: var(--font-family);
   color: var(--text-primary);
-  letter-spacing: -0.01em;
+  line-height: 1.25;
 }
 
-/* Monospace Telemetry Helpers */
-.mono-num {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
+h1 {
+  font-size: 1.65rem;
+  font-weight: 700;
   letter-spacing: -0.02em;
 }
 
-.mono-num-right {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-  letter-spacing: -0.02em;
+h2 {
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
 }
 
-/* Operational Console Panel (Hairline bordered, 0px radius, no soft shadows) */
-.ops-panel {
-  background: var(--bg-surface);
-  border: 1px solid var(--line);
-  border-radius: 0px;
+h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+p, span, div, label {
+  font-family: var(--font-family);
+}
+
+/* Tabular numbers for clean digit alignment without monospace font */
+.tabular-num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Accessible focus ring */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* App Shell Structure */
@@ -95,7 +136,7 @@ h1, h2, h3, h4, h5, h6 {
   height: 100vh;
   width: 100vw;
   overflow: hidden;
-  background: var(--bg-base);
+  background: var(--bg-page);
 }
 
 .main-content {
@@ -105,34 +146,34 @@ h1, h2, h3, h4, h5, h6 {
   height: 100vh;
   overflow: hidden;
   position: relative;
-  background: var(--bg-base);
+  background: var(--bg-page);
 }
 
 .page-container {
   flex: 1;
   overflow-y: auto;
-  padding: 24px;
+  padding: 32px 36px;
   position: relative;
-  background: var(--bg-base);
+  background: var(--bg-page);
 }
 
-/* Top Console Bar */
+/* Top Navigation Bar */
 .header {
   height: var(--header-height);
-  background: var(--bg-surface);
-  border-bottom: 1px solid var(--line);
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
+  padding: 0 28px;
   z-index: 20;
 }
 
-/* Operations Sidebar */
+/* Sidebar Navigation */
 .sidebar {
   width: var(--sidebar-width);
-  background: var(--bg-surface);
-  border-right: 1px solid var(--line);
+  background: var(--bg-card);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   z-index: 30;
@@ -140,33 +181,27 @@ h1, h2, h3, h4, h5, h6 {
 
 .sidebar-brand {
   height: var(--header-height);
-  padding: 0 16px;
+  padding: 0 24px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  border-bottom: 1px solid var(--line);
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
 }
 
 .brand-title {
-  font-family: var(--font-ui);
-  font-size: 1rem;
+  font-size: 1.1rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--text-primary);
+  display: block;
+  line-height: 1.1;
 }
 
-.sidebar-group {
-  padding: 12px 0 4px 0;
-}
-
-.sidebar-section-title {
-  font-family: var(--font-mono);
-  font-size: 0.65rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--text-muted);
-  padding: 6px 16px 4px 16px;
+.brand-subtitle {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+  display: block;
 }
 
 .nav-menu {
@@ -174,90 +209,184 @@ h1, h2, h3, h4, h5, h6 {
   list-style: none;
   display: flex;
   flex-direction: column;
+  padding: 16px 12px;
+  gap: 4px;
   overflow-y: auto;
 }
 
 .nav-link {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 16px;
-  color: var(--text-muted);
+  gap: 12px;
+  padding: 10px 14px;
+  min-height: 44px;
+  color: var(--text-secondary);
   text-decoration: none;
-  font-size: 0.825rem;
+  font-size: 0.925rem;
   font-weight: 500;
-  border-left: 2px solid transparent;
+  border-radius: var(--radius-md);
   transition: background 0.15s ease, color 0.15s ease;
 }
 
 .nav-link:hover {
   color: var(--text-primary);
-  background: var(--bg-raised);
+  background: var(--bg-hover);
 }
 
 .nav-link.active {
-  color: var(--text-primary);
-  background: var(--bg-raised);
-  border-left: 2px solid var(--signal-amber);
+  color: var(--accent);
+  background: var(--accent-light);
+  font-weight: 600;
 }
 
 .sidebar-footer {
-  padding: 12px 16px;
-  border-top: 1px solid var(--line);
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-  color: var(--text-muted);
+  flex-direction: column;
+  gap: 6px;
+  background: var(--bg-card);
 }
 
-/* Precision Action Buttons */
+/* Clean, Calm Cards */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.card:hover {
+  border-color: #D3DAD5;
+}
+
+/* Buttons — Generous touch targets (min 44px) */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 0;
-  font-family: var(--font-ui);
-  font-size: 0.775rem;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 18px;
+  border-radius: var(--radius-md);
+  font-family: var(--font-family);
+  font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
   border: 1px solid transparent;
   transition: all 0.15s ease;
-  outline: none;
+  text-decoration: none;
 }
 
 .btn-primary {
-  background: var(--signal-amber);
-  color: #14120F;
-  border: 1px solid var(--signal-amber);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border: 1px solid var(--accent);
 }
 
 .btn-primary:hover {
-  background: #f5ab44;
-  border-color: #f5ab44;
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.btn-secondary {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+.btn-secondary:hover {
+  background: var(--bg-hover);
+  border-color: #D3DAD5;
 }
 
 .btn-ghost {
   background: transparent;
-  color: var(--text-primary);
-  border: 1px solid var(--line);
+  color: var(--text-secondary);
+  border: 1px solid transparent;
 }
 
 .btn-ghost:hover {
-  background: var(--bg-raised);
-  border-color: var(--line-strong);
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
-/* Map Layout & Floating Control */
+.btn-sm {
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+}
+
+/* Status Badges — Always paired with plain words */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: 0.825rem;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.badge-good {
+  background: var(--good-bg);
+  color: var(--good);
+  border: 1px solid var(--good-border);
+}
+
+.badge-attention {
+  background: var(--attention-bg);
+  color: var(--attention);
+  border: 1px solid var(--attention-border);
+}
+
+.badge-alert {
+  background: var(--alert-bg);
+  color: var(--alert);
+  border: 1px solid var(--alert-border);
+}
+
+.badge-neutral {
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+/* Status Dots */
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.status-dot-good {
+  background-color: var(--good);
+}
+
+.status-dot-attention {
+  background-color: var(--attention);
+}
+
+.status-dot-alert {
+  background-color: var(--alert);
+}
+
+.status-dot-neutral {
+  background-color: var(--text-tertiary);
+}
+
+/* Tracking / Map Layout */
 .map-view-container {
   position: relative;
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: var(--bg-base);
+  background: var(--bg-page);
 }
 
 .map-container {
@@ -267,89 +396,58 @@ h1, h2, h3, h4, h5, h6 {
 
 .vehicle-drawer {
   position: absolute;
-  top: 12px;
-  left: 12px;
-  bottom: 12px;
-  width: 340px;
+  top: 16px;
+  left: 16px;
+  bottom: 16px;
+  width: 380px;
   z-index: 10;
   display: flex;
   flex-direction: column;
-  background: var(--bg-surface);
-  border: 1px solid var(--line);
-  border-radius: 0px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
 }
 
-/* Horizontal Data Strip (Dashboard Ticker) */
-.data-strip {
+/* Map Markers — Clean, light, approachable */
+.vehicle-marker-pill {
   display: flex;
-  border: 1px solid var(--line);
-  background: var(--bg-surface);
-  margin-bottom: 24px;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-card);
+  padding: 6px 10px;
+  border-radius: var(--radius-full);
+  box-shadow: 0 3px 10px rgba(30, 37, 33, 0.15);
+  border: 1.5px solid var(--border);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  font-family: var(--font-family);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
 }
 
-.data-strip-cell {
-  flex: 1;
-  padding: 16px 20px;
-  border-right: 1px solid var(--line);
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
+.vehicle-marker-pill:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(30, 37, 33, 0.2);
+  border-color: var(--accent);
 }
 
-.data-strip-cell:last-child {
-  border-right: none;
+.vehicle-marker-pill.selected {
+  border-color: var(--accent);
+  background: var(--accent-light);
+  color: var(--accent);
+  box-shadow: 0 4px 14px rgba(47, 111, 109, 0.25);
 }
 
-.data-strip-cell.attention {
-  background: rgba(232, 163, 61, 0.08);
-  border-top: 2px solid var(--signal-amber);
-  margin-top: -1px;
-}
-
-/* Monospace Map Coordinates Readout */
-.map-coords-readout {
-  position: absolute;
-  bottom: 12px;
-  right: 12px;
-  background: rgba(20, 18, 15, 0.85);
-  border: 1px solid var(--line);
-  padding: 4px 8px;
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  color: var(--text-muted);
-  z-index: 5;
-  pointer-events: none;
-}
-
-/* Vehicle Live Marker Pulse (Disabled under prefers-reduced-motion) */
-@keyframes live-pulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(232, 163, 61, 0.7);
-  }
-  70% {
-    box-shadow: 0 0 0 8px rgba(232, 163, 61, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(232, 163, 61, 0);
-  }
-}
-
-.live-pulse {
-  animation: live-pulse 2s infinite;
-}
-
+/* Reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
-  .live-pulse {
-    animation: none !important;
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
-}
-
-/* Terminal Log Blinking Cursor */
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-
-.cursor-blink {
-  animation: blink 1s step-start infinite;
 }

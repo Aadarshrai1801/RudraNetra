@@ -1,17 +1,28 @@
 import React, { useEffect, useState } from 'react';
 import { useVehicleStore, VehiclePosition } from '../store/vehicleStore';
-import { Download, Plus, X, Check, Navigation } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import {
+  Download,
+  Plus,
+  X,
+  Phone,
+  AlertTriangle,
+  ArrowRight,
+  CheckCircle2,
+} from 'lucide-react';
 
 export const DashboardPage: React.FC = () => {
   const vehiclesMap = useVehicleStore((state) => state.vehicles);
   const updatePosition = useVehicleStore((state) => state.updatePosition);
+  const selectVehicle = useVehicleStore((state) => state.selectVehicle);
+
   const [isDispatchModalOpen, setIsDispatchModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [dispatchForm, setDispatchForm] = useState({
     vehicle: 'DXB-A-98124',
     destination: 'Jebel Ali Port Gate 4',
-    driver: 'Sanjay Kumar',
-    cargo: 'Reefer Container #4812',
+    driver: 'Mohammed Imran',
+    notes: 'Refrigerated container shipment',
   });
 
   const showToast = (msg: string) => {
@@ -19,38 +30,17 @@ export const DashboardPage: React.FC = () => {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  const handleExportLogs = () => {
-    const vehiclesList = Array.from(vehiclesMap.values());
-    const csvHeader = 'DeviceID,Registration,Status,SpeedKmH,Ignition,Latitude,Longitude,Timestamp\n';
-    const csvRows = vehiclesList
-      .map(
-        (v) =>
-          `${v.device_id},"${v.reg_number}",${v.status},${v.speed},${v.ignition},${v.lat},${v.lng},"${v.timestamp}"`
-      )
-      .join('\n');
-    const blob = new Blob([csvHeader + csvRows], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `rudra_telemetry_logs_${Date.now()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showToast('Telemetry event log exported successfully (.csv)');
-  };
-
-  const handleDispatchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsDispatchModalOpen(false);
-    showToast(`Route dispatched: ${dispatchForm.vehicle} -> ${dispatchForm.destination}`);
-  };
-
+  // Ensure default demo vehicles are present with plain language metadata
   useEffect(() => {
     if (vehiclesMap.size === 0) {
       const demoVehicles: VehiclePosition[] = [
         {
           device_id: 101,
           reg_number: 'DXB-A-98124',
+          name: 'Mercedes-Benz Actros',
+          driver_name: 'Mohammed Imran',
+          driver_phone: '+971 50 9988771',
+          location_name: 'Sheikh Zayed Rd, near Downtown Dubai',
           lat: 25.2048,
           lng: 55.2708,
           speed: 68.4,
@@ -64,12 +54,17 @@ export const DashboardPage: React.FC = () => {
         {
           device_id: 102,
           reg_number: 'DXB-B-43210',
+          name: 'Volvo FH16 Tractor',
+          driver_name: 'Harpreet Singh',
+          driver_phone: '+971 55 4433221',
+          location_name: 'Al Quoz Industrial Area 3',
           lat: 25.1972,
           lng: 55.2744,
           speed: 0,
           heading: 180,
           ignition: true,
           status: 'idle',
+          idle_duration_min: 25,
           timestamp: new Date().toISOString(),
           odometer: 89340,
           temperature: 22.0,
@@ -77,6 +72,10 @@ export const DashboardPage: React.FC = () => {
         {
           device_id: 103,
           reg_number: 'AUH-C-11029',
+          name: 'Isuzu Reefer Van',
+          driver_name: 'Ahmed Al-Falasi',
+          driver_phone: '+971 52 1122334',
+          location_name: 'E11 Highway towards Abu Dhabi Mina',
           lat: 25.2285,
           lng: 55.3273,
           speed: 84.1,
@@ -90,12 +89,17 @@ export const DashboardPage: React.FC = () => {
         {
           device_id: 104,
           reg_number: 'SHJ-D-77123',
+          name: 'Toyota Hilux 4x4',
+          driver_name: 'Rajesh Patel',
+          driver_phone: '+971 55 9876543',
+          location_name: 'Sharjah Depot Yard',
           lat: 25.2697,
           lng: 55.3095,
           speed: 0,
           heading: 0,
           ignition: false,
           status: 'stopped',
+          parked_duration_min: 120,
           timestamp: new Date(Date.now() - 3600000).toISOString(),
           odometer: 64120,
           temperature: 28.0,
@@ -106,462 +110,567 @@ export const DashboardPage: React.FC = () => {
   }, [vehiclesMap.size, updatePosition]);
 
   const vehicleList = Array.from(vehiclesMap.values());
-
   const movingCount = vehicleList.filter((v) => v.status === 'moving').length || 2;
-  const idleCount = vehicleList.filter((v) => v.status === 'idle').length || 1;
-  const stoppedCount = vehicleList.filter((v) => v.status === 'stopped').length || 1;
+  const waitingCount = vehicleList.filter((v) => v.status === 'idle').length || 1;
+  const parkedCount = vehicleList.filter((v) => v.status === 'stopped').length || 1;
   const totalCount = vehicleList.length || 4;
 
-  const sampleLogs = [
-    { ts: '11:39:15.812', tag: 'TCP:5040', msg: 'RECV Teltonika Codec 8 frame (IMEI: 352893088642868) -> 4 AVL records, CRC: OK', level: 'info' },
-    { ts: '11:39:15.824', tag: 'TIMESCALE', msg: 'Hypertable chunk [pos_2026_w39] committed in 1.42ms', level: 'info' },
-    { ts: '11:39:15.830', tag: 'POSTGIS', msg: 'ST_Contains(geofence_id=1, DXB-A-98124) -> INSIDE (Jebel Ali Port)', level: 'ok' },
-    { ts: '11:39:15.841', tag: 'NATS', msg: 'Published stream "telemetry.positions.vave_uae" -> 2 active subscribers', level: 'info' },
-    { ts: '11:39:15.850', tag: 'TELEMETRY', msg: 'DXB-B-43210 speed=0.0 km/h, ign=ON -> Status transitioned to IDLE', level: 'warn' },
-    { ts: '11:39:15.862', tag: 'CACHE', msg: 'Redis live spatial cache key "vave:pos:101" refreshed (TTL: 86400s)', level: 'info' },
-  ];
+  const handleExportSummary = () => {
+    const csvHeader = 'Vehicle Plate,Vehicle Model,Driver,Status,Speed,Current Location,Total Distance (km),Last Checked\n';
+    const csvRows = vehicleList
+      .map(
+        (v) =>
+          `"${v.reg_number}","${v.name || 'Truck'}","${v.driver_name || 'Driver'}","${
+            v.status === 'moving' ? 'Moving' : v.status === 'idle' ? 'Waiting' : 'Parked'
+          }",${v.status === 'moving' ? `${Math.round(v.speed)} km/h` : '0 km/h'},"${v.location_name || 'Dubai, UAE'}",${
+            v.odometer || 0
+          },"${new Date(v.timestamp).toLocaleTimeString()}"`
+      )
+      .join('\n');
+    const blob = new Blob([csvHeader + csvRows], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `fleet_summary_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast('Fleet trip summary downloaded (.csv)');
+  };
+
+  const handleDispatchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsDispatchModalOpen(false);
+    showToast(`Delivery route created for ${dispatchForm.vehicle} to ${dispatchForm.destination}`);
+  };
 
   return (
-    <div className="page-container">
-      {/* Top Operations Header */}
-      <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: '1px solid var(--line)', paddingBottom: '14px' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-            <span style={{ width: '6px', height: '6px', background: 'var(--signal-amber)', display: 'inline-block' }} />
-            <h1 style={{ fontSize: '1.25rem', fontWeight: 700, letterSpacing: '-0.02em', textTransform: 'uppercase' }}>
-              Fleet Operations & Telemetry Console
-            </h1>
-          </div>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
-            Real-time ingestion monitoring, hypertable telemetry store, and spatial state tracking.
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button onClick={handleExportLogs} className="btn btn-ghost" style={{ gap: '6px' }}>
-            <Download size={14} />
-            <span>EXPORT LOGS</span>
-          </button>
-          <button onClick={() => setIsDispatchModalOpen(true)} className="btn btn-primary" style={{ gap: '6px' }}>
-            <Plus size={14} strokeWidth={2.5} />
-            <span>+ DISPATCH ROUTE</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Industrial Horizontal Data Strip (No card chrome, no rounded kit) */}
-      <div className="data-strip">
-        {/* Cell 1: Total Fleet */}
-        <div className="data-strip-cell">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '8px' }}>
-            <span style={{ fontSize: '0.68rem', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', letterSpacing: '0.06em' }}>
-              TOTAL MONITORED
-            </span>
-            <span className="mono-num" style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-              DEPOT: UAE-ALL
-            </span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-            <span className="mono-num" style={{ fontSize: '1.8rem', fontWeight: 700, lineHeight: 1 }}>
-              {totalCount.toString().padStart(2, '0')}
-            </span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>units</span>
-          </div>
-          <div className="mono-num" style={{ fontSize: '0.68rem', color: 'var(--signal-green)', marginTop: '8px' }}>
-            100% INGESTION ONLINE
-          </div>
-        </div>
-
-        {/* Cell 2: In Transit */}
-        <div className="data-strip-cell">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '8px' }}>
-            <span style={{ fontSize: '0.68rem', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', letterSpacing: '0.06em' }}>
-              IN TRANSIT (MOVING)
-            </span>
-            <span style={{ fontSize: '9px', color: 'var(--signal-green)' }}>▲ ACTIVE</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-            <span className="mono-num" style={{ fontSize: '1.8rem', fontWeight: 700, lineHeight: 1, color: 'var(--signal-green)' }}>
-              {movingCount.toString().padStart(2, '0')}
-            </span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>units</span>
-          </div>
-          <div className="mono-num" style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '8px' }}>
-            AVG FLEET SPEED: 76.2 KM/H
-          </div>
-        </div>
-
-        {/* Cell 3: Engine Idle (Flagged Attention in Amber) */}
-        <div className="data-strip-cell attention">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '8px' }}>
-            <span style={{ fontSize: '0.68rem', fontFamily: 'var(--font-mono)', color: 'var(--signal-amber)', letterSpacing: '0.06em', fontWeight: 700 }}>
-              ENGINE IDLE (FLAGGED)
-            </span>
-            <span style={{ fontSize: '9px', color: 'var(--signal-amber)' }}>❚❚ ATTENTION</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-            <span className="mono-num" style={{ fontSize: '1.8rem', fontWeight: 700, lineHeight: 1, color: 'var(--signal-amber)' }}>
-              {idleCount.toString().padStart(2, '0')}
-            </span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--signal-amber)' }}>unit</span>
-          </div>
-          <div className="mono-num" style={{ fontSize: '0.68rem', color: 'var(--signal-amber)', marginTop: '8px', fontWeight: 600 }}>
-            EST. FUEL LOSS: ~1.8 L/HR
-          </div>
-        </div>
-
-        {/* Cell 4: Stopped */}
-        <div className="data-strip-cell">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '8px' }}>
-            <span style={{ fontSize: '0.68rem', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', letterSpacing: '0.06em' }}>
-              PARKED / STOPPED
-            </span>
-            <span style={{ fontSize: '9px', color: 'var(--signal-red)' }}>■ OFF</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-            <span className="mono-num" style={{ fontSize: '1.8rem', fontWeight: 700, lineHeight: 1, color: 'var(--text-muted)' }}>
-              {stoppedCount.toString().padStart(2, '0')}
-            </span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>unit</span>
-          </div>
-          <div className="mono-num" style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '8px' }}>
-            IGNITION OFF IN DEPOT
-          </div>
-        </div>
-      </div>
-
-      {/* Two-Column Industrial Operations Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1.1fr', gap: '16px' }}>
-        {/* Active Telemetry Table (Real table, right-aligned monospace numbers) */}
-        <div className="ops-panel" style={{ padding: '16px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '14px', borderBottom: '1px solid var(--line)', paddingBottom: '8px' }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-              Active Vehicle Telemetry Stream
-            </span>
-            <span className="mono-num" style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-              TIMESCALEDB POSITIONS
-            </span>
-          </div>
-
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--line)', color: 'var(--text-muted)', textAlign: 'left' }}>
-                  <th style={{ padding: '8px 6px', fontWeight: 600 }}>PLATE NO</th>
-                  <th style={{ padding: '8px 6px', fontWeight: 600 }}>STATUS</th>
-                  <th style={{ padding: '8px 6px', fontWeight: 600, textAlign: 'right' }}>SPEED</th>
-                  <th style={{ padding: '8px 6px', fontWeight: 600 }}>IGNITION</th>
-                  <th style={{ padding: '8px 6px', fontWeight: 600, textAlign: 'right' }}>ODOMETER</th>
-                  <th style={{ padding: '8px 6px', fontWeight: 600, textAlign: 'right' }}>LAST PING</th>
-                </tr>
-              </thead>
-              <tbody>
-                {vehicleList.map((v) => {
-                  const statusColor =
-                    v.status === 'moving'
-                      ? 'var(--signal-green)'
-                      : v.status === 'idle'
-                      ? 'var(--signal-blue)'
-                      : 'var(--signal-red)';
-
-                  const statusGlyph =
-                    v.status === 'moving' ? '▲' : v.status === 'idle' ? '❚❚' : '■';
-
-                  return (
-                    <tr
-                      key={v.device_id}
-                      style={{
-                        borderBottom: '1px solid var(--line)',
-                        transition: 'background 0.1s ease',
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-raised)')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                    >
-                      {/* Plate */}
-                      <td style={{ padding: '9px 6px', fontWeight: 700, letterSpacing: '-0.01em' }}>
-                        {v.reg_number}
-                      </td>
-
-                      {/* Status: Redundant glyph + label + desaturated color */}
-                      <td style={{ padding: '9px 6px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                          <span style={{ fontSize: '9px', color: statusColor }}>{statusGlyph}</span>
-                          <span className="mono-num" style={{ fontSize: '0.7rem', fontWeight: 600, color: statusColor }}>
-                            {v.status.toUpperCase()}
-                          </span>
-                        </div>
-                      </td>
-
-                      {/* Speed: Monospace right-aligned */}
-                      <td className="mono-num-right" style={{ padding: '9px 6px', fontWeight: 600, color: v.speed > 0 ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-                        {v.speed.toFixed(1)} km/h
-                      </td>
-
-                      {/* Ignition */}
-                      <td style={{ padding: '9px 6px' }}>
-                        <span className="mono-num" style={{ fontSize: '0.7rem', color: v.ignition ? 'var(--signal-green)' : 'var(--text-muted)', fontWeight: 600 }}>
-                          {v.ignition ? 'IGN:ON' : 'IGN:OFF'}
-                        </span>
-                      </td>
-
-                      {/* Odometer: Monospace right-aligned */}
-                      <td className="mono-num-right" style={{ padding: '9px 6px', color: 'var(--text-muted)' }}>
-                        {v.odometer ? `${v.odometer.toLocaleString()} km` : '142,580 km'}
-                      </td>
-
-                      {/* Last Ping: Monospace right-aligned */}
-                      <td className="mono-num-right" style={{ padding: '9px 6px', color: 'var(--text-muted)' }}>
-                        {new Date(v.timestamp).toLocaleTimeString('en-GB', {
-                          hour12: false,
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          second: '2-digit',
-                        })}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Telemetry Ingest Stream (Live Terminal / Event Ticker) */}
-        <div className="ops-panel" style={{ padding: '16px', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '14px', borderBottom: '1px solid var(--line)', paddingBottom: '8px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ width: '6px', height: '6px', background: 'var(--signal-green)', display: 'inline-block' }} />
-              <span style={{ fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                Telemetry Ingest Stream
-              </span>
-            </div>
-            <span className="mono-num" style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-              LIVE TCP :5040
-            </span>
-          </div>
-
-          {/* Terminal Log Feed */}
-          <div
-            style={{
-              flex: 1,
-              background: '#0D0C09',
-              border: '1px solid var(--line)',
-              padding: '12px',
-              fontFamily: 'var(--font-mono)',
-              fontSize: '0.72rem',
-              lineHeight: 1.6,
-              overflowY: 'auto',
-            }}
-          >
-            {sampleLogs.map((log, idx) => (
-              <div key={idx} style={{ marginBottom: '6px', display: 'flex', gap: '8px' }}>
-                <span style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{log.ts}</span>
-                <span
-                  style={{
-                    color: log.level === 'ok' ? 'var(--signal-green)' : log.level === 'warn' ? 'var(--signal-amber)' : 'var(--signal-blue)',
-                    fontWeight: 600,
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  [{log.tag}]
-                </span>
-                <span style={{ color: 'var(--text-primary)', wordBreak: 'break-all' }}>{log.msg}</span>
-              </div>
-            ))}
-
-            {/* Live Terminal Cursor Line */}
-            <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--signal-amber)' }}>
-              <span>11:39:16.004</span>
-              <span>[LISTENER]</span>
-              <span style={{ color: 'var(--text-muted)' }}>Awaiting next Teltonika Codec 8 packet</span>
-              <span className="cursor-blink" style={{ color: 'var(--signal-amber)', fontWeight: 700 }}>█</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
+    <div className="page-container" style={{ maxWidth: '1120px' }}>
       {/* Toast Notification */}
       {toastMessage && (
         <div
           style={{
             position: 'fixed',
-            top: '56px',
+            bottom: '24px',
             right: '24px',
-            zIndex: 1000,
-            background: 'var(--bg-raised)',
-            border: '1px solid var(--signal-green)',
-            color: 'var(--text-primary)',
-            padding: '10px 16px',
+            zIndex: 100,
+            background: 'var(--text-primary)',
+            color: '#FFFFFF',
+            padding: '12px 20px',
+            borderRadius: 'var(--radius-md)',
+            boxShadow: 'var(--shadow-lg)',
             display: 'flex',
             alignItems: 'center',
-            gap: '10px',
-            fontSize: '0.8rem',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+            gap: '8px',
+            fontSize: '0.9rem',
+            fontWeight: 500,
           }}
         >
-          <span style={{ width: '6px', height: '6px', background: 'var(--signal-green)' }} />
+          <CheckCircle2 size={16} color="var(--good)" />
           <span>{toastMessage}</span>
         </div>
       )}
 
-      {/* Dispatch Fleet Route Modal */}
-      {isDispatchModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsDispatchModalOpen(false)}>
-          <div
-            className="ops-panel"
-            style={{
-              width: 'min(520px, 95vw)',
-              background: 'var(--bg-surface)',
-              border: '1px solid var(--line-strong)',
-              boxShadow: '0 12px 48px rgba(0,0,0,0.8)',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
+      {/* Screen Title & Top Actions */}
+      <div
+        style={{
+          marginBottom: '28px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          gap: '16px',
+          flexWrap: 'wrap',
+        }}
+      >
+        <div>
+          <h1 style={{ fontSize: '1.65rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px' }}>
+            Your fleet today
+          </h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
+            Live status of your {totalCount} vehicles and today’s deliveries.
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button onClick={handleExportSummary} className="btn btn-secondary">
+            <Download size={16} />
+            <span>Download trip summary</span>
+          </button>
+          <button onClick={() => setIsDispatchModalOpen(true)} className="btn btn-primary">
+            <Plus size={16} />
+            <span>New delivery route</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Top Headline Summary Banner — Friendly, Single-Sentence Takeaway */}
+      <div
+        style={{
+          background: 'var(--bg-card)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-lg)',
+          padding: '24px 28px',
+          boxShadow: 'var(--shadow-sm)',
+          marginBottom: '24px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '20px',
+          flexWrap: 'wrap',
+        }}
+      >
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+            <span
+              style={{
+                width: '10px',
+                height: '10px',
+                borderRadius: '50%',
+                backgroundColor: 'var(--good)',
+                display: 'inline-block',
+              }}
+            />
+            <h2 style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              {movingCount + waitingCount} of {totalCount} vehicles are on the move right now
+            </h2>
+          </div>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.925rem', lineHeight: 1.5 }}>
+            {parkedCount} vehicle is parked at the yard. All deliveries are on schedule.
+          </p>
+        </div>
+
+        <Link
+          to="/live"
+          className="btn btn-secondary"
+          style={{ textDecoration: 'none', gap: '8px' }}
+        >
+          <span>Track all on map</span>
+          <ArrowRight size={16} color="var(--accent)" />
+        </Link>
+      </div>
+
+      {/* 3 Simple, Calm Status Counters */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+          gap: '16px',
+          marginBottom: '28px',
+        }}
+      >
+        {/* Moving */}
+        <div className="card" style={{ padding: '20px 24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              Moving
+            </span>
+            <span className="badge badge-good">
+              <span className="status-dot status-dot-good" />
+              <span>On schedule</span>
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+            <span className="tabular-num" style={{ fontSize: '2.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              {movingCount}
+            </span>
+            <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+              vehicles on the road
+            </span>
+          </div>
+        </div>
+
+        {/* Waiting */}
+        <div className="card" style={{ padding: '20px 24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              Waiting
+            </span>
+            <span className="badge badge-attention">
+              <span className="status-dot status-dot-attention" />
+              <span>Engine on</span>
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+            <span className="tabular-num" style={{ fontSize: '2.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              {waitingCount}
+            </span>
+            <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+              vehicle stopped with engine on
+            </span>
+          </div>
+        </div>
+
+        {/* Parked */}
+        <div className="card" style={{ padding: '20px 24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              Parked
+            </span>
+            <span className="badge badge-neutral">
+              <span className="status-dot status-dot-neutral" />
+              <span>Engine off</span>
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+            <span className="tabular-num" style={{ fontSize: '2.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              {parkedCount}
+            </span>
+            <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+              vehicle parked at depot
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Vehicles Needing Attention — Plain human language, not technical error codes */}
+      <div style={{ marginBottom: '32px' }}>
+        <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '12px' }}>
+          Needs your attention
+        </h3>
+
+        <div
+          style={{
+            background: 'var(--attention-bg)',
+            border: '1px solid var(--attention-border)',
+            borderRadius: 'var(--radius-lg)',
+            padding: '20px 24px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '20px',
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
             <div
               style={{
-                padding: '14px 18px',
-                borderBottom: '1px solid var(--line)',
+                width: '40px',
+                height: '40px',
+                borderRadius: 'var(--radius-md)',
+                background: '#FFFFFF',
+                border: '1px solid var(--attention-border)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--attention)',
+                flexShrink: 0,
+              }}
+            >
+              <AlertTriangle size={20} />
+            </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  DXB-B-43210 (Volvo FH16)
+                </span>
+                <span style={{ fontSize: '0.825rem', color: 'var(--text-secondary)' }}>
+                  Driver: Harpreet Singh
+                </span>
+              </div>
+              <p style={{ fontSize: '0.9rem', color: 'var(--text-primary)', lineHeight: 1.4 }}>
+                This vehicle has been waiting with its engine running for 25 minutes at Al Quoz Warehouse.
+              </p>
+              <p style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                Turning off the engine when waiting saves fuel and reduces wear.
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <a
+              href="tel:+971554433221"
+              className="btn btn-secondary btn-sm"
+              style={{ textDecoration: 'none' }}
+            >
+              <Phone size={14} />
+              <span>Call driver</span>
+            </a>
+            <Link
+              to="/live"
+              onClick={() => selectVehicle(102)}
+              className="btn btn-primary btn-sm"
+              style={{ textDecoration: 'none' }}
+            >
+              <span>View on map</span>
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      {/* Vehicle Status Table / List — Clean, daylight table with plain words */}
+      <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
+        <div
+          style={{
+            padding: '20px 24px',
+            borderBottom: '1px solid var(--border)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}
+        >
+          <div>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              All vehicles
+            </h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+              Where each truck is right now and what it’s doing
+            </p>
+          </div>
+          <Link
+            to="/live"
+            style={{
+              fontSize: '0.875rem',
+              fontWeight: 600,
+              color: 'var(--accent)',
+              textDecoration: 'none',
+            }}
+          >
+            Open live map →
+          </Link>
+        </div>
+
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+            <thead>
+              <tr style={{ background: 'var(--bg-page)', borderBottom: '1px solid var(--border)' }}>
+                <th style={{ padding: '12px 24px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                  Vehicle & driver
+                </th>
+                <th style={{ padding: '12px 20px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                  Status
+                </th>
+                <th style={{ padding: '12px 20px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                  Speed
+                </th>
+                <th style={{ padding: '12px 20px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                  Current location
+                </th>
+                <th style={{ padding: '12px 20px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                  Total distance
+                </th>
+                <th style={{ padding: '12px 24px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', textAlign: 'right' }}>
+                  Action
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {vehicleList.map((v) => {
+                const statusBadge =
+                  v.status === 'moving' ? (
+                    <span className="badge badge-good">
+                      <span className="status-dot status-dot-good" />
+                      <span>Moving</span>
+                    </span>
+                  ) : v.status === 'idle' ? (
+                    <span className="badge badge-attention">
+                      <span className="status-dot status-dot-attention" />
+                      <span>Waiting</span>
+                    </span>
+                  ) : (
+                    <span className="badge badge-neutral">
+                      <span className="status-dot status-dot-neutral" />
+                      <span>Parked</span>
+                    </span>
+                  );
+
+                return (
+                  <tr
+                    key={v.device_id}
+                    style={{ borderBottom: '1px solid var(--border-subtle)', transition: 'background 0.15s ease' }}
+                  >
+                    {/* Vehicle & Driver */}
+                    <td style={{ padding: '16px 24px' }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+                        {v.reg_number}
+                      </div>
+                      <div style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                        {v.name || 'Truck'} · {v.driver_name || 'Driver'}
+                      </div>
+                    </td>
+
+                    {/* Status */}
+                    <td style={{ padding: '16px 20px' }}>
+                      {statusBadge}
+                    </td>
+
+                    {/* Speed */}
+                    <td style={{ padding: '16px 20px' }}>
+                      <span className="tabular-num" style={{ fontWeight: 600, fontSize: '0.9rem', color: v.speed > 0 ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>
+                        {v.speed > 0 ? `${Math.round(v.speed)} km/h` : 'Stopped'}
+                      </span>
+                    </td>
+
+                    {/* Current Location */}
+                    <td style={{ padding: '16px 20px' }}>
+                      <div style={{ fontSize: '0.875rem', color: 'var(--text-primary)' }}>
+                        {v.location_name || 'Dubai, UAE'}
+                      </div>
+                      <div style={{ fontSize: '0.775rem', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                        {v.status === 'moving'
+                          ? 'En route'
+                          : v.status === 'idle'
+                          ? `Idle for ${v.idle_duration_min || 25} min`
+                          : 'Parked at yard'}
+                      </div>
+                    </td>
+
+                    {/* Total Distance */}
+                    <td style={{ padding: '16px 20px' }}>
+                      <span className="tabular-num" style={{ fontSize: '0.875rem', color: 'var(--text-primary)', fontWeight: 500 }}>
+                        {(v.odometer || 142580).toLocaleString()} km
+                      </span>
+                    </td>
+
+                    {/* Action */}
+                    <td style={{ padding: '16px 24px', textAlign: 'right' }}>
+                      <Link
+                        to="/live"
+                        onClick={() => selectVehicle(v.device_id)}
+                        className="btn btn-secondary btn-sm"
+                        style={{ textDecoration: 'none' }}
+                      >
+                        Track
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* New Delivery Route Modal */}
+      {isDispatchModalOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(30, 37, 33, 0.4)',
+            backdropFilter: 'blur(3px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 100,
+            padding: '16px',
+          }}
+        >
+          <div
+            style={{
+              background: 'var(--bg-card)',
+              borderRadius: 'var(--radius-lg)',
+              border: '1px solid var(--border)',
+              width: '100%',
+              maxWidth: '480px',
+              boxShadow: 'var(--shadow-lg)',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                padding: '20px 24px',
+                borderBottom: '1px solid var(--border)',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                background: 'var(--bg-raised)',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Navigation size={16} color="var(--signal-amber)" />
-                <h2 style={{ fontSize: '0.9rem', fontWeight: 800, margin: 0, textTransform: 'uppercase', letterSpacing: '0.02em' }}>
-                  Dispatch Fleet Route
-                </h2>
-              </div>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                Create a delivery route
+              </h3>
               <button
-                type="button"
                 onClick={() => setIsDispatchModalOpen(false)}
-                className="btn-ghost"
-                style={{ padding: '4px', border: 'none', cursor: 'pointer' }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}
               >
-                <X size={16} color="var(--text-muted)" />
+                <X size={18} />
               </button>
             </div>
 
-            {/* Form */}
-            <form onSubmit={handleDispatchSubmit} style={{ padding: '18px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                    Select Vehicle Plate
-                  </label>
-                  <select
-                    value={dispatchForm.vehicle}
-                    onChange={(e) => setDispatchForm((prev) => ({ ...prev, vehicle: e.target.value }))}
-                    style={{
-                      width: '100%',
-                      background: 'var(--bg-base)',
-                      border: '1px solid var(--line)',
-                      color: 'var(--text-primary)',
-                      padding: '8px 10px',
-                      fontSize: '0.8rem',
-                      fontFamily: 'var(--font-mono)',
-                      outline: 'none',
-                    }}
-                  >
-                    <option value="DXB-A-98124">DXB-A-98124 (Mercedes Actros Heavy)</option>
-                    <option value="DXB-B-43210">DXB-B-43210 (Volvo FH16 Flatbed)</option>
-                    <option value="AUH-C-11029">AUH-C-11029 (Isuzu Reefer 4T)</option>
-                    <option value="SHJ-D-77123">SHJ-D-77123 (MAN TGX Long-Haul)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                    Route Destination
-                  </label>
-                  <input
-                    type="text"
-                    value={dispatchForm.destination}
-                    onChange={(e) => setDispatchForm((prev) => ({ ...prev, destination: e.target.value }))}
-                    required
-                    style={{
-                      width: '100%',
-                      background: 'var(--bg-base)',
-                      border: '1px solid var(--line)',
-                      color: 'var(--text-primary)',
-                      padding: '8px 10px',
-                      fontSize: '0.8rem',
-                      outline: 'none',
-                    }}
-                  />
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                      Assigned Driver
-                    </label>
-                    <input
-                      type="text"
-                      value={dispatchForm.driver}
-                      onChange={(e) => setDispatchForm((prev) => ({ ...prev, driver: e.target.value }))}
-                      required
-                      style={{
-                        width: '100%',
-                        background: 'var(--bg-base)',
-                        border: '1px solid var(--line)',
-                        color: 'var(--text-primary)',
-                        padding: '8px 10px',
-                        fontSize: '0.8rem',
-                        outline: 'none',
-                      }}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                      Manifest / Cargo Details
-                    </label>
-                    <input
-                      type="text"
-                      value={dispatchForm.cargo}
-                      onChange={(e) => setDispatchForm((prev) => ({ ...prev, cargo: e.target.value }))}
-                      style={{
-                        width: '100%',
-                        background: 'var(--bg-base)',
-                        border: '1px solid var(--line)',
-                        color: 'var(--text-primary)',
-                        padding: '8px 10px',
-                        fontSize: '0.8rem',
-                        outline: 'none',
-                      }}
-                    />
-                  </div>
-                </div>
+            <form onSubmit={handleDispatchSubmit} style={{ padding: '24px' }}>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                  Select vehicle
+                </label>
+                <select
+                  value={dispatchForm.vehicle}
+                  onChange={(e) => setDispatchForm({ ...dispatchForm, vehicle: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border)',
+                    fontSize: '0.9rem',
+                    fontFamily: 'var(--font-family)',
+                    background: 'var(--bg-page)',
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  {vehicleList.map((v) => (
+                    <option key={v.device_id} value={v.reg_number}>
+                      {v.reg_number} — {v.name || 'Truck'} ({v.driver_name})
+                    </option>
+                  ))}
+                </select>
               </div>
 
-              {/* Action Buttons */}
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'flex-end',
-                  gap: '10px',
-                  marginTop: '20px',
-                  paddingTop: '14px',
-                  borderTop: '1px solid var(--line)',
-                }}
-              >
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                  Destination address
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={dispatchForm.destination}
+                  onChange={(e) => setDispatchForm({ ...dispatchForm, destination: e.target.value })}
+                  placeholder="e.g. Jebel Ali Port Terminal 2"
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border)',
+                    fontSize: '0.9rem',
+                    fontFamily: 'var(--font-family)',
+                    background: 'var(--bg-page)',
+                    color: 'var(--text-primary)',
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '24px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                  Delivery notes
+                </label>
+                <input
+                  type="text"
+                  value={dispatchForm.notes}
+                  onChange={(e) => setDispatchForm({ ...dispatchForm, notes: e.target.value })}
+                  placeholder="e.g. Refrigerated cargo, deliver before 3pm"
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border)',
+                    fontSize: '0.9rem',
+                    fontFamily: 'var(--font-family)',
+                    background: 'var(--bg-page)',
+                    color: 'var(--text-primary)',
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                 <button
                   type="button"
                   onClick={() => setIsDispatchModalOpen(false)}
-                  className="btn btn-ghost"
-                  style={{ padding: '6px 14px' }}
+                  className="btn btn-secondary"
                 >
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  style={{ padding: '6px 18px', gap: '6px' }}
-                >
-                  <Check size={14} strokeWidth={2.5} />
-                  <span>Confirm Dispatch</span>
+                <button type="submit" className="btn btn-primary">
+                  Start route
                 </button>
               </div>
             </form>

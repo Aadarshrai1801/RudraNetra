@@ -5,6 +5,7 @@ interface DistanceRow {
   deviceId: number;
   regNumber: string;
   driver: string;
+  vehicleName: string;
   startOdo: number;
   endOdo: number;
   distanceKm: number;
@@ -19,6 +20,7 @@ const mockDistanceData: DistanceRow[] = [
   {
     deviceId: 101,
     regNumber: 'DXB-A-98124',
+    vehicleName: 'Mercedes-Benz Actros',
     driver: 'Mohammed Imran',
     startOdo: 142410,
     endOdo: 142580,
@@ -32,6 +34,7 @@ const mockDistanceData: DistanceRow[] = [
   {
     deviceId: 102,
     regNumber: 'DXB-B-43210',
+    vehicleName: 'Volvo FH16 Tractor',
     driver: 'Harpreet Singh',
     startOdo: 89120,
     endOdo: 89340,
@@ -39,12 +42,13 @@ const mockDistanceData: DistanceRow[] = [
     maxSpeed: 78.0,
     avgSpeed: 58.4,
     runningMin: 226,
-    idleMin: 14,
+    idleMin: 25,
     stopMin: 60,
   },
   {
     deviceId: 103,
     regNumber: 'AUH-C-11029',
+    vehicleName: 'Isuzu Reefer Van',
     driver: 'Ahmed Al-Falasi',
     startOdo: 210650,
     endOdo: 210940,
@@ -58,7 +62,8 @@ const mockDistanceData: DistanceRow[] = [
   {
     deviceId: 104,
     regNumber: 'SHJ-D-77123',
-    driver: 'Rashid Khan',
+    vehicleName: 'Toyota Hilux 4x4',
+    driver: 'Rajesh Patel',
     startOdo: 64080,
     endOdo: 64120,
     distanceKm: 40.0,
@@ -71,9 +76,8 @@ const mockDistanceData: DistanceRow[] = [
 ];
 
 export const ReportsPage: React.FC = () => {
-  const [reportType, setReportType] = useState('distance');
-  const [dateRange, setDateRange] = useState('today');
   const [selectedVehicle, setSelectedVehicle] = useState('all');
+  const [dateRange, setDateRange] = useState('today');
 
   const filteredData = mockDistanceData.filter(
     (row) => selectedVehicle === 'all' || row.regNumber === selectedVehicle
@@ -82,13 +86,13 @@ export const ReportsPage: React.FC = () => {
   const totalDistance = filteredData.reduce((acc, row) => acc + row.distanceKm, 0);
 
   const handleExportCSV = () => {
-    const headers = 'Device ID,Plate Number,Driver,Start Odometer,End Odometer,Distance (km),Max Speed (km/h),Avg Speed (km/h),Running (min),Idle (min),Stopped (min)\n';
+    const headers = 'Vehicle,Model,Driver,Distance (km),Driving Time,Waiting Time,Top Speed (km/h)\n';
     const csvContent =
       headers +
       filteredData
         .map(
           (r) =>
-            `${r.deviceId},${r.regNumber},"${r.driver}",${r.startOdo},${r.endOdo},${r.distanceKm},${r.maxSpeed},${r.avgSpeed},${r.runningMin},${r.idleMin},${r.stopMin}`
+            `"${r.regNumber}","${r.vehicleName}","${r.driver}",${r.distanceKm},"${Math.floor(r.runningMin / 60)}h ${r.runningMin % 60}m","${r.idleMin}m",${r.maxSpeed}`
         )
         .join('\n');
 
@@ -96,35 +100,36 @@ export const ReportsPage: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `rudra_distance_report_${dateRange}.csv`);
+    link.setAttribute('download', `fleet_distance_report_${dateRange}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
   return (
-    <div className="page-container">
+    <div className="page-container" style={{ maxWidth: '1060px' }}>
       {/* Page Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 800 }}>Fleet Telematics Reports</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginTop: '4px' }}>
-            High-speed telemetry analytics, trip logs, and compliance export engine.
+          <h1 style={{ fontSize: '1.65rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+            Reports
+          </h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginTop: '4px' }}>
+            Download mileage, driving time, and waiting time summaries for your fleet.
           </p>
         </div>
         <button
           onClick={handleExportCSV}
           className="btn btn-primary"
-          style={{ gap: '8px', fontSize: '0.85rem' }}
         >
           <Download size={16} />
-          Export Spreadsheet (.csv)
+          <span>Download spreadsheet (.csv)</span>
         </button>
       </div>
 
       {/* Filter Toolbar */}
       <div
-        className="glass-panel"
+        className="card"
         style={{
           padding: '16px 20px',
           marginBottom: '24px',
@@ -137,136 +142,103 @@ export const ReportsPage: React.FC = () => {
       >
         <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-              Report Type
-            </label>
-            <select
-              value={reportType}
-              onChange={(e) => setReportType(e.target.value)}
-              style={{
-                background: 'rgba(0, 0, 0, 0.4)',
-                border: '1px solid var(--border-subtle)',
-                borderRadius: '8px',
-                padding: '8px 12px',
-                color: '#fff',
-                fontSize: '0.85rem',
-                outline: 'none',
-              }}
-            >
-              <option value="distance">Distance & Runtime Summary</option>
-              <option value="speed">Overspeed Violations</option>
-              <option value="stoppage">Stationary / Stoppage Log</option>
-              <option value="trip">Trip Route Breakdown</option>
-            </select>
-          </div>
-
-          <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-              Date Range
+            <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 500 }}>
+              Time period
             </label>
             <select
               value={dateRange}
               onChange={(e) => setDateRange(e.target.value)}
               style={{
-                background: 'rgba(0, 0, 0, 0.4)',
-                border: '1px solid var(--border-subtle)',
-                borderRadius: '8px',
+                background: 'var(--bg-page)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-md)',
                 padding: '8px 12px',
-                color: '#fff',
-                fontSize: '0.85rem',
-                outline: 'none',
+                fontSize: '0.875rem',
+                fontFamily: 'var(--font-family)',
+                color: 'var(--text-primary)',
               }}
             >
-              <option value="today">Today (Live)</option>
+              <option value="today">Today</option>
               <option value="yesterday">Yesterday</option>
-              <option value="last7days">Last 7 Days</option>
-              <option value="month">Current Month</option>
+              <option value="last7days">Last 7 days</option>
+              <option value="thismonth">This month</option>
             </select>
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-              Filter Vehicle
+            <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 500 }}>
+              Filter by vehicle
             </label>
             <select
               value={selectedVehicle}
               onChange={(e) => setSelectedVehicle(e.target.value)}
               style={{
-                background: 'rgba(0, 0, 0, 0.4)',
-                border: '1px solid var(--border-subtle)',
-                borderRadius: '8px',
+                background: 'var(--bg-page)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-md)',
                 padding: '8px 12px',
-                color: '#fff',
-                fontSize: '0.85rem',
-                outline: 'none',
+                fontSize: '0.875rem',
+                fontFamily: 'var(--font-family)',
+                color: 'var(--text-primary)',
               }}
             >
-              <option value="all">All Vehicles (4)</option>
-              <option value="DXB-A-98124">DXB-A-98124 (Actros)</option>
-              <option value="DXB-B-43210">DXB-B-43210 (Volvo FH)</option>
-              <option value="AUH-C-11029">AUH-C-11029 (Isuzu)</option>
-              <option value="SHJ-D-77123">SHJ-D-77123 (Hilux)</option>
+              <option value="all">All vehicles ({mockDistanceData.length})</option>
+              {mockDistanceData.map((d) => (
+                <option key={d.deviceId} value={d.regNumber}>
+                  {d.regNumber} ({d.driver})
+                </option>
+              ))}
             </select>
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-          <span>Total Distance:</span>
-          <span style={{ fontWeight: 800, color: 'var(--cyan-accent)', fontSize: '1.1rem', fontFamily: 'var(--font-mono)' }}>
+        {/* Total distance callout */}
+        <div style={{ textAlign: 'right' }}>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block' }}>
+            Total fleet distance
+          </span>
+          <span className="tabular-num" style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--accent)' }}>
             {totalDistance.toFixed(1)} km
           </span>
         </div>
       </div>
 
-      {/* Main Report Table */}
-      <div className="glass-panel" style={{ padding: '20px', overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+      {/* Reports Table */}
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
           <thead>
-            <tr style={{ borderBottom: '1px solid var(--border-subtle)', textAlign: 'left', color: 'var(--text-muted)' }}>
-              <th style={{ padding: '12px 10px' }}>Vehicle Plate</th>
-              <th style={{ padding: '12px 10px' }}>Assigned Driver</th>
-              <th style={{ padding: '12px 10px' }}>Start Odo</th>
-              <th style={{ padding: '12px 10px' }}>End Odo</th>
-              <th style={{ padding: '12px 10px' }}>Distance</th>
-              <th style={{ padding: '12px 10px' }}>Max Speed</th>
-              <th style={{ padding: '12px 10px' }}>Avg Speed</th>
-              <th style={{ padding: '12px 10px' }}>Running Time</th>
-              <th style={{ padding: '12px 10px' }}>Idle Time</th>
-              <th style={{ padding: '12px 10px' }}>Stops</th>
+            <tr style={{ background: 'var(--bg-page)', borderBottom: '1px solid var(--border)' }}>
+              <th style={{ padding: '14px 20px', fontWeight: 600, color: 'var(--text-secondary)' }}>Vehicle & driver</th>
+              <th style={{ padding: '14px 20px', fontWeight: 600, color: 'var(--text-secondary)' }}>Distance</th>
+              <th style={{ padding: '14px 20px', fontWeight: 600, color: 'var(--text-secondary)' }}>Driving time</th>
+              <th style={{ padding: '14px 20px', fontWeight: 600, color: 'var(--text-secondary)' }}>Waiting time</th>
+              <th style={{ padding: '14px 20px', fontWeight: 600, color: 'var(--text-secondary)' }}>Top speed</th>
             </tr>
           </thead>
           <tbody>
             {filteredData.map((row) => (
               <tr key={row.deviceId} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                <td style={{ padding: '14px 10px', fontWeight: 700, color: '#fff' }}>
-                  {row.regNumber}
+                <td style={{ padding: '16px 20px' }}>
+                  <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{row.regNumber}</div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                    {row.vehicleName} · {row.driver}
+                  </div>
                 </td>
-                <td style={{ padding: '14px 10px', color: 'var(--text-secondary)' }}>
-                  {row.driver}
+                <td style={{ padding: '16px 20px' }}>
+                  <span className="tabular-num" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                    {row.distanceKm.toFixed(1)} km
+                  </span>
                 </td>
-                <td style={{ padding: '14px 10px', fontFamily: 'var(--font-mono)' }}>
-                  {row.startOdo.toLocaleString()} km
-                </td>
-                <td style={{ padding: '14px 10px', fontFamily: 'var(--font-mono)' }}>
-                  {row.endOdo.toLocaleString()} km
-                </td>
-                <td style={{ padding: '14px 10px', fontWeight: 700, color: 'var(--cyan-accent)', fontFamily: 'var(--font-mono)' }}>
-                  {row.distanceKm.toFixed(1)} km
-                </td>
-                <td style={{ padding: '14px 10px', fontFamily: 'var(--font-mono)' }}>
-                  {row.maxSpeed.toFixed(1)} km/h
-                </td>
-                <td style={{ padding: '14px 10px', fontFamily: 'var(--font-mono)' }}>
-                  {row.avgSpeed.toFixed(1)} km/h
-                </td>
-                <td style={{ padding: '14px 10px', color: '#10b981' }}>
+                <td style={{ padding: '16px 20px', color: 'var(--text-secondary)' }}>
                   {Math.floor(row.runningMin / 60)}h {row.runningMin % 60}m
                 </td>
-                <td style={{ padding: '14px 10px', color: '#f59e0b' }}>
+                <td style={{ padding: '16px 20px', color: row.idleMin > 20 ? 'var(--attention)' : 'var(--text-secondary)' }}>
                   {row.idleMin} min
                 </td>
-                <td style={{ padding: '14px 10px', color: '#64748b' }}>
-                  {row.stopMin} min
+                <td style={{ padding: '16px 20px' }}>
+                  <span className="tabular-num" style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
+                    {row.maxSpeed.toFixed(1)} km/h
+                  </span>
                 </td>
               </tr>
             ))}

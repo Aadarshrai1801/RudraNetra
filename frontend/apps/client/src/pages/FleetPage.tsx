@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, X, Check, Truck } from 'lucide-react';
+import { Plus, X, CheckCircle2 } from 'lucide-react';
 
 interface GatePass {
   passNo: string;
@@ -25,15 +25,14 @@ interface Driver {
   name: string;
   phone: string;
   licenseNo: string;
-  rfidTag: string;
   assignedVehicle: string;
   status: 'Active' | 'On Leave';
 }
 
 const mockGatePasses: GatePass[] = [
-  { passNo: 'GP-2026-0901', vehicle: 'DXB-A-98124', driver: 'Mohammed Imran', destination: 'Jebel Ali Port Terminal 2', issuedAt: '08:30 AM', status: 'In Transit' },
-  { passNo: 'GP-2026-0902', vehicle: 'DXB-B-43210', driver: 'Harpreet Singh', destination: 'Sharjah Industrial Zone 4', issuedAt: '09:15 AM', status: 'In Transit' },
-  { passNo: 'GP-2026-0903', vehicle: 'AUH-C-11029', driver: 'Ahmed Al-Falasi', destination: 'Abu Dhabi Mina Free Port', issuedAt: '07:45 AM', status: 'In Transit' },
+  { passNo: 'GP-2026-0901', vehicle: 'DXB-A-98124', driver: 'Mohammed Imran', destination: 'Jebel Ali Port Terminal 2', issuedAt: '08:30 am', status: 'In Transit' },
+  { passNo: 'GP-2026-0902', vehicle: 'DXB-B-43210', driver: 'Harpreet Singh', destination: 'Sharjah Industrial Zone 4', issuedAt: '09:15 am', status: 'In Transit' },
+  { passNo: 'GP-2026-0903', vehicle: 'AUH-C-11029', driver: 'Ahmed Al-Falasi', destination: 'Abu Dhabi Mina Free Port', issuedAt: '07:45 am', status: 'In Transit' },
 ];
 
 const mockLRs: LoadingReceipt[] = [
@@ -43,9 +42,9 @@ const mockLRs: LoadingReceipt[] = [
 ];
 
 const mockDrivers: Driver[] = [
-  { id: 1, name: 'Mohammed Imran', phone: '+971-50-9988771', licenseNo: 'DXB-HV-884102', rfidTag: 'RFID-TAG-001', assignedVehicle: 'DXB-A-98124', status: 'Active' },
-  { id: 2, name: 'Harpreet Singh', phone: '+971-55-4433221', licenseNo: 'DXB-HV-993214', rfidTag: 'RFID-TAG-002', assignedVehicle: 'DXB-B-43210', status: 'Active' },
-  { id: 3, name: 'Ahmed Al-Falasi', phone: '+971-52-1122334', licenseNo: 'AUH-LC-442198', rfidTag: 'RFID-TAG-003', assignedVehicle: 'AUH-C-11029', status: 'Active' },
+  { id: 1, name: 'Mohammed Imran', phone: '+971 50 998 8771', licenseNo: 'DXB-HV-884102', assignedVehicle: 'DXB-A-98124', status: 'Active' },
+  { id: 2, name: 'Harpreet Singh', phone: '+971 55 443 3221', licenseNo: 'DXB-HV-993214', assignedVehicle: 'DXB-B-43210', status: 'Active' },
+  { id: 3, name: 'Ahmed Al-Falasi', phone: '+971 52 112 2334', licenseNo: 'AUH-LC-442198', assignedVehicle: 'AUH-C-11029', status: 'Active' },
 ];
 
 export const FleetPage: React.FC = () => {
@@ -65,344 +64,344 @@ export const FleetPage: React.FC = () => {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  const handleIssueSubmit = (e: React.FormEvent) => {
+  const handleCreatePass = (e: React.FormEvent) => {
     e.preventDefault();
     const created: GatePass = {
-      passNo: `GP-2026-090${gatePasses.length + 1}`,
+      passNo: `GP-${Date.now().toString().slice(-4)}`,
       vehicle: newPass.vehicle,
       driver: newPass.driver,
       destination: newPass.destination,
-      issuedAt: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-      status: 'Issued',
+      issuedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      status: 'In Transit',
     };
-    setGatePasses((prev) => [created, ...prev]);
+    setGatePasses([created, ...gatePasses]);
     setIsIssueModalOpen(false);
-    showToast(`Gate Pass ${created.passNo} issued for ${created.vehicle}.`);
+    showToast(`Gate pass ${created.passNo} issued for ${created.vehicle}`);
   };
 
   return (
-    <div className="page-container">
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
-        <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 800 }}>Fleet Operations & Dispatch</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginTop: '4px' }}>
-            Operations registry for vehicle assignments, gate passes, and driver credentials.
-          </p>
-        </div>
-        <button
-          onClick={() => setIsIssueModalOpen(true)}
-          className="btn btn-primary"
-          style={{ gap: '8px' }}
-        >
-          <Plus size={16} />
-          Issue New Pass / LR
-        </button>
-      </div>
-
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
-        <button
-          onClick={() => setActiveTab('gatepasses')}
-          className="btn"
-          style={{
-            background: activeTab === 'gatepasses' ? 'var(--primary)' : 'rgba(255,255,255,0.05)',
-            color: '#fff',
-            padding: '8px 18px',
-          }}
-        >
-          Gate Passes ({gatePasses.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('lr')}
-          className="btn"
-          style={{
-            background: activeTab === 'lr' ? 'var(--primary)' : 'rgba(255,255,255,0.05)',
-            color: '#fff',
-            padding: '8px 18px',
-          }}
-        >
-          Loading Receipts / LR ({mockLRs.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('drivers')}
-          className="btn"
-          style={{
-            background: activeTab === 'drivers' ? 'var(--primary)' : 'rgba(255,255,255,0.05)',
-            color: '#fff',
-            padding: '8px 18px',
-          }}
-        >
-          Driver Roster ({mockDrivers.length})
-        </button>
-      </div>
-
-      {/* Gate Passes Table */}
-      {activeTab === 'gatepasses' && (
-        <div className="glass-panel" style={{ padding: '20px', overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--border-subtle)', textAlign: 'left', color: 'var(--text-muted)' }}>
-                <th style={{ padding: '12px 10px' }}>Pass #</th>
-                <th style={{ padding: '12px 10px' }}>Vehicle</th>
-                <th style={{ padding: '12px 10px' }}>Driver</th>
-                <th style={{ padding: '12px 10px' }}>Destination</th>
-                <th style={{ padding: '12px 10px' }}>Issued At</th>
-                <th style={{ padding: '12px 10px' }}>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {gatePasses.map((gp) => (
-                <tr key={gp.passNo} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '14px 10px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--cyan-accent)' }}>
-                    {gp.passNo}
-                  </td>
-                  <td style={{ padding: '14px 10px', fontWeight: 600, color: '#fff' }}>{gp.vehicle}</td>
-                  <td style={{ padding: '14px 10px', color: 'var(--text-secondary)' }}>{gp.driver}</td>
-                  <td style={{ padding: '14px 10px' }}>{gp.destination}</td>
-                  <td style={{ padding: '14px 10px', color: 'var(--text-muted)' }}>{gp.issuedAt}</td>
-                  <td style={{ padding: '14px 10px' }}>
-                    <span
-                      style={{
-                        padding: '2px 8px',
-                        borderRadius: '4px',
-                        fontSize: '0.7rem',
-                        fontWeight: 700,
-                        background: 'rgba(2,132,199,0.2)',
-                        color: 'var(--cyan-accent)',
-                      }}
-                    >
-                      {gp.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* LR Table */}
-      {activeTab === 'lr' && (
-        <div className="glass-panel" style={{ padding: '20px', overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--border-subtle)', textAlign: 'left', color: 'var(--text-muted)' }}>
-                <th style={{ padding: '12px 10px' }}>LR Number</th>
-                <th style={{ padding: '12px 10px' }}>Transport Party</th>
-                <th style={{ padding: '12px 10px' }}>Vehicle</th>
-                <th style={{ padding: '12px 10px' }}>Cargo Weight</th>
-                <th style={{ padding: '12px 10px' }}>Freight (AED)</th>
-                <th style={{ padding: '12px 10px' }}>Advance (AED)</th>
-                <th style={{ padding: '12px 10px' }}>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {mockLRs.map((lr) => (
-                <tr key={lr.lrNo} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '14px 10px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--cyan-accent)' }}>
-                    {lr.lrNo}
-                  </td>
-                  <td style={{ padding: '14px 10px', fontWeight: 600, color: '#fff' }}>{lr.party}</td>
-                  <td style={{ padding: '14px 10px' }}>{lr.vehicle}</td>
-                  <td style={{ padding: '14px 10px', fontFamily: 'var(--font-mono)' }}>{lr.weightKg.toLocaleString()} kg</td>
-                  <td style={{ padding: '14px 10px', fontFamily: 'var(--font-mono)' }}>AED {lr.freightAmt.toLocaleString()}</td>
-                  <td style={{ padding: '14px 10px', fontFamily: 'var(--font-mono)', color: '#10b981' }}>AED {lr.advanceAmt.toLocaleString()}</td>
-                  <td style={{ padding: '14px 10px' }}>
-                    <span
-                      style={{
-                        padding: '2px 8px',
-                        borderRadius: '4px',
-                        fontSize: '0.7rem',
-                        fontWeight: 700,
-                        background: lr.status === 'Completed' ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)',
-                        color: lr.status === 'Completed' ? '#10b981' : '#f59e0b',
-                      }}
-                    >
-                      {lr.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Drivers Roster */}
-      {activeTab === 'drivers' && (
-        <div className="glass-panel" style={{ padding: '20px', overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--border-subtle)', textAlign: 'left', color: 'var(--text-muted)' }}>
-                <th style={{ padding: '12px 10px' }}>Driver Name</th>
-                <th style={{ padding: '12px 10px' }}>Phone Number</th>
-                <th style={{ padding: '12px 10px' }}>License Number</th>
-                <th style={{ padding: '12px 10px' }}>Assigned RFID Tag</th>
-                <th style={{ padding: '12px 10px' }}>Assigned Vehicle</th>
-                <th style={{ padding: '12px 10px' }}>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {mockDrivers.map((d) => (
-                <tr key={d.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '14px 10px', fontWeight: 700, color: '#fff' }}>{d.name}</td>
-                  <td style={{ padding: '14px 10px', fontFamily: 'var(--font-mono)' }}>{d.phone}</td>
-                  <td style={{ padding: '14px 10px' }}>{d.licenseNo}</td>
-                  <td style={{ padding: '14px 10px', fontFamily: 'var(--font-mono)', color: 'var(--cyan-accent)' }}>{d.rfidTag}</td>
-                  <td style={{ padding: '14px 10px', fontWeight: 600 }}>{d.assignedVehicle}</td>
-                  <td style={{ padding: '14px 10px' }}>
-                    <span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 700, background: 'rgba(16,185,129,0.15)', color: '#10b981' }}>
-                      {d.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
+    <div className="page-container" style={{ maxWidth: '1060px' }}>
       {/* Toast Notification */}
       {toastMessage && (
         <div
           style={{
             position: 'fixed',
-            top: '56px',
+            bottom: '24px',
             right: '24px',
-            zIndex: 1000,
-            background: 'var(--bg-raised)',
-            border: '1px solid var(--signal-green)',
-            color: 'var(--text-primary)',
-            padding: '10px 16px',
+            zIndex: 100,
+            background: 'var(--text-primary)',
+            color: '#FFFFFF',
+            padding: '12px 20px',
+            borderRadius: 'var(--radius-md)',
+            boxShadow: 'var(--shadow-lg)',
             display: 'flex',
             alignItems: 'center',
-            gap: '10px',
-            fontSize: '0.8rem',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+            gap: '8px',
+            fontSize: '0.9rem',
+            fontWeight: 500,
           }}
         >
-          <span style={{ width: '6px', height: '6px', background: 'var(--signal-green)' }} />
+          <CheckCircle2 size={16} color="var(--good)" />
           <span>{toastMessage}</span>
         </div>
       )}
 
-      {/* Issue Pass Modal */}
+      {/* Screen Title */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+        <div>
+          <h1 style={{ fontSize: '1.65rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+            Fleet operations
+          </h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginTop: '4px' }}>
+            Manage delivery gate passes, cargo receipts, and driver assignments.
+          </p>
+        </div>
+        <button
+          onClick={() => setIsIssueModalOpen(true)}
+          className="btn btn-primary"
+        >
+          <Plus size={16} />
+          <span>Issue gate pass</span>
+        </button>
+      </div>
+
+      {/* Navigation Tabs */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
+        <button
+          onClick={() => setActiveTab('gatepasses')}
+          className={activeTab === 'gatepasses' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
+        >
+          Active gate passes ({gatePasses.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('lr')}
+          className={activeTab === 'lr' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
+        >
+          Delivery receipts ({mockLRs.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('drivers')}
+          className={activeTab === 'drivers' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
+        >
+          Drivers ({mockDrivers.length})
+        </button>
+      </div>
+
+      {/* Gate Passes Tab */}
+      {activeTab === 'gatepasses' && (
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
+            <thead>
+              <tr style={{ background: 'var(--bg-page)', borderBottom: '1px solid var(--border)' }}>
+                <th style={{ padding: '14px 20px', fontWeight: 600, color: 'var(--text-secondary)' }}>Pass number</th>
+                <th style={{ padding: '14px 20px', fontWeight: 600, color: 'var(--text-secondary)' }}>Vehicle</th>
+                <th style={{ padding: '14px 20px', fontWeight: 600, color: 'var(--text-secondary)' }}>Driver</th>
+                <th style={{ padding: '14px 20px', fontWeight: 600, color: 'var(--text-secondary)' }}>Destination</th>
+                <th style={{ padding: '14px 20px', fontWeight: 600, color: 'var(--text-secondary)' }}>Issued at</th>
+                <th style={{ padding: '14px 20px', fontWeight: 600, color: 'var(--text-secondary)' }}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {gatePasses.map((gp) => (
+                <tr key={gp.passNo} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                  <td style={{ padding: '16px 20px', fontWeight: 700, color: 'var(--accent)' }}>
+                    {gp.passNo}
+                  </td>
+                  <td style={{ padding: '16px 20px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                    {gp.vehicle}
+                  </td>
+                  <td style={{ padding: '16px 20px', color: 'var(--text-secondary)' }}>{gp.driver}</td>
+                  <td style={{ padding: '16px 20px', color: 'var(--text-primary)' }}>{gp.destination}</td>
+                  <td style={{ padding: '16px 20px', color: 'var(--text-secondary)' }}>{gp.issuedAt}</td>
+                  <td style={{ padding: '16px 20px' }}>
+                    <span className="badge badge-good">
+                      <span className="status-dot status-dot-good" />
+                      <span>{gp.status}</span>
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Loading Receipts Tab */}
+      {activeTab === 'lr' && (
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
+            <thead>
+              <tr style={{ background: 'var(--bg-page)', borderBottom: '1px solid var(--border)' }}>
+                <th style={{ padding: '14px 20px', fontWeight: 600, color: 'var(--text-secondary)' }}>Receipt #</th>
+                <th style={{ padding: '14px 20px', fontWeight: 600, color: 'var(--text-secondary)' }}>Client party</th>
+                <th style={{ padding: '14px 20px', fontWeight: 600, color: 'var(--text-secondary)' }}>Vehicle</th>
+                <th style={{ padding: '14px 20px', fontWeight: 600, color: 'var(--text-secondary)' }}>Cargo weight</th>
+                <th style={{ padding: '14px 20px', fontWeight: 600, color: 'var(--text-secondary)' }}>Freight</th>
+                <th style={{ padding: '14px 20px', fontWeight: 600, color: 'var(--text-secondary)' }}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {mockLRs.map((lr) => (
+                <tr key={lr.lrNo} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                  <td style={{ padding: '16px 20px', fontWeight: 700, color: 'var(--accent)' }}>
+                    {lr.lrNo}
+                  </td>
+                  <td style={{ padding: '16px 20px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                    {lr.party}
+                  </td>
+                  <td style={{ padding: '16px 20px', color: 'var(--text-secondary)' }}>{lr.vehicle}</td>
+                  <td style={{ padding: '16px 20px', color: 'var(--text-primary)' }}>
+                    <span className="tabular-num">{(lr.weightKg / 1000).toFixed(1)}</span> tons
+                  </td>
+                  <td style={{ padding: '16px 20px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                    AED <span className="tabular-num">{lr.freightAmt.toLocaleString()}</span>
+                  </td>
+                  <td style={{ padding: '16px 20px' }}>
+                    <span className={lr.status === 'Completed' ? 'badge badge-good' : 'badge badge-attention'}>
+                      <span>{lr.status}</span>
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Drivers Tab */}
+      {activeTab === 'drivers' && (
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
+            <thead>
+              <tr style={{ background: 'var(--bg-page)', borderBottom: '1px solid var(--border)' }}>
+                <th style={{ padding: '14px 20px', fontWeight: 600, color: 'var(--text-secondary)' }}>Driver name</th>
+                <th style={{ padding: '14px 20px', fontWeight: 600, color: 'var(--text-secondary)' }}>Phone number</th>
+                <th style={{ padding: '14px 20px', fontWeight: 600, color: 'var(--text-secondary)' }}>Driving license</th>
+                <th style={{ padding: '14px 20px', fontWeight: 600, color: 'var(--text-secondary)' }}>Assigned vehicle</th>
+                <th style={{ padding: '14px 20px', fontWeight: 600, color: 'var(--text-secondary)' }}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {mockDrivers.map((d) => (
+                <tr key={d.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                  <td style={{ padding: '16px 20px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    {d.name}
+                  </td>
+                  <td style={{ padding: '16px 20px', color: 'var(--accent)' }}>
+                    <a href={`tel:${d.phone}`} style={{ color: 'inherit', textDecoration: 'none' }}>
+                      {d.phone}
+                    </a>
+                  </td>
+                  <td style={{ padding: '16px 20px', color: 'var(--text-secondary)' }}>{d.licenseNo}</td>
+                  <td style={{ padding: '16px 20px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                    {d.assignedVehicle}
+                  </td>
+                  <td style={{ padding: '16px 20px' }}>
+                    <span className="badge badge-good">
+                      <span className="status-dot status-dot-good" />
+                      <span>{d.status}</span>
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Issue Gate Pass Modal */}
       {isIssueModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsIssueModalOpen(false)}>
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(30, 37, 33, 0.4)',
+            backdropFilter: 'blur(3px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 100,
+            padding: '16px',
+          }}
+        >
           <div
-            className="ops-panel"
             style={{
-              width: 'min(480px, 95vw)',
-              background: 'var(--bg-surface)',
-              border: '1px solid var(--line-strong)',
-              boxShadow: '0 12px 48px rgba(0,0,0,0.8)',
+              background: 'var(--bg-card)',
+              borderRadius: 'var(--radius-lg)',
+              border: '1px solid var(--border)',
+              width: '100%',
+              maxWidth: '480px',
+              boxShadow: 'var(--shadow-lg)',
+              overflow: 'hidden',
             }}
-            onClick={(e) => e.stopPropagation()}
           >
             <div
               style={{
-                padding: '14px 18px',
-                borderBottom: '1px solid var(--line)',
+                padding: '20px 24px',
+                borderBottom: '1px solid var(--border)',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                background: 'var(--bg-raised)',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Truck size={16} color="var(--signal-amber)" />
-                <h2 style={{ fontSize: '0.9rem', fontWeight: 800, margin: 0, textTransform: 'uppercase' }}>
-                  Issue Fleet Gate Pass / LR
-                </h2>
-              </div>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                Issue a delivery gate pass
+              </h3>
               <button
-                type="button"
                 onClick={() => setIsIssueModalOpen(false)}
-                className="btn-ghost"
-                style={{ padding: '4px', border: 'none', cursor: 'pointer' }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}
               >
-                <X size={16} color="var(--text-muted)" />
+                <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleIssueSubmit} style={{ padding: '18px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                    Select Vehicle Plate
-                  </label>
-                  <select
-                    value={newPass.vehicle}
-                    onChange={(e) => setNewPass((prev) => ({ ...prev, vehicle: e.target.value }))}
-                    style={{
-                      width: '100%',
-                      background: 'var(--bg-base)',
-                      border: '1px solid var(--line)',
-                      color: 'var(--text-primary)',
-                      padding: '8px 10px',
-                      fontSize: '0.8rem',
-                      fontFamily: 'var(--font-mono)',
-                      outline: 'none',
-                    }}
-                  >
-                    <option value="DXB-A-98124">DXB-A-98124 (Actros Heavy)</option>
-                    <option value="DXB-B-43210">DXB-B-43210 (Volvo FH16)</option>
-                    <option value="AUH-C-11029">AUH-C-11029 (Isuzu Reefer)</option>
-                    <option value="SHJ-D-77123">SHJ-D-77123 (MAN TGX)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                    Driver Name
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={newPass.driver}
-                    onChange={(e) => setNewPass((prev) => ({ ...prev, driver: e.target.value }))}
-                    style={{
-                      width: '100%',
-                      background: 'var(--bg-base)',
-                      border: '1px solid var(--line)',
-                      color: 'var(--text-primary)',
-                      padding: '8px 10px',
-                      fontSize: '0.8rem',
-                      outline: 'none',
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                    Destination Facility / Zone
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={newPass.destination}
-                    onChange={(e) => setNewPass((prev) => ({ ...prev, destination: e.target.value }))}
-                    style={{
-                      width: '100%',
-                      background: 'var(--bg-base)',
-                      border: '1px solid var(--line)',
-                      color: 'var(--text-primary)',
-                      padding: '8px 10px',
-                      fontSize: '0.8rem',
-                      outline: 'none',
-                    }}
-                  />
-                </div>
+            <form onSubmit={handleCreatePass} style={{ padding: '24px' }}>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                  Select vehicle
+                </label>
+                <select
+                  value={newPass.vehicle}
+                  onChange={(e) => setNewPass({ ...newPass, vehicle: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border)',
+                    fontSize: '0.9rem',
+                    fontFamily: 'var(--font-family)',
+                    background: 'var(--bg-page)',
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  <option value="DXB-A-98124">DXB-A-98124 (Mercedes Actros)</option>
+                  <option value="DXB-B-43210">DXB-B-43210 (Volvo FH16)</option>
+                  <option value="AUH-C-11029">AUH-C-11029 (Isuzu Reefer)</option>
+                  <option value="SHJ-D-77123">SHJ-D-77123 (Toyota Hilux)</option>
+                </select>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px', paddingTop: '14px', borderTop: '1px solid var(--line)' }}>
-                <button type="button" onClick={() => setIsIssueModalOpen(false)} className="btn btn-ghost" style={{ padding: '6px 14px' }}>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                  Driver
+                </label>
+                <select
+                  value={newPass.driver}
+                  onChange={(e) => setNewPass({ ...newPass, driver: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border)',
+                    fontSize: '0.9rem',
+                    fontFamily: 'var(--font-family)',
+                    background: 'var(--bg-page)',
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  <option value="Mohammed Imran">Mohammed Imran</option>
+                  <option value="Harpreet Singh">Harpreet Singh</option>
+                  <option value="Ahmed Al-Falasi">Ahmed Al-Falasi</option>
+                  <option value="Rajesh Patel">Rajesh Patel</option>
+                </select>
+              </div>
+
+              <div style={{ marginBottom: '24px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                  Destination
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Jebel Ali Port Terminal 2"
+                  value={newPass.destination}
+                  onChange={(e) => setNewPass({ ...newPass, destination: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border)',
+                    fontSize: '0.9rem',
+                    fontFamily: 'var(--font-family)',
+                    background: 'var(--bg-page)',
+                    color: 'var(--text-primary)',
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsIssueModalOpen(false)}
+                  className="btn btn-secondary"
+                >
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary" style={{ padding: '6px 18px', gap: '6px' }}>
-                  <Check size={14} strokeWidth={2.5} />
-                  <span>Issue Pass</span>
+                <button type="submit" className="btn btn-primary">
+                  Issue pass
                 </button>
               </div>
             </form>

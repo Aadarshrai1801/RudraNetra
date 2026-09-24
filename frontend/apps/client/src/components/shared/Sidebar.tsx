@@ -1,15 +1,13 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import {
-  Crosshair,
-  Gauge,
-  History,
-  Layers,
-  Cpu,
   Truck,
+  LayoutDashboard,
+  Clock,
+  Compass,
   FileText,
-  AlertOctagon,
-  Sliders,
+  AlertCircle,
+  Settings,
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
@@ -19,128 +17,104 @@ export const Sidebar: React.FC = () => {
       <div className="sidebar-brand">
         <div
           style={{
-            background: '#ffffff',
-            borderRadius: '2px',
-            padding: '2px 4px',
+            background: 'var(--accent-light)',
+            borderRadius: 'var(--radius-sm)',
+            padding: '6px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            border: '1px solid var(--line)',
+            border: '1px solid var(--border)',
           }}
         >
           <img
             src="/RudraNetraLogo.png"
             alt="RudraNetra"
-            style={{ width: '28px', height: 'auto', objectFit: 'contain' }}
+            style={{ width: '24px', height: '24px', objectFit: 'contain' }}
           />
         </div>
         <div>
           <span className="brand-title">RudraNetra</span>
+          <span className="brand-subtitle">Fleet tracking</span>
         </div>
       </div>
 
-      {/* Nav Menu with Logical Section Grouping */}
+      {/* Nav Menu — Cut down to what a fleet owner thinks about */}
       <nav className="nav-menu">
-        {/* MONITORING GROUP */}
-        <div className="sidebar-group">
-          <div className="sidebar-section-title">Monitoring</div>
+        <NavLink
+          to="/live"
+          className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+        >
+          <Truck size={18} />
+          <span>Vehicles</span>
+        </NavLink>
 
-          <NavLink
-            to="/live"
-            className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-          >
-            <Crosshair size={16} strokeWidth={2.2} />
-            <span>Live Tracking</span>
-          </NavLink>
+        <NavLink
+          to="/dashboard"
+          className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+        >
+          <LayoutDashboard size={18} />
+          <span>Overview</span>
+        </NavLink>
 
-          <NavLink
-            to="/dashboard"
-            className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-          >
-            <Gauge size={16} strokeWidth={2.2} />
-            <span>Dashboard</span>
-          </NavLink>
+        <NavLink
+          to="/playback"
+          className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+        >
+          <Clock size={18} />
+          <span>Trip history</span>
+        </NavLink>
 
-          <NavLink
-            to="/playback"
-            className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-          >
-            <History size={16} strokeWidth={2.2} />
-            <span>Route Playback</span>
-          </NavLink>
-        </div>
+        <NavLink
+          to="/geofences"
+          className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+        >
+          <Compass size={18} />
+          <span>Zones</span>
+        </NavLink>
 
-        <div style={{ height: '1px', background: 'var(--line)', margin: '8px 16px' }} />
+        <NavLink
+          to="/alerts"
+          className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+        >
+          <AlertCircle size={18} />
+          <span>Alerts</span>
+        </NavLink>
 
-        {/* CONFIGURATION GROUP */}
-        <div className="sidebar-group">
-          <div className="sidebar-section-title">Configuration</div>
+        <NavLink
+          to="/reports"
+          className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+        >
+          <FileText size={18} />
+          <span>Reports</span>
+        </NavLink>
 
-          <NavLink
-            to="/geofences"
-            className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-          >
-            <Layers size={16} strokeWidth={2.2} />
-            <span>Geofences & POI</span>
-          </NavLink>
-
-          <NavLink
-            to="/devices"
-            className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-          >
-            <Cpu size={16} strokeWidth={2.2} />
-            <span>Devices & Hardware</span>
-          </NavLink>
-
-          <NavLink
-            to="/fleet"
-            className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-          >
-            <Truck size={16} strokeWidth={2.2} />
-            <span>Fleet Operations</span>
-          </NavLink>
-
-          <NavLink
-            to="/reports"
-            className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-          >
-            <FileText size={16} strokeWidth={2.2} />
-            <span>Reports & Export</span>
-          </NavLink>
-
-          <NavLink
-            to="/alerts"
-            className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-          >
-            <AlertOctagon size={16} strokeWidth={2.2} />
-            <span>Alerts & Rules</span>
-          </NavLink>
-
-          <NavLink
-            to="/settings"
-            className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-          >
-            <Sliders size={16} strokeWidth={2.2} />
-            <span>System Settings</span>
-          </NavLink>
-        </div>
+        <NavLink
+          to="/settings"
+          className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+        >
+          <Settings size={18} />
+          <span>Settings</span>
+        </NavLink>
       </nav>
 
-      {/* Industrial System Telemetry Status Footer */}
+      {/* Calm Status Footer — No server logs or internal DB names */}
       <div className="sidebar-footer">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span
             style={{
-              width: '5px',
-              height: '5px',
-              background: 'var(--signal-green)',
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              backgroundColor: 'var(--good)',
               display: 'inline-block',
             }}
           />
-          <span style={{ fontSize: '0.68rem' }}>INGEST :5040</span>
+          <span style={{ fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-secondary)' }}>
+            All systems normal
+          </span>
         </div>
-        <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-          TIMESCALEDB
+        <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+          Updated just now
         </span>
       </div>
     </aside>
