@@ -1,98 +1,193 @@
-# 🚀 RudraNetra (NextGen Telematics & Fleet Intelligence)
+<p align="center">
+  <img src="docs/assets/RudraNetraLogo.png" alt="RudraNetra Logo" width="280" />
+</p>
 
-High-performance, modern rewrite of legacy ASP.NET / WinForms telematics platform into **Go + React + PostgreSQL/TimescaleDB/PostGIS**.
+<h1 align="center">RudraNetra</h1>
 
----
+<p align="center">
+  <strong>Next-Generation Enterprise Telematics, GPS Ingestion Engine & Spatial Fleet Intelligence</strong>
+</p>
 
-## 🏛️ Architecture Overview
+<p align="center">
+  <a href="#-overview">Overview</a> •
+  <a href="#-visual-showcase">Showcase</a> •
+  <a href="#%EF%B8%8F-system-architecture">Architecture</a> •
+  <a href="#-core-capabilities">Capabilities</a> •
+  <a href="#-tech-stack">Tech Stack</a> •
+  <a href="#-quick-start">Quick Start</a> •
+  <a href="#-project-layout">Layout</a>
+</p>
 
-```
-                      ┌──────────────────────┐
-                      │  Teltonika GPS       │
-                      │  Devices (FMB920)    │
-                      └──────────┬───────────┘
-                                 │ TCP :5040
-                                 ▼
-                     ┌────────────────────────┐
-                     │   rudra-ingest (Go)    │
-                     │   Teltonika Codec 8    │
-                     └──────────┬─────────────┘
-                                │ NATS JetStream
-                                ▼
-  ┌────────────────────────────────────────────────────────┐
-  │                    rudra-api (Go)                      │
-  │  REST API (:8080)   •   WebSocket Hub (/ws/tracking)   │
-  │  JWT Auth           •   PostGIS Spatial Query Engine   │
-  └──────────┬─────────────────────────────┬───────────────┘
-             │                             │
-             ▼                             ▼
-  ┌─────────────────────┐       ┌──────────────────────────┐
-  │  PostgreSQL 16      │       │  Redis 7                 │
-  │  + PostGIS 3.4      │       │  Live Position Cache     │
-  │  + TimescaleDB      │       │  Sub-millisecond reads   │
-  └─────────────────────┘       └──────────────────────────┘
-             ▲                             ▲
-             │                             │
-  ┌──────────┴─────────────────────────────┴───────────────┐
-  │                   React 19 Frontend                    │
-  │  • Client Portal (:3000) - MapLibre GL live tracking  │
-  │  • Admin Portal (:3001) - Multi-tenant management     │
-  └────────────────────────────────────────────────────────┘
-```
+<p align="center">
+  <img src="https://img.shields.io/badge/Go-1.23-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="Go 1.23" />
+  <img src="https://img.shields.io/badge/React-19.0-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React 19" />
+  <img src="https://img.shields.io/badge/PostgreSQL-16-4169E1?style=for-the-badge&logo=postgresql&logoColor=white" alt="PostgreSQL 16" />
+  <img src="https://img.shields.io/badge/TimescaleDB-Hypertables-FDB515?style=for-the-badge&logo=timescale&logoColor=black" alt="TimescaleDB" />
+  <img src="https://img.shields.io/badge/PostGIS-3.4_Spatial-336791?style=for-the-badge&logo=postgis&logoColor=white" alt="PostGIS" />
+  <img src="https://img.shields.io/badge/NATS-JetStream-27AAE1?style=for-the-badge&logo=natsdotio&logoColor=white" alt="NATS JetStream" />
+  <img src="https://img.shields.io/badge/Redis-7_Cache-DC382D?style=for-the-badge&logo=redis&logoColor=white" alt="Redis 7" />
+  <img src="https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker" />
+</p>
 
 ---
 
-## 📦 Project Layout
+## 📖 Overview
 
-- `backend/` — Go monorepo
-  - `cmd/rudra-ingest/`: TCP server accepting Teltonika AVL packets on port 5040.
-  - `cmd/rudra-api/`: High-speed Gin REST API and real-time WebSocket hub.
-  - `cmd/rudra-worker/`: Background worker for scheduled reports and alert dispatch.
-  - `internal/codec/`: Byte-accurate Teltonika Codec 8 binary protocol parser.
-  - `internal/domain/`: Core business entities (positions, devices, vehicles, geofences, alerts).
-  - `internal/repository/`: TimescaleDB hypertables, PostGIS polygon checks, Redis caching.
-  - `internal/websocket/`: Concurrent broadcast hub with tenant-level routing.
-  - `migrations/`: Versioned SQL migrations for PostgreSQL + PostGIS + TimescaleDB.
-- `frontend/` — React 19 + TypeScript + Vite monorepo (pnpm workspace)
-  - `apps/client/`: Live tracking dashboard with MapLibre GL vector maps and real-time telemetry drawer.
-  - `apps/admin/`: Multi-tenant organization and device provisioning portal.
-  - `packages/ui/`: Shared UI component primitives.
-- `infra/` — Docker Compose & Nginx configuration
-  - `docker-compose.yml`: Spins up TimescaleDB, PostGIS, Redis, NATS, and all Go microservices.
-  - `nginx/nginx.conf`: Production reverse proxy routing API, WebSockets, and static assets.
+**RudraNetra** is an enterprise-scale rewrite of the legacy telematics platform (`vave.uae` and `Admin.uae`). Moving away from monolithic ASP.NET WebForms and single-node MSSQL setups, RudraNetra delivers a cloud-native, event-driven distributed architecture designed to ingest hundreds of thousands of concurrent GPS telemetry pings per second with millisecond latency.
+
+- **High-Concurrency TCP Engine**: Direct binary socket listener parsing Teltonika Codec 8 / Codec 8 Extended AVL frames.
+- **Spatio-Temporal Time-Series**: TimescaleDB hypertables partitioned by time and vehicle for instant analytical queries across millions of coordinates.
+- **Spatial GIS Boundary Engine**: PostGIS spatial indexing (`ST_Contains`, `ST_DWithin`, `ST_MakeLine`) for instant geofence entry/exit detection and trip segment computation.
+- **Low-Latency Event Streaming**: NATS JetStream message broker powering real-time WebSocket live updates and decoupled worker execution.
+- **Modern User Experience**: A reactive, dark-mode glassmorphic client application built with React 19, TypeScript, and MapLibre GL vector maps.
+
+---
+
+## 📸 Visual Showcase
+
+### Live Tracking & Real-Time Fleet Map
+*Sub-second position updates over WebSockets, animated heading orientation, vehicle telemetry drawer, and status clustering.*
+
+<p align="center">
+  <img src="docs/assets/screenshot_live_map.png" alt="RudraNetra Live Tracking Map" width="100%" />
+</p>
+
+---
+
+### Executive Fleet Intelligence
+*Real-time operational KPI rollup: active moving vehicles, idle fuel waste estimations, stopped fleet units, and ingestion health.*
+
+<p align="center">
+  <img src="docs/assets/screenshot_dashboard.png" alt="RudraNetra Executive Dashboard" width="100%" />
+</p>
+
+---
+
+### Historical Route Replay & Scrubbing
+*Full route playback with 1x–10x playback speed, distance metrics, top speed profile, and timeline step scrubbing.*
+
+<p align="center">
+  <img src="docs/assets/screenshot_playback.png" alt="RudraNetra Route Playback" width="100%" />
+</p>
+
+---
+
+### PostGIS Polygon Geofences & Proximity Engine
+*Spatial boundary polygon zones with automated enter/exit events, speed-limit enforcement, and live `ST_Contains` containment testing.*
+
+<p align="center">
+  <img src="docs/assets/screenshot_geofences.png" alt="RudraNetra Geofences" width="100%" />
+</p>
+
+---
+
+### Hardware Registry & Multi-Tenant Administration
+*Teltonika AVL tracker provisioning and multi-organization tenant separation.*
+
+| GPS Hardware & Device Provisioning | Multi-Tenant Organization Management |
+| :---: | :---: |
+| <img src="docs/assets/screenshot_devices.png" alt="Hardware Registry" width="100%" /> | <img src="docs/assets/screenshot_admin.png" alt="Tenant Management" width="100%" /> |
+
+---
+
+## 🏛️ System Architecture
+
+```
+                       ┌───────────────────────────────┐
+                       │   Teltonika GPS Tracker Units │
+                       │    (FMB920 / FMB120 / FMC130) │
+                       └───────────────┬───────────────┘
+                                       │ Raw Binary TCP (:5040)
+                                       ▼
+                       ┌───────────────────────────────┐
+                       │       rudra-ingest (Go)       │
+                       │   Zero-alloc Codec 8 Parser   │
+                       └───────────────┬───────────────┘
+                                       │ NATS JetStream ('telemetry.positions')
+                                       ▼
+        ┌─────────────────────────────────────────────────────────────┐
+        │                      rudra-api (Go)                         │
+        │   REST API (:8080)        •   WebSocket Gateway (/ws/track) │
+        │   PostGIS Spatial Query   •   Multi-tenant JWT Auth         │
+        └──────────────┬───────────────────────────────┬──────────────┘
+                       │                               │
+                       ▼                               ▼
+       ┌───────────────────────────────┐   ┌───────────────────────────────┐
+       │     PostgreSQL 16 + PostGIS   │   │            Redis 7            │
+       │   TimescaleDB Hypertables     │   │   Live Spatial Position Cache │
+       │   Multi-tenant Partitioning   │   │   Sub-millisecond Read Latency│
+       └───────────────────────────────┘   └───────────────────────────────┘
+                       ▲                               ▲
+                       │                               │
+        ┌──────────────┴───────────────────────────────┴──────────────┐
+        │                      React 19 Frontend                      │
+        │   • Client App (:3000): MapLibre GL, Live Telemetry, Playback│
+        │   • Admin App (:3001): Multi-tenant Company Administration  │
+        └─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## ⚙️ Core Capabilities
+
+| Feature | Legacy System (`vave.uae`) | RudraNetra Architecture |
+| :--- | :--- | :--- |
+| **Ingestion Engine** | C# .NET Socket Single Listener | High-throughput Go TCP listener with CRC16 validation & zero-alloc frame parsing |
+| **Telemetry Storage** | Single MSSQL `DeviceLogs` table | TimescaleDB Hypertables partitioned into 7-day chunks with automated compression |
+| **Spatial Checks** | In-memory point bounding checks | PostGIS 3.4 Spatial Indices (`ST_Contains`, `ST_DWithin`, `GIST`) |
+| **Real-time Map** | Polling HTTP AJAX every 10s | Event-driven WebSockets with sub-200ms latency |
+| **Frontend Framework** | ASP.NET WebForms + Server Controls | React 19 + TypeScript + Vite monorepo with MapLibre GL vector tiles |
+| **Tenancy Model** | Separate MSSQL databases switched via cookie | Row-level tenant isolation (`tenant_id`) with JWT context validation |
+
+---
+
+## 🛠️ Tech Stack
+
+- **Backend**: Go 1.23, Gin Web Framework, Viper, `jackc/pgx/v5`
+- **Database**: PostgreSQL 16 + PostGIS 3.4 + TimescaleDB (Hypertables)
+- **Caching & Pub/Sub**: Redis 7, NATS JetStream 2.10
+- **Frontend**: React 19, TypeScript, Vite, MapLibre GL, Zustand, Lucide React
+- **DevOps & Containers**: Docker Compose, Nginx, Multi-stage Go & Node Dockerfiles
 
 ---
 
 ## ⚡ Quick Start
 
-### 1. Start Infrastructure (PostgreSQL + TimescaleDB + Redis + NATS)
+### 1. Launch Core Infrastructure
 ```bash
-cd rudra-netra/infra
+cd infra
 docker compose up -d postgres redis nats
 ```
 
-### 2. Run Backend Services (Go)
+### 2. Apply Schema & Seed Dataset
 ```bash
-cd ../backend
+# 1. Initialize schema, PostGIS extensions, and TimescaleDB hypertables
+Get-Content backend\migrations\000001_init_schema.up.sql | docker exec -i rudra-postgres psql -U rudra -d rudra_netra
 
-# Run API & WebSocket server
-go run ./cmd/rudra-api
+# 2. Seed initial multi-tenant accounts, vehicles, and geofence polygons
+Get-Content backend\scripts\seed.sql | docker exec -i rudra-postgres psql -U rudra -d rudra_netra
+```
 
-# Run GPS TCP Ingest server
+### 3. Run Backend Services (Go)
+```bash
+cd backend
+
+# Terminal 1: GPS Ingestion Engine (TCP :5040)
 go run ./cmd/rudra-ingest
 
-# Run Background Worker
+# Terminal 2: REST API & Real-time WebSocket Hub (HTTP :8080)
+go run ./cmd/rudra-api
+
+# Terminal 3: Background Worker (Alerts & Reports)
 go run ./cmd/rudra-worker
 ```
 
-### 3. Run Frontend
+### 4. Run Frontend Applications (pnpm)
 ```bash
-cd ../frontend
-
-# Install dependencies
+cd frontend
 pnpm install
 
-# Start Client Live Tracking Dashboard (http://localhost:3000)
+# Start Client Fleet Portal (http://localhost:3000)
 pnpm dev:client
 
 # Start Admin Management Portal (http://localhost:3001)
@@ -101,8 +196,50 @@ pnpm dev:admin
 
 ---
 
-## 🧪 Testing the Teltonika Codec
+## 🧪 Testing the Teltonika Codec 8 Parser
+
+The AVL parser includes byte-accurate unit tests with real Teltonika sample hex frames:
+
 ```bash
 cd backend
 go test -v ./internal/codec
 ```
+
+---
+
+## 📁 Project Layout
+
+```text
+RudraNetra/
+├── backend/
+│   ├── cmd/
+│   │   ├── rudra-api/          # REST API & WebSocket gateway
+│   │   ├── rudra-ingest/       # High-throughput TCP AVL listener (:5040)
+│   │   └── rudra-worker/       # Background geofence worker & scheduled reports
+│   ├── internal/
+│   │   ├── codec/              # Teltonika Codec 8 / 8 Extended binary parser
+│   │   ├── config/             # Viper centralized configuration
+│   │   ├── domain/             # Position, Vehicle, Geofence, Device models
+│   │   ├── handler/            # Gin HTTP & WebSocket route controllers
+│   │   ├── repository/         # TimescaleDB & PostGIS spatial repositories
+│   │   ├── service/            # Tracking, Geofence evaluation, Auth services
+│   │   └── websocket/          # Real-time WebSocket client connection hub
+│   ├── migrations/             # Versioned SQL migrations (PostGIS + Timescale)
+│   └── scripts/                # Database seed data scripts
+├── frontend/
+│   ├── apps/
+│   │   ├── client/             # Live tracking, playback, geofence fleet app (:3000)
+│   │   └── admin/              # Multi-tenant company provisioning portal (:3001)
+│   └── packages/
+│       └── ui/                 # Reusable UI component library (<RudraNetraLogo />)
+├── infra/
+│   ├── docker-compose.yml      # Orchestration for TimescaleDB, Redis, NATS, Apps
+│   └── nginx/                  # Reverse proxy configuration
+└── docs/
+    └── assets/                 # Brand logos and high-res UI screenshots
+```
+
+---
+
+## 📄 License
+Enterprise Telematics Platform. All rights reserved.
