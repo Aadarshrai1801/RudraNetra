@@ -6,6 +6,8 @@ node_modules/
 dist/
 build/
 bin/
+.vite/
+.vite-temp/
 
 # Environment and sensitive keys
 .env

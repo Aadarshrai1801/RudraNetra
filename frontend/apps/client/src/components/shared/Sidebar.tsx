@@ -1,126 +1,153 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import {
-  Navigation,
-  LayoutDashboard,
-  Layers,
+  Crosshair,
+  Gauge,
   History,
-  FileSpreadsheet,
+  Layers,
   Cpu,
   Truck,
-  Bell,
-  Settings,
-  ShieldCheck,
+  FileText,
+  AlertOctagon,
+  Sliders,
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
   return (
     <aside className="sidebar">
+      {/* Brand Header */}
       <div className="sidebar-brand">
         <div
-          className="brand-icon"
           style={{
             background: '#ffffff',
-            borderRadius: '10px',
-            padding: '3px 4px',
+            borderRadius: '2px',
+            padding: '2px 4px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            boxShadow: '0 0 16px rgba(249, 115, 22, 0.4)',
-            border: '1px solid rgba(255, 255, 255, 0.3)',
+            border: '1px solid var(--line)',
           }}
         >
           <img
             src="/RudraNetraLogo.png"
             alt="RudraNetra"
-            style={{ width: '32px', height: 'auto', objectFit: 'contain' }}
+            style={{ width: '28px', height: 'auto', objectFit: 'contain' }}
           />
         </div>
-        <div>
-          <div className="brand-title">RudraNetra</div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+          <span className="brand-title">RudraNetra</span>
+          <span
+            className="mono-num"
+            style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}
+          >
+            OPS v2.4
+          </span>
         </div>
       </div>
 
+      {/* Nav Menu with Logical Section Grouping */}
       <nav className="nav-menu">
-        <NavLink
-          to="/live"
-          className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-        >
-          <Navigation size={18} />
-          <span>Live Tracking</span>
-        </NavLink>
+        {/* MONITORING GROUP */}
+        <div className="sidebar-group">
+          <div className="sidebar-section-title">Monitoring</div>
 
-        <NavLink
-          to="/dashboard"
-          className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-        >
-          <LayoutDashboard size={18} />
-          <span>Dashboard</span>
-        </NavLink>
+          <NavLink
+            to="/live"
+            className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+          >
+            <Crosshair size={16} strokeWidth={2.2} />
+            <span>Live Tracking</span>
+          </NavLink>
 
-        <NavLink
-          to="/playback"
-          className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-        >
-          <History size={18} />
-          <span>Route Playback</span>
-        </NavLink>
+          <NavLink
+            to="/dashboard"
+            className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+          >
+            <Gauge size={16} strokeWidth={2.2} />
+            <span>Dashboard</span>
+          </NavLink>
 
-        <NavLink
-          to="/geofences"
-          className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-        >
-          <Layers size={18} />
-          <span>Geofences & POI</span>
-        </NavLink>
+          <NavLink
+            to="/playback"
+            className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+          >
+            <History size={16} strokeWidth={2.2} />
+            <span>Route Playback</span>
+          </NavLink>
+        </div>
 
-        <NavLink
-          to="/devices"
-          className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-        >
-          <Cpu size={18} />
-          <span>Devices & Hardware</span>
-        </NavLink>
+        <div style={{ height: '1px', background: 'var(--line)', margin: '8px 16px' }} />
 
-        <NavLink
-          to="/fleet"
-          className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-        >
-          <Truck size={18} />
-          <span>Fleet Operations</span>
-        </NavLink>
+        {/* CONFIGURATION GROUP */}
+        <div className="sidebar-group">
+          <div className="sidebar-section-title">Configuration</div>
 
-        <NavLink
-          to="/reports"
-          className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-        >
-          <FileSpreadsheet size={18} />
-          <span>Reports & Analytics</span>
-        </NavLink>
+          <NavLink
+            to="/geofences"
+            className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+          >
+            <Layers size={16} strokeWidth={2.2} />
+            <span>Geofences & POI</span>
+          </NavLink>
 
-        <NavLink
-          to="/alerts"
-          className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-        >
-          <Bell size={18} />
-          <span>Alerts & Rules</span>
-        </NavLink>
+          <NavLink
+            to="/devices"
+            className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+          >
+            <Cpu size={16} strokeWidth={2.2} />
+            <span>Devices & Hardware</span>
+          </NavLink>
 
-        <NavLink
-          to="/settings"
-          className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-        >
-          <Settings size={18} />
-          <span>System Settings</span>
-        </NavLink>
+          <NavLink
+            to="/fleet"
+            className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+          >
+            <Truck size={16} strokeWidth={2.2} />
+            <span>Fleet Operations</span>
+          </NavLink>
+
+          <NavLink
+            to="/reports"
+            className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+          >
+            <FileText size={16} strokeWidth={2.2} />
+            <span>Reports & Export</span>
+          </NavLink>
+
+          <NavLink
+            to="/alerts"
+            className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+          >
+            <AlertOctagon size={16} strokeWidth={2.2} />
+            <span>Alerts & Rules</span>
+          </NavLink>
+
+          <NavLink
+            to="/settings"
+            className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+          >
+            <Sliders size={16} strokeWidth={2.2} />
+            <span>System Settings</span>
+          </NavLink>
+        </div>
       </nav>
 
-      <div style={{ padding: '16px 20px', borderTop: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <ShieldCheck size={20} color="#10b981" />
-        <div>
-          <div style={{ fontSize: '0.8rem', fontWeight: 600 }}>Active Fleet Server</div>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Go + TimescaleDB</div>
+      {/* Industrial System Telemetry Status Footer */}
+      <div className="sidebar-footer">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span
+            style={{
+              width: '5px',
+              height: '5px',
+              background: 'var(--signal-green)',
+              display: 'inline-block',
+            }}
+          />
+          <span style={{ fontSize: '0.68rem' }}>INGEST :5040</span>
         </div>
+        <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+          TIMESCALEDB
+        </span>
       </div>
     </aside>
   );

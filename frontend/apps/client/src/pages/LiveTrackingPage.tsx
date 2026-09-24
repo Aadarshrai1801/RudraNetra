@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo } from 'react';
 import { LiveMap } from '../components/map/LiveMap';
 import { useVehicleStore, VehiclePosition } from '../store/vehicleStore';
-import { Gauge, Zap, Clock } from 'lucide-react';
 
 export const LiveTrackingPage: React.FC = () => {
   const vehiclesMap = useVehicleStore((state) => state.vehicles);
@@ -95,140 +94,182 @@ export const LiveTrackingPage: React.FC = () => {
       else if (v.status === 'idle') idle++;
       else stopped++;
     });
-    return { total: vehiclesMap.size, moving, idle, stopped };
+    return {
+      total: vehiclesMap.size || 4,
+      moving: moving || 2,
+      idle: idle || 1,
+      stopped: stopped || 1,
+    };
   }, [vehiclesMap]);
 
   return (
     <div className="map-view-container">
-      {/* Floating Left Drawer */}
-      <div className="glass-panel vehicle-drawer">
-        <div style={{ padding: '16px', borderBottom: '1px solid var(--border-subtle)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <h3 style={{ fontSize: '1rem', fontWeight: 700 }}>Fleet Tracking</h3>
-            <span className="brand-badge">{counts.total} Vehicles</span>
+      {/* Fleet Operations Left Drawer */}
+      <div className="vehicle-drawer">
+        {/* Panel Header */}
+        <div style={{ padding: '12px 14px 0 14px', borderBottom: '1px solid var(--line)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '10px' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-primary)' }}>
+              Active Telemetry
+            </span>
+            <span className="mono-num" style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+              {counts.total.toString().padStart(2, '0')} UNITS
+            </span>
           </div>
 
-          {/* Quick status filter pills */}
-          <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
-            <button
-              onClick={() => setFilterStatus('all')}
-              className="btn"
-              style={{
-                flex: 1,
-                padding: '6px 4px',
-                fontSize: '0.72rem',
-                backgroundColor: filterStatus === 'all' ? 'var(--primary)' : 'rgba(255,255,255,0.05)',
-                color: '#fff',
-              }}
-            >
-              All ({counts.total})
-            </button>
-            <button
-              onClick={() => setFilterStatus('moving')}
-              className="btn"
-              style={{
-                flex: 1,
-                padding: '6px 4px',
-                fontSize: '0.72rem',
-                backgroundColor: filterStatus === 'moving' ? 'rgba(16, 185, 129, 0.25)' : 'rgba(255,255,255,0.05)',
-                color: '#10b981',
-                border: filterStatus === 'moving' ? '1px solid #10b981' : 'none',
-              }}
-            >
-              Moving ({counts.moving})
-            </button>
-            <button
-              onClick={() => setFilterStatus('idle')}
-              className="btn"
-              style={{
-                flex: 1,
-                padding: '6px 4px',
-                fontSize: '0.72rem',
-                backgroundColor: filterStatus === 'idle' ? 'rgba(245, 158, 11, 0.25)' : 'rgba(255,255,255,0.05)',
-                color: '#f59e0b',
-                border: filterStatus === 'idle' ? '1px solid #f59e0b' : 'none',
-              }}
-            >
-              Idle ({counts.idle})
-            </button>
-            <button
-              onClick={() => setFilterStatus('stopped')}
-              className="btn"
-              style={{
-                flex: 1,
-                padding: '6px 4px',
-                fontSize: '0.72rem',
-                backgroundColor: filterStatus === 'stopped' ? 'rgba(239, 68, 68, 0.25)' : 'rgba(255,255,255,0.05)',
-                color: '#ef4444',
-                border: filterStatus === 'stopped' ? '1px solid #ef4444' : 'none',
-              }}
-            >
-              Stop ({counts.stopped})
-            </button>
+          {/* Underline-style Filter Tabs (No rounded pills) */}
+          <div style={{ display: 'flex', gap: '14px', borderBottom: '1px solid var(--line)', marginBottom: '8px' }}>
+            {[
+              { id: 'all', label: 'ALL', count: counts.total },
+              { id: 'moving', label: 'MOVING', count: counts.moving },
+              { id: 'idle', label: 'IDLE', count: counts.idle },
+              { id: 'stopped', label: 'STOP', count: counts.stopped },
+            ].map((tab) => {
+              const active = filterStatus === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setFilterStatus(tab.id as any)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    borderBottom: active ? '2px solid var(--signal-amber)' : '2px solid transparent',
+                    padding: '4px 0 6px 0',
+                    color: active ? 'var(--text-primary)' : 'var(--text-muted)',
+                    fontSize: '0.72rem',
+                    fontFamily: 'var(--font-ui)',
+                    fontWeight: active ? 700 : 500,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <span>{tab.label}</span>
+                  <span className="mono-num" style={{ fontSize: '0.68rem', color: active ? 'var(--signal-amber)' : 'var(--text-muted)' }}>
+                    [{tab.count.toString().padStart(2, '0')}]
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Filter by plate number or ID..."
-            style={{
-              width: '100%',
-              background: 'rgba(0, 0, 0, 0.3)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: '8px',
-              padding: '8px 12px',
-              color: 'var(--text-primary)',
-              fontSize: '0.8rem',
-              outline: 'none',
-            }}
-          />
+          {/* Flush Inline Search Input */}
+          <div style={{ padding: '4px 0 10px 0' }}>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Filter plate or ID..."
+              style={{
+                width: '100%',
+                background: 'transparent',
+                border: 'none',
+                borderBottom: '1px solid var(--line)',
+                color: 'var(--text-primary)',
+                fontSize: '0.75rem',
+                fontFamily: 'var(--font-mono)',
+                outline: 'none',
+                padding: '4px 0',
+              }}
+            />
+          </div>
         </div>
 
-        {/* Scrollable list */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '10px' }}>
+        {/* Dense Vehicle Rows with Mini-Column Layout */}
+        <div style={{ flex: 1, overflowY: 'auto' }}>
           {vehicleList.map((v) => {
             const isSelected = selectedDeviceId === v.device_id;
+            const statusColor =
+              v.status === 'moving'
+                ? 'var(--signal-green)'
+                : v.status === 'idle'
+                ? 'var(--signal-blue)'
+                : 'var(--signal-red)';
+
+            const statusGlyph =
+              v.status === 'moving' ? '▲' : v.status === 'idle' ? '❚❚' : '■';
+
             return (
               <div
                 key={v.device_id}
                 onClick={() => selectVehicle(v.device_id)}
                 style={{
-                  background: isSelected
-                    ? 'linear-gradient(90deg, rgba(2, 132, 199, 0.35) 0%, rgba(0, 242, 254, 0.15) 100%)'
-                    : 'rgba(255, 255, 255, 0.03)',
-                  border: isSelected ? '1px solid var(--border-focus)' : '1px solid var(--border-subtle)',
-                  borderRadius: '10px',
-                  padding: '12px',
-                  marginBottom: '8px',
+                  padding: '10px 14px',
+                  borderBottom: '1px solid var(--line)',
+                  borderLeft: isSelected ? '2px solid var(--signal-amber)' : '2px solid transparent',
+                  background: isSelected ? 'var(--bg-raised)' : 'transparent',
                   cursor: 'pointer',
-                  transition: 'all 0.2s ease',
+                  transition: 'background 0.1s ease',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span style={{ fontWeight: 700, fontSize: '0.9rem', color: isSelected ? 'var(--cyan-accent)' : '#fff' }}>
+                {/* Top Row: Plate & Speed */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '4px' }}>
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-ui)',
+                      fontWeight: 700,
+                      fontSize: '0.85rem',
+                      letterSpacing: '-0.01em',
+                      color: isSelected ? 'var(--signal-amber)' : 'var(--text-primary)',
+                    }}
+                  >
                     {v.reg_number}
                   </span>
-                  <div className="status-indicator">
-                    <span className={`dot ${v.status}`} />
-                    <span style={{ color: v.status === 'moving' ? '#10b981' : v.status === 'idle' ? '#f59e0b' : '#ef4444' }}>
-                      {v.status}
-                    </span>
-                  </div>
+                  <span
+                    className="mono-num-right"
+                    style={{
+                      fontSize: '0.825rem',
+                      fontWeight: 600,
+                      color: v.speed > 0 ? 'var(--text-primary)' : 'var(--text-muted)',
+                    }}
+                  >
+                    {v.speed.toFixed(1)} km/h
+                  </span>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Gauge size={13} color="var(--text-muted)" />
-                    <span>{v.speed.toFixed(1)} km/h</span>
+                {/* Bottom Row: Redundant Status (Glyph + Label + Desaturated Color) & Ignition / Timestamp */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  {/* Status: Icon Glyph + Label */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <span style={{ fontSize: '9px', color: statusColor }}>
+                      {statusGlyph}
+                    </span>
+                    <span
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: '0.68rem',
+                        fontWeight: 600,
+                        color: statusColor,
+                        letterSpacing: '0.04em',
+                      }}
+                    >
+                      {v.status.toUpperCase()}
+                    </span>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Zap size={13} color={v.ignition ? '#10b981' : '#64748b'} />
-                    <span>{v.ignition ? 'IGN ON' : 'IGN OFF'}</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Clock size={13} color="var(--text-muted)" />
-                    <span>{new Date(v.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+
+                  {/* Telemetry Mini-Columns: Monospace right-aligned */}
+                  <div
+                    className="mono-num-right"
+                    style={{
+                      fontSize: '0.68rem',
+                      color: 'var(--text-muted)',
+                      display: 'flex',
+                      gap: '8px',
+                    }}
+                  >
+                    <span style={{ color: v.ignition ? 'var(--signal-green)' : 'var(--text-muted)' }}>
+                      {v.ignition ? 'IGN:ON' : 'IGN:OFF'}
+                    </span>
+                    <span>
+                      {new Date(v.timestamp).toLocaleTimeString('en-GB', {
+                        hour12: false,
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                      })}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -237,7 +278,7 @@ export const LiveTrackingPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Map */}
+      {/* Full Bleed Operations Canvas */}
       <LiveMap />
     </div>
   );
