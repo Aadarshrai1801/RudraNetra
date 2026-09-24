@@ -38,7 +38,6 @@ export const Sidebar: React.FC = () => {
         </div>
         <div>
           <div className="brand-title">RudraNetra</div>
-          <span className="brand-badge">NextGen V2</span>
         </div>
       </div>
 
