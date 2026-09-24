@@ -281,87 +281,119 @@ export const Header: React.FC = () => {
         {/* Divider */}
         <div style={{ width: '1px', height: '24px', background: 'var(--border)' }} />
 
-        {/* Organization Tenant Badge */}
+        {/* Organization Tenant Button with Equal Spacing */}
         <div
           style={{
-            display: 'flex',
+            display: 'inline-flex',
             alignItems: 'center',
-            gap: '8px',
-            padding: '5px 12px',
-            background: 'rgba(0, 242, 254, 0.08)',
-            border: '1px solid rgba(0, 242, 254, 0.25)',
+            justifyContent: 'center',
+            gap: '10px',
+            padding: '6px 14px',
+            background: 'var(--bg-page)',
+            border: '1px solid var(--border)',
             borderRadius: 'var(--radius-full)',
+            boxShadow: 'var(--shadow-sm)',
           }}
         >
-          <Building2 size={14} color="var(--cyan-accent)" />
-          <span style={{ fontSize: '0.825rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+          <Building2 size={15} color="var(--accent)" style={{ flexShrink: 0 }} />
+          <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
             {companyName}
           </span>
           <span
             style={{
-              fontSize: '0.725rem',
+              fontSize: '0.75rem',
               fontWeight: 700,
               padding: '2px 8px',
-              borderRadius: '10px',
-              background: user?.company_id === 2 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(0, 242, 254, 0.2)',
-              color: user?.company_id === 2 ? '#34d399' : 'var(--cyan-accent)',
+              borderRadius: 'var(--radius-full)',
+              background: user?.company_id === 2 ? 'var(--good-bg)' : 'var(--accent-light)',
+              color: user?.company_id === 2 ? 'var(--good)' : 'var(--accent)',
+              border: user?.company_id === 2 ? '1px solid var(--good-border)' : '1px solid rgba(47, 111, 109, 0.2)',
+              whiteSpace: 'nowrap',
             }}
           >
             {vehicleCount} Vehicles
           </span>
         </div>
 
-        {/* User Profile */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div
-            style={{
-              width: '36px',
-              height: '36px',
-              borderRadius: 'var(--radius-full)',
-              background: 'var(--accent-light)',
-              color: 'var(--accent)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontWeight: 700,
-              fontSize: '0.85rem',
-              border: '1px solid var(--border)',
-            }}
-          >
-            {userInitials}
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-              {userDisplayName}
-            </span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-              {userRole}
-            </span>
-          </div>
-        </div>
-
-        {/* Logout / Switch Account */}
-        <button
-          onClick={handleLogout}
-          title="Sign out of organization"
+        {/* User Profile / Admin Button with Exit button placed right UNDER it */}
+        <div
           style={{
             display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            background: 'rgba(239, 68, 68, 0.1)',
-            border: '1px solid rgba(239, 68, 68, 0.25)',
-            borderRadius: 'var(--radius-md)',
-            padding: '6px 10px',
-            color: '#f87171',
-            fontSize: '0.775rem',
-            fontWeight: 600,
-            cursor: 'pointer',
-            transition: 'all 0.15s ease',
+            flexDirection: 'column',
+            alignItems: 'flex-end',
+            justifyContent: 'center',
+            gap: '3px',
           }}
         >
-          <LogOut size={13} />
-          <span>Exit</span>
-        </button>
+          {/* Admin Button Profile */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              cursor: 'default',
+            }}
+          >
+            <div
+              style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: 'var(--radius-full)',
+                background: 'var(--accent-light)',
+                color: 'var(--accent)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontWeight: 700,
+                fontSize: '0.8rem',
+                border: '1px solid var(--border)',
+                flexShrink: 0,
+              }}
+            >
+              {userInitials}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.15 }}>
+              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                {userDisplayName}
+              </span>
+              <span style={{ fontSize: '0.725rem', color: 'var(--text-secondary)' }}>
+                {userRole}
+              </span>
+            </div>
+          </div>
+
+          {/* Exit Button: positioned directly UNDER admin button */}
+          <button
+            onClick={handleLogout}
+            title="Sign out of organization"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              background: 'rgba(239, 68, 68, 0.08)',
+              border: '1px solid rgba(239, 68, 68, 0.22)',
+              borderRadius: 'var(--radius-sm)',
+              padding: '2px 8px',
+              color: '#dc2626',
+              fontSize: '0.7rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+              lineHeight: 1.2,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(239, 68, 68, 0.16)';
+              e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)';
+              e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.22)';
+            }}
+          >
+            <LogOut size={11} />
+            <span>Exit</span>
+          </button>
+        </div>
       </div>
     </header>
   );
