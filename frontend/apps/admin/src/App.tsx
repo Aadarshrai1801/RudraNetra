@@ -89,36 +89,8 @@ export const App: React.FC = () => {
             </div>
           </div>
 
-          {/* Cluster Status Readout & Client Console Switcher */}
+          {/* Client Console Switcher */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            {/* Cluster Status Pill */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                background: 'var(--good-bg)',
-                border: '1px solid var(--good-border)',
-                borderRadius: 'var(--radius-full)',
-                padding: '5px 12px',
-              }}
-            >
-              <span
-                style={{
-                  width: '7px',
-                  height: '7px',
-                  borderRadius: '50%',
-                  backgroundColor: 'var(--good)',
-                  display: 'inline-block',
-                }}
-              />
-              <span
-                className="mono-num"
-                style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--good)' }}
-              >
-                UAE Cluster Healthy · Shard 01 · Ingest Active
-              </span>
-            </div>
 
             {/* Quick Switch to Fleet Dispatch Console */}
             <a

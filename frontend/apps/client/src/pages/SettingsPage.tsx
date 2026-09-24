@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   CheckCircle2,
   Building,
@@ -9,18 +9,65 @@ import {
   Plus,
 } from 'lucide-react';
 
+interface FleetSettings {
+  companyName: string;
+  contactManager: string;
+  contactPhone: string;
+  cityRegion: string;
+  idleMinutes: string;
+  speedThreshold: string;
+}
+
+const defaultSettings: FleetSettings = {
+  companyName: 'Allied Transport UAE',
+  contactManager: 'Operations Manager',
+  contactPhone: '+971 4 8800000',
+  cityRegion: 'Dubai, United Arab Emirates',
+  idleMinutes: '20',
+  speedThreshold: '80',
+};
+
+const defaultDevices = [
+  { id: 101, vehicle: '95321', type: 'Standard GPS unit (Teltonika FMB920)', status: 'Connected', sim: '+971 50 198 1240' },
+  { id: 102, vehicle: '82561', type: 'Standard GPS unit (Teltonika FMB920)', status: 'Connected', sim: '+971 50 198 1241' },
+  { id: 106, vehicle: '84707', type: 'Standard GPS unit (Teltonika FMB920)', status: 'Connected', sim: '+971 50 198 1242' },
+  { id: 104, vehicle: '99292', type: 'Standard GPS unit (Teltonika FMB920)', status: 'Connected', sim: '+971 50 198 1243' },
+  { id: 184, vehicle: '33566', type: 'Standard GPS unit (Teltonika FMB920)', status: 'Connected', sim: '+971 50 198 1244' },
+];
+
 export const SettingsPage: React.FC = () => {
   const [saved, setSaved] = useState(false);
   const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
   const [isAddDeviceOpen, setIsAddDeviceOpen] = useState(false);
 
-  const [devices, setDevices] = useState([
-    { id: 101, vehicle: '95321', type: 'Standard GPS unit (Teltonika FMB920)', status: 'Connected', sim: '+971 50 198 1240' },
-    { id: 102, vehicle: '82561', type: 'Standard GPS unit (Teltonika FMB920)', status: 'Connected', sim: '+971 50 198 1241' },
-    { id: 106, vehicle: '84707', type: 'Standard GPS unit (Teltonika FMB920)', status: 'Connected', sim: '+971 50 198 1242' },
-    { id: 104, vehicle: '99292', type: 'Standard GPS unit (Teltonika FMB920)', status: 'Connected', sim: '+971 50 198 1243' },
-    { id: 184, vehicle: '33566', type: 'Standard GPS unit (Teltonika FMB920)', status: 'Connected', sim: '+971 50 198 1244' },
-  ]);
+  const [settings, setSettings] = useState<FleetSettings>(() => {
+    const savedData = localStorage.getItem('rudra_settings');
+    if (savedData) {
+      try {
+        return JSON.parse(savedData);
+      } catch (err) {
+        console.warn('Failed to parse saved settings', err);
+      }
+    }
+    return defaultSettings;
+  });
+
+  const [devices, setDevices] = useState(() => {
+    const savedData = localStorage.getItem('rudra_settings_devices');
+    if (savedData) {
+      try {
+        const parsed = JSON.parse(savedData);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (err) {
+        console.warn('Failed to parse saved settings devices', err);
+      }
+    }
+    return defaultDevices;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('rudra_settings_devices', JSON.stringify(devices));
+  }, [devices]);
 
   const [newDevice, setNewDevice] = useState({
     vehiclePlate: '',
@@ -29,6 +76,7 @@ export const SettingsPage: React.FC = () => {
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    localStorage.setItem('rudra_settings', JSON.stringify(settings));
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
   };
@@ -162,7 +210,8 @@ export const SettingsPage: React.FC = () => {
               </label>
               <input
                 type="text"
-                defaultValue="Allied Transport UAE"
+                value={settings.companyName}
+                onChange={(e) => setSettings({ ...settings, companyName: e.target.value })}
                 style={{
                   width: '100%',
                   padding: '10px 14px',
@@ -182,7 +231,8 @@ export const SettingsPage: React.FC = () => {
               </label>
               <input
                 type="text"
-                defaultValue="Operations Manager"
+                value={settings.contactManager}
+                onChange={(e) => setSettings({ ...settings, contactManager: e.target.value })}
                 style={{
                   width: '100%',
                   padding: '10px 14px',
@@ -202,7 +252,8 @@ export const SettingsPage: React.FC = () => {
               </label>
               <input
                 type="text"
-                defaultValue="+971 4 8800000"
+                value={settings.contactPhone}
+                onChange={(e) => setSettings({ ...settings, contactPhone: e.target.value })}
                 style={{
                   width: '100%',
                   padding: '10px 14px',
@@ -222,7 +273,8 @@ export const SettingsPage: React.FC = () => {
               </label>
               <input
                 type="text"
-                defaultValue="Dubai, United Arab Emirates"
+                value={settings.cityRegion}
+                onChange={(e) => setSettings({ ...settings, cityRegion: e.target.value })}
                 style={{
                   width: '100%',
                   padding: '10px 14px',
@@ -253,7 +305,8 @@ export const SettingsPage: React.FC = () => {
                 Notify when vehicle is waiting with engine on
               </label>
               <select
-                defaultValue="20"
+                value={settings.idleMinutes}
+                onChange={(e) => setSettings({ ...settings, idleMinutes: e.target.value })}
                 style={{
                   width: '100%',
                   padding: '10px 14px',
@@ -276,7 +329,8 @@ export const SettingsPage: React.FC = () => {
                 Highway speed alert threshold
               </label>
               <select
-                defaultValue="80"
+                value={settings.speedThreshold}
+                onChange={(e) => setSettings({ ...settings, speedThreshold: e.target.value })}
                 style={{
                   width: '100%',
                   padding: '10px 14px',

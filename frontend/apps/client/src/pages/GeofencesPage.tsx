@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Plus,
   MapPin,
@@ -64,7 +64,22 @@ const initialPlaces: SavedPlace[] = [
 ];
 
 export const GeofencesPage: React.FC = () => {
-  const [zones, setZones] = useState<ZoneItem[]>(initialZones);
+  const [zones, setZones] = useState<ZoneItem[]>(() => {
+    const saved = localStorage.getItem('rudra_geofences');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (err) {
+        console.warn('Failed to parse saved geofences from localStorage', err);
+      }
+    }
+    return initialZones;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('rudra_geofences', JSON.stringify(zones));
+  }, [zones]);
   const [places] = useState<SavedPlace[]>(initialPlaces);
   const [activeTab, setActiveTab] = useState<'zones' | 'places'>('zones');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);

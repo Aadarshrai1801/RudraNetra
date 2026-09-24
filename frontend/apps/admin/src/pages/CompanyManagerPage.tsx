@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Building2,
   Plus,
@@ -73,7 +73,23 @@ const initialCompanies: TenantCompany[] = [
 ];
 
 export const CompanyManagerPage: React.FC = () => {
-  const [companies, setCompanies] = useState<TenantCompany[]>(initialCompanies);
+  const [companies, setCompanies] = useState<TenantCompany[]>(() => {
+    const saved = localStorage.getItem('rudra_admin_companies');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (err) {
+        console.warn('Failed to parse saved companies from localStorage', err);
+      }
+    }
+    return initialCompanies;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('rudra_admin_companies', JSON.stringify(companies));
+  }, [companies]);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'Active' | 'Suspended'>('ALL');
 

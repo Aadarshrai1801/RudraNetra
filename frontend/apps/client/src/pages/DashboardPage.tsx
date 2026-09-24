@@ -157,6 +157,21 @@ export const DashboardPage: React.FC = () => {
 
   const handleDispatchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const newPass = {
+      passNo: `GP-${Date.now().toString().slice(-4)}`,
+      vehicle: dispatchForm.vehicle,
+      driver: dispatchForm.driver,
+      destination: dispatchForm.destination,
+      issuedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      status: 'In Transit' as const,
+    };
+    try {
+      const saved = localStorage.getItem('rudra_gate_passes');
+      const list = saved ? JSON.parse(saved) : [];
+      localStorage.setItem('rudra_gate_passes', JSON.stringify([newPass, ...list]));
+    } catch (err) {
+      console.warn('Failed to save route to gate passes', err);
+    }
     setIsDispatchModalOpen(false);
     showToast(`Delivery route created for ${dispatchForm.vehicle} to ${dispatchForm.destination}`);
   };

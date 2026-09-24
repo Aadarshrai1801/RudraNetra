@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, Bell } from 'lucide-react';
 import { useWebSocket } from '../../hooks/useWebSocket';
 
@@ -10,32 +10,49 @@ export interface UserNotification {
   read: boolean;
 }
 
+const defaultNotifications: UserNotification[] = [
+  {
+    id: 1,
+    title: 'Vehicle on route',
+    message: '95321 left the yard and is heading along the DWC Logistics Corridor.',
+    time: '12:42 pm',
+    read: false,
+  },
+  {
+    id: 2,
+    title: 'Zone departure',
+    message: '84707 departed the Jebel Ali Free Zone Port area.',
+    time: '12:35 pm',
+    read: false,
+  },
+  {
+    id: 3,
+    title: 'Engine idle reminder',
+    message: '82561 has been waiting with engine running for 25 minutes at New Batha Corridor.',
+    time: '12:15 pm',
+    read: true,
+  },
+];
+
 export const Header: React.FC = () => {
   const { isConnected } = useWebSocket();
   const [showNotifications, setShowNotifications] = useState(false);
-  const [notifications, setNotifications] = useState<UserNotification[]>([
-    {
-      id: 1,
-      title: 'Vehicle on route',
-      message: '95321 left the yard and is heading along the DWC Logistics Corridor.',
-      time: '12:42 pm',
-      read: false,
-    },
-    {
-      id: 2,
-      title: 'Zone departure',
-      message: '84707 departed the Jebel Ali Free Zone Port area.',
-      time: '12:35 pm',
-      read: false,
-    },
-    {
-      id: 3,
-      title: 'Engine idle reminder',
-      message: '82561 has been waiting with engine running for 25 minutes at New Batha Corridor.',
-      time: '12:15 pm',
-      read: true,
-    },
-  ]);
+  const [notifications, setNotifications] = useState<UserNotification[]>(() => {
+    const saved = localStorage.getItem('rudra_user_notifications');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (err) {
+        console.warn('Failed to parse saved notifications from localStorage', err);
+      }
+    }
+    return defaultNotifications;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('rudra_user_notifications', JSON.stringify(notifications));
+  }, [notifications]);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 

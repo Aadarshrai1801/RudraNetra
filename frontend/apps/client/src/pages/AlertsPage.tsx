@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   CheckCircle2,
   Phone,
@@ -82,8 +82,39 @@ const initialRules: AlertRule[] = [
 ];
 
 export const AlertsPage: React.FC = () => {
-  const [alerts, setAlerts] = useState<AlertItem[]>(initialAlerts);
-  const [rules, setRules] = useState<AlertRule[]>(initialRules);
+  const [alerts, setAlerts] = useState<AlertItem[]>(() => {
+    const saved = localStorage.getItem('rudra_fleet_alerts');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (err) {
+        console.warn('Failed to parse saved alerts from localStorage', err);
+      }
+    }
+    return initialAlerts;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('rudra_fleet_alerts', JSON.stringify(alerts));
+  }, [alerts]);
+
+  const [rules, setRules] = useState<AlertRule[]>(() => {
+    const saved = localStorage.getItem('rudra_alert_rules');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (err) {
+        console.warn('Failed to parse saved alert rules from localStorage', err);
+      }
+    }
+    return initialRules;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('rudra_alert_rules', JSON.stringify(rules));
+  }, [rules]);
   const [activeTab, setActiveTab] = useState<'alerts' | 'rules'>('alerts');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 

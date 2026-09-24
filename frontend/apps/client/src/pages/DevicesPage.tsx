@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Cpu, Plus, ShieldCheck, Wifi, Link2, X, Check } from 'lucide-react';
 
 interface DeviceItem {
@@ -66,7 +66,22 @@ const initialDevices: DeviceItem[] = [
 ];
 
 export const DevicesPage: React.FC = () => {
-  const [devices, setDevices] = useState<DeviceItem[]>(initialDevices);
+  const [devices, setDevices] = useState<DeviceItem[]>(() => {
+    const saved = localStorage.getItem('rudra_devices');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (err) {
+        console.warn('Failed to parse saved devices from localStorage', err);
+      }
+    }
+    return initialDevices;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('rudra_devices', JSON.stringify(devices));
+  }, [devices]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);

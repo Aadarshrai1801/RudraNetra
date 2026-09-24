@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, X, CheckCircle2 } from 'lucide-react';
 
 interface GatePass {
@@ -48,7 +48,22 @@ const mockDrivers: Driver[] = [
 ];
 
 export const FleetPage: React.FC = () => {
-  const [gatePasses, setGatePasses] = useState<GatePass[]>(mockGatePasses);
+  const [gatePasses, setGatePasses] = useState<GatePass[]>(() => {
+    const saved = localStorage.getItem('rudra_gate_passes');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (err) {
+        console.warn('Failed to parse saved gate passes from localStorage', err);
+      }
+    }
+    return mockGatePasses;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('rudra_gate_passes', JSON.stringify(gatePasses));
+  }, [gatePasses]);
   const [activeTab, setActiveTab] = useState<'gatepasses' | 'lr' | 'drivers'>('gatepasses');
   const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
