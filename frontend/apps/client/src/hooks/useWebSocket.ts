@@ -8,7 +8,11 @@ export function useWebSocket() {
 
   const connect = useCallback(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/tracking`;
+    const host =
+      window.location.port !== '8080' && window.location.hostname === 'localhost'
+        ? 'localhost:8080'
+        : window.location.host;
+    const wsUrl = `${protocol}//${host}/ws/tracking`;
 
     const ws = new WebSocket(wsUrl);
     socketRef.current = ws;

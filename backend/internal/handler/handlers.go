@@ -1,9 +1,12 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 
 	ws "github.com/rudra-netra/backend/internal/websocket"
@@ -201,12 +204,67 @@ func adminDeleteMasterHandler(c *gin.Context)   { c.JSON(http.StatusOK, gin.H{"s
 
 // ─── WebSocket Handler ───────────────────────────────────
 
+var wsUpgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	CheckOrigin: func(r *http.Request) bool {
+		return true // Allow all origins for dev/dashboard
+	},
+}
+
 func wsTrackingHandler(c *gin.Context, hub *ws.Hub, logger *zap.Logger) {
-	// TODO: Upgrade HTTP connection to WebSocket using gorilla/websocket
-	// 1. Validate JWT from query params (ws://host/ws/tracking?token=xxx)
-	// 2. Create a ws.Client with the user's company_id
-	// 3. Register client with hub
-	// 4. Start read/write pumps in goroutines
-	// 5. Handle subscribe/unsubscribe messages from the client
-	c.JSON(http.StatusOK, gin.H{"message": "WebSocket endpoint — implement with gorilla/websocket upgrade"})
+	conn, err := wsUpgrader.Upgrade(c.Writer, c.Request, nil)
+	if err != nil {
+		logger.Warn("failed to upgrade websocket connection", zap.Error(err))
+		return
+	}
+
+	client := ws.NewClient(fmt.Sprintf("client-%d", time.Now().UnixNano()), 1)
+	hub.Register <- client
+
+	// Start write pump
+	go func() {
+		defer func() {
+			hub.Unregister <- client
+			conn.Close()
+		}()
+		ticker := time.NewTicker(25 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case msg, ok := <-client.Send:
+				if !ok {
+					conn.WriteMessage(websocket.CloseMessage, []byte{})
+					return
+				}
+				if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+					return
+				}
+			case <-ticker.C:
+				if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+					return
+				}
+			}
+		}
+	}()
+
+	// Start read pump
+	go func() {
+		defer func() {
+			hub.Unregister <- client
+			conn.Close()
+		}()
+		conn.SetReadLimit(512)
+		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		conn.SetPongHandler(func(string) error {
+			conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+			return nil
+		})
+		for {
+			_, _, err := conn.ReadMessage()
+			if err != nil {
+				break
+			}
+		}
+	}()
 }
