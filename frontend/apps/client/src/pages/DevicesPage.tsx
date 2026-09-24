@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Cpu, Plus, ShieldCheck, Wifi, Link2, X, Check } from 'lucide-react';
+import { Cpu, Plus, ShieldCheck, Wifi, Link2, X, Check, Trash2 } from 'lucide-react';
+import { fetchWithAuth } from '../utils/api';
+import { useAuthStore } from '../store/authStore';
 
 interface DeviceItem {
   id: number;
@@ -12,76 +14,10 @@ interface DeviceItem {
   warrantyEnd: string;
 }
 
-const initialDevices: DeviceItem[] = [
-  {
-    id: 101,
-    imei: '866907059076488',
-    protocol: 'TELTONIKA_FMB920',
-    simNo: '+971501981240',
-    port: 5040,
-    assignedVehicle: '95321',
-    status: 'active',
-    warrantyEnd: '2028-12-31',
-  },
-  {
-    id: 102,
-    imei: '866907059452911',
-    protocol: 'TELTONIKA_FMB920',
-    simNo: '+971501981241',
-    port: 5040,
-    assignedVehicle: '82561',
-    status: 'active',
-    warrantyEnd: '2028-12-31',
-  },
-  {
-    id: 106,
-    imei: '866907058849653',
-    protocol: 'TELTONIKA_FMB920',
-    simNo: '+971501981242',
-    port: 5040,
-    assignedVehicle: '84707',
-    status: 'active',
-    warrantyEnd: '2028-12-31',
-  },
-  {
-    id: 104,
-    imei: '866907059155027',
-    protocol: 'TELTONIKA_FMB920',
-    simNo: '+971501981243',
-    port: 5040,
-    assignedVehicle: '99292',
-    status: 'active',
-    warrantyEnd: '2028-12-31',
-  },
-  {
-    id: 184,
-    imei: '866907058443366',
-    protocol: 'TELTONIKA_FMB920',
-    simNo: '+971501981244',
-    port: 5040,
-    assignedVehicle: '33566',
-    status: 'active',
-    warrantyEnd: '2028-12-31',
-  },
-];
-
 export const DevicesPage: React.FC = () => {
-  const [devices, setDevices] = useState<DeviceItem[]>(() => {
-    const saved = localStorage.getItem('rudra_devices');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch (err) {
-        console.warn('Failed to parse saved devices from localStorage', err);
-      }
-    }
-    return initialDevices;
-  });
-
-  useEffect(() => {
-    localStorage.setItem('rudra_devices', JSON.stringify(devices));
-  }, [devices]);
+  const user = useAuthStore((state) => state.user);
+  const [devices, setDevices] = useState<DeviceItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -91,7 +27,7 @@ export const DevicesPage: React.FC = () => {
     protocol: 'TELTONIKA_FMB920',
     simNo: '+97150',
     port: 5040,
-    assignedVehicle: 'DXB-E-55102',
+    assignedVehicle: '',
   });
 
   const showToast = (msg: string) => {
@@ -99,31 +35,68 @@ export const DevicesPage: React.FC = () => {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  const loadDevices = async () => {
+    setLoading(true);
+    try {
+      const res = await fetchWithAuth('/api/v1/devices');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+          setDevices(json.data);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load devices from DB:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDevices();
+  }, [user?.company_id]);
+
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTracker.imei) return;
 
-    const created: DeviceItem = {
-      id: 100 + devices.length + 1,
-      imei: newTracker.imei,
-      protocol: newTracker.protocol,
-      simNo: newTracker.simNo,
-      port: Number(newTracker.port) || 5040,
-      assignedVehicle: newTracker.assignedVehicle,
-      status: 'active',
-      warrantyEnd: '2028-12-31',
-    };
+    try {
+      const res = await fetchWithAuth('/api/v1/devices', {
+        method: 'POST',
+        body: JSON.stringify(newTracker),
+      });
 
-    setDevices((prev) => [...prev, created]);
-    setIsRegisterModalOpen(false);
-    setNewTracker({
-      imei: '',
-      protocol: 'TELTONIKA_FMB920',
-      simNo: '+97150',
-      port: 5040,
-      assignedVehicle: '',
-    });
-    showToast(`Tracker IMEI ${created.imei} provisioned on TCP :5040.`);
+      if (res.ok) {
+        showToast(`Tracker IMEI ${newTracker.imei} registered successfully in database.`);
+        setIsRegisterModalOpen(false);
+        setNewTracker({
+          imei: '',
+          protocol: 'TELTONIKA_FMB920',
+          simNo: '+97150',
+          port: 5040,
+          assignedVehicle: '',
+        });
+        loadDevices();
+      } else {
+        showToast('Failed to register device.');
+      }
+    } catch (err) {
+      showToast('Error registering tracker.');
+    }
+  };
+
+  const handleDeleteDevice = async (id: number, imei: string) => {
+    try {
+      const res = await fetchWithAuth(`/api/v1/devices/${id}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setDevices((prev) => prev.filter((d) => d.id !== id));
+        showToast(`Tracker IMEI ${imei} deleted.`);
+      }
+    } catch (err) {
+      showToast('Failed to delete device.');
+    }
   };
 
   const filtered = devices.filter(
@@ -214,41 +187,73 @@ export const DevicesPage: React.FC = () => {
                 <th style={{ padding: '12px 10px' }}>Linked Vehicle</th>
                 <th style={{ padding: '12px 10px' }}>Status</th>
                 <th style={{ padding: '12px 10px' }}>Warranty</th>
+                <th style={{ padding: '12px 10px', textAlign: 'right' }}>Action</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((d) => (
-                <tr key={d.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '14px 10px', fontWeight: 600 }}>{d.id}</td>
-                  <td style={{ padding: '14px 10px', fontFamily: 'var(--font-mono)', color: 'var(--cyan-accent)', fontWeight: 600 }}>
-                    {d.imei}
+              {loading ? (
+                <tr>
+                  <td colSpan={9} style={{ padding: '30px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                    Loading hardware trackers from database…
                   </td>
-                  <td style={{ padding: '14px 10px' }}>{d.protocol}</td>
-                  <td style={{ padding: '14px 10px', fontFamily: 'var(--font-mono)' }}>{d.simNo}</td>
-                  <td style={{ padding: '14px 10px', fontFamily: 'var(--font-mono)' }}>:{d.port}</td>
-                  <td style={{ padding: '14px 10px', fontWeight: 700, color: '#fff' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Link2 size={14} color="#10b981" />
-                      {d.assignedVehicle}
-                    </div>
-                  </td>
-                  <td style={{ padding: '14px 10px' }}>
-                    <span
-                      style={{
-                        padding: '2px 8px',
-                        borderRadius: '4px',
-                        fontSize: '0.7rem',
-                        fontWeight: 700,
-                        background: 'rgba(16,185,129,0.15)',
-                        color: '#10b981',
-                      }}
-                    >
-                      {d.status.toUpperCase()}
-                    </span>
-                  </td>
-                  <td style={{ padding: '14px 10px', color: 'var(--text-muted)' }}>{d.warrantyEnd}</td>
                 </tr>
-              ))}
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={9} style={{ padding: '30px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                    No telematics devices found for this organization.
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((d) => (
+                  <tr key={d.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                    <td style={{ padding: '14px 10px', fontWeight: 600 }}>{d.id}</td>
+                    <td style={{ padding: '14px 10px', fontFamily: 'var(--font-mono)', color: 'var(--cyan-accent)', fontWeight: 600 }}>
+                      {d.imei}
+                    </td>
+                    <td style={{ padding: '14px 10px' }}>{d.protocol}</td>
+                    <td style={{ padding: '14px 10px', fontFamily: 'var(--font-mono)' }}>{d.simNo || '—'}</td>
+                    <td style={{ padding: '14px 10px', fontFamily: 'var(--font-mono)' }}>:{d.port}</td>
+                    <td style={{ padding: '14px 10px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Link2 size={14} color="#10b981" />
+                        {d.assignedVehicle || 'Unassigned'}
+                      </div>
+                    </td>
+                    <td style={{ padding: '14px 10px' }}>
+                      <span
+                        style={{
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          fontSize: '0.7rem',
+                          fontWeight: 700,
+                          background: 'rgba(16,185,129,0.15)',
+                          color: '#10b981',
+                        }}
+                      >
+                        {d.status.toUpperCase()}
+                      </span>
+                    </td>
+                    <td style={{ padding: '14px 10px', color: 'var(--text-muted)' }}>{d.warrantyEnd}</td>
+                    <td style={{ padding: '14px 10px', textAlign: 'right' }}>
+                      <button
+                        onClick={() => handleDeleteDevice(d.id, d.imei)}
+                        title="Delete tracker"
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--text-muted)',
+                          cursor: 'pointer',
+                          padding: '4px',
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
+                        onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

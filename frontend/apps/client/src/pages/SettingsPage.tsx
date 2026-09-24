@@ -8,6 +8,8 @@ import {
   ChevronUp,
   Plus,
 } from 'lucide-react';
+import { fetchWithAuth } from '../utils/api';
+import { useAuthStore } from '../store/authStore';
 
 interface FleetSettings {
   companyName: string;
@@ -18,86 +20,106 @@ interface FleetSettings {
   speedThreshold: string;
 }
 
-const defaultSettings: FleetSettings = {
-  companyName: 'Allied Transport UAE',
-  contactManager: 'Operations Manager',
-  contactPhone: '+971 4 8800000',
-  cityRegion: 'Dubai, United Arab Emirates',
-  idleMinutes: '20',
-  speedThreshold: '80',
-};
-
-const defaultDevices = [
-  { id: 101, vehicle: '95321', type: 'Standard GPS unit (Teltonika FMB920)', status: 'Connected', sim: '+971 50 198 1240' },
-  { id: 102, vehicle: '82561', type: 'Standard GPS unit (Teltonika FMB920)', status: 'Connected', sim: '+971 50 198 1241' },
-  { id: 106, vehicle: '84707', type: 'Standard GPS unit (Teltonika FMB920)', status: 'Connected', sim: '+971 50 198 1242' },
-  { id: 104, vehicle: '99292', type: 'Standard GPS unit (Teltonika FMB920)', status: 'Connected', sim: '+971 50 198 1243' },
-  { id: 184, vehicle: '33566', type: 'Standard GPS unit (Teltonika FMB920)', status: 'Connected', sim: '+971 50 198 1244' },
-];
+interface DeviceItem {
+  id: number;
+  vehicle: string;
+  type: string;
+  status: string;
+  sim: string;
+}
 
 export const SettingsPage: React.FC = () => {
+  const user = useAuthStore((state) => state.user);
   const [saved, setSaved] = useState(false);
   const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
   const [isAddDeviceOpen, setIsAddDeviceOpen] = useState(false);
 
-  const [settings, setSettings] = useState<FleetSettings>(() => {
-    const savedData = localStorage.getItem('rudra_settings');
-    if (savedData) {
-      try {
-        return JSON.parse(savedData);
-      } catch (err) {
-        console.warn('Failed to parse saved settings', err);
-      }
-    }
-    return defaultSettings;
+  const [settings, setSettings] = useState<FleetSettings>({
+    companyName: user?.company_name || 'Fleet Organization',
+    contactManager: user?.full_name || 'Operations Lead',
+    contactPhone: '+971 4 8800000',
+    cityRegion: 'Dubai, United Arab Emirates',
+    idleMinutes: '20',
+    speedThreshold: '80',
   });
 
-  const [devices, setDevices] = useState(() => {
-    const savedData = localStorage.getItem('rudra_settings_devices');
-    if (savedData) {
-      try {
-        const parsed = JSON.parse(savedData);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch (err) {
-        console.warn('Failed to parse saved settings devices', err);
-      }
-    }
-    return defaultDevices;
-  });
-
-  useEffect(() => {
-    localStorage.setItem('rudra_settings_devices', JSON.stringify(devices));
-  }, [devices]);
+  const [devices, setDevices] = useState<DeviceItem[]>([]);
+  const [loadingDevices, setLoadingDevices] = useState(true);
 
   const [newDevice, setNewDevice] = useState({
     vehiclePlate: '',
     simNumber: '',
   });
 
+  const loadDevices = async () => {
+    setLoadingDevices(true);
+    try {
+      const res = await fetchWithAuth('/api/v1/devices');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+          setDevices(
+            json.data.map((d: any) => ({
+              id: d.id,
+              vehicle: d.assignedVehicle || `DEV-${d.imei?.slice(-5) || d.id}`,
+              type: d.protocol || 'Standard GPS unit (Teltonika FMB920)',
+              status: d.status || 'Connected',
+              sim: d.simNo || '+971 50 198 1240',
+            }))
+          );
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load devices:', err);
+    } finally {
+      setLoadingDevices(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user?.company_name) {
+      setSettings((prev) => ({
+        ...prev,
+        companyName: user.company_name,
+        contactManager: user.full_name || prev.contactManager,
+      }));
+    }
+    loadDevices();
+  }, [user?.company_id, user?.company_name]);
+
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    localStorage.setItem('rudra_settings', JSON.stringify(settings));
+    localStorage.setItem(`rudra_settings_${user?.company_id || 1}`, JSON.stringify(settings));
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
   };
 
-  const handleAddDevice = (e: React.FormEvent) => {
+  const handleAddDevice = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newDevice.vehiclePlate) return;
-    setDevices([
-      ...devices,
-      {
-        id: 100 + devices.length + 1,
-        vehicle: newDevice.vehiclePlate,
-        type: 'Standard GPS unit',
-        status: 'Connected',
-        sim: newDevice.simNumber || '+971 50 000 0000',
-      },
-    ]);
-    setNewDevice({ vehiclePlate: '', simNumber: '' });
-    setIsAddDeviceOpen(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+    try {
+      const imei = String(Math.floor(866907000000000 + Math.random() * 99999999));
+      const res = await fetchWithAuth('/api/v1/devices', {
+        method: 'POST',
+        body: JSON.stringify({
+          imei,
+          assignedVehicle: newDevice.vehiclePlate,
+          simNo: newDevice.simNumber || '+971 50 999 1234',
+          protocol: 'TELTONIKA_FMB920',
+          port: 5040,
+        }),
+      });
+
+      if (res.ok) {
+        loadDevices();
+        setNewDevice({ vehiclePlate: '', simNumber: '' });
+        setIsAddDeviceOpen(false);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 3000);
+      }
+    } catch (err) {
+      console.error('Failed to create device:', err);
+    }
   };
 
   return (
@@ -112,7 +134,7 @@ export const SettingsPage: React.FC = () => {
         </p>
       </div>
 
-      {/* System Health Status — One calm plain line */}
+      {/* System Health Status */}
       <div
         style={{
           background: 'var(--good-bg)',
@@ -138,7 +160,7 @@ export const SettingsPage: React.FC = () => {
                 All systems working normally
               </span>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                GPS tracking, live maps, and notifications are fully operational.
+                GPS tracking, live maps, and notifications are fully operational for {settings.companyName}.
               </p>
             </div>
           </div>
@@ -163,7 +185,7 @@ export const SettingsPage: React.FC = () => {
           </button>
         </div>
 
-        {/* Technical Details behind secondary tap */}
+        {/* Technical Details */}
         {showTechnicalDetails && (
           <div
             style={{
@@ -376,43 +398,53 @@ export const SettingsPage: React.FC = () => {
           </div>
 
           {/* List of hardware units */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {devices.map((d) => (
-              <div
-                key={d.id}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  padding: '14px 18px',
-                  background: 'var(--bg-page)',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--border)',
-                  flexWrap: 'wrap',
-                  gap: '10px',
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
-                    {d.vehicle}
+          {loadingDevices ? (
+            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+              Loading registered tracking devices...
+            </div>
+          ) : devices.length === 0 ? (
+            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+              No tracking units registered yet.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '420px', overflowY: 'auto' }}>
+              {devices.map((d) => (
+                <div
+                  key={d.id}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '14px 18px',
+                    background: 'var(--bg-page)',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border)',
+                    flexWrap: 'wrap',
+                    gap: '10px',
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+                      {d.vehicle}
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                      {d.type} · SIM: {d.sim}
+                    </div>
                   </div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                    {d.type} · SIM: {d.sim}
-                  </div>
-                </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <span className="badge badge-good">
-                    <span className="status-dot status-dot-good" />
-                    <span>{d.status}</span>
-                  </span>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>
-                    Device #{d.id}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span className="badge badge-good">
+                      <span className="status-dot status-dot-good" />
+                      <span>{d.status}</span>
+                    </span>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>
+                      Device #{d.id}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
 
           {/* Add Device Mini Modal */}
           {isAddDeviceOpen && (

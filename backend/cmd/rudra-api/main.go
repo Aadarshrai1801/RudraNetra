@@ -70,6 +70,7 @@ func main() {
 		Users:     userRepo,
 		Vehicles:  vehicleRepo,
 		Companies: companyRepo,
+		Pool:      db.Pool,
 	}
 	handler.RegisterRoutes(router, deps)
 

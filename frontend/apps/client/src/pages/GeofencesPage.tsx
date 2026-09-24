@@ -4,7 +4,10 @@ import {
   MapPin,
   CheckCircle2,
   X,
+  Trash2,
 } from 'lucide-react';
+import { fetchWithAuth } from '../utils/api';
+import { useAuthStore } from '../store/authStore';
 
 interface ZoneItem {
   id: number;
@@ -24,63 +27,11 @@ interface SavedPlace {
   address: string;
 }
 
-const initialZones: ZoneItem[] = [
-  {
-    id: 1,
-    name: 'Jebel Ali Port & Freezone',
-    type: 'Delivery port zone',
-    speedLimit: 40,
-    alertOnEnter: true,
-    alertOnExit: true,
-    areaKm2: 18.4,
-    activeVehicles: 2,
-  },
-  {
-    id: 2,
-    name: 'DXB Cargo Terminal Gate 4',
-    type: 'Airport cargo hub',
-    speedLimit: 30,
-    alertOnEnter: true,
-    alertOnExit: true,
-    areaKm2: 6.2,
-    activeVehicles: 1,
-  },
-  {
-    id: 3,
-    name: 'Al Quoz Central Warehouse',
-    type: 'Main depot & yard',
-    speedLimit: 20,
-    alertOnEnter: true,
-    alertOnExit: true,
-    areaKm2: 2.1,
-    activeVehicles: 1,
-  },
-];
-
-const initialPlaces: SavedPlace[] = [
-  { id: 1, name: 'ENOC Service Station 1042', category: 'Fuel station', address: 'Sheikh Zayed Rd, Exit 43' },
-  { id: 2, name: 'EPPCO Depot Al Quoz', category: 'Fuel & maintenance', address: 'Al Asayel St, Al Quoz 3' },
-  { id: 3, name: 'JAFZA Customer Service Center', category: 'Client terminal', address: 'JAFZA 14 Building' },
-];
-
 export const GeofencesPage: React.FC = () => {
-  const [zones, setZones] = useState<ZoneItem[]>(() => {
-    const saved = localStorage.getItem('rudra_geofences');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch (err) {
-        console.warn('Failed to parse saved geofences from localStorage', err);
-      }
-    }
-    return initialZones;
-  });
-
-  useEffect(() => {
-    localStorage.setItem('rudra_geofences', JSON.stringify(zones));
-  }, [zones]);
-  const [places] = useState<SavedPlace[]>(initialPlaces);
+  const user = useAuthStore((state) => state.user);
+  const [zones, setZones] = useState<ZoneItem[]>([]);
+  const [places, setPlaces] = useState<SavedPlace[]>([]);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'zones' | 'places'>('zones');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -97,23 +48,71 @@ export const GeofencesPage: React.FC = () => {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  const handleCreateZone = (e: React.FormEvent) => {
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [zonesRes, placesRes] = await Promise.all([
+        fetchWithAuth('/api/v1/geofences'),
+        fetchWithAuth('/api/v1/poi'),
+      ]);
+
+      if (zonesRes.ok) {
+        const json = await zonesRes.json();
+        if (json.success && Array.isArray(json.data)) {
+          setZones(json.data);
+        }
+      }
+
+      if (placesRes.ok) {
+        const json = await placesRes.json();
+        if (json.success && Array.isArray(json.data)) {
+          setPlaces(json.data);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load geofences from DB:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, [user?.company_id]);
+
+  const handleCreateZone = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newZone.name) return;
-    const created: ZoneItem = {
-      id: Date.now(),
-      name: newZone.name,
-      type: 'Custom delivery zone',
-      speedLimit: Number(newZone.speedLimit) || 40,
-      areaKm2: 3.5,
-      alertOnEnter: newZone.alertOnEnter,
-      alertOnExit: newZone.alertOnExit,
-      activeVehicles: 0,
-    };
-    setZones((prev) => [...prev, created]);
-    setIsCreateModalOpen(false);
-    setNewZone({ name: '', speedLimit: 40, alertOnEnter: true, alertOnExit: true });
-    showToast(`Zone "${created.name}" created successfully.`);
+    try {
+      const res = await fetchWithAuth('/api/v1/geofences', {
+        method: 'POST',
+        body: JSON.stringify(newZone),
+      });
+      if (res.ok) {
+        showToast(`Zone "${newZone.name}" created successfully in database.`);
+        setIsCreateModalOpen(false);
+        setNewZone({ name: '', speedLimit: 40, alertOnEnter: true, alertOnExit: true });
+        loadData();
+      } else {
+        showToast('Failed to create zone.');
+      }
+    } catch (err) {
+      showToast('Error creating zone in database.');
+    }
+  };
+
+  const handleDeleteZone = async (id: number, name: string) => {
+    try {
+      const res = await fetchWithAuth(`/api/v1/geofences/${id}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setZones((prev) => prev.filter((z) => z.id !== id));
+        showToast(`Zone "${name}" removed.`);
+      }
+    } catch (err) {
+      showToast('Failed to delete zone.');
+    }
   };
 
   return (
@@ -180,69 +179,102 @@ export const GeofencesPage: React.FC = () => {
 
       {/* Zones Tab */}
       {activeTab === 'zones' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
-          {zones.map((z) => (
-            <div key={z.id} className="card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
-                <div>
-                  <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    {z.name}
-                  </h3>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px', display: 'block' }}>
-                    {z.type}
-                  </span>
-                </div>
-
-                <span className={z.activeVehicles > 0 ? 'badge badge-good' : 'badge badge-neutral'}>
-                  <span className={z.activeVehicles > 0 ? 'status-dot status-dot-good' : 'status-dot status-dot-neutral'} />
-                  <span>{z.activeVehicles > 0 ? `${z.activeVehicles} vehicles inside` : 'No vehicles inside'}</span>
-                </span>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '0.875rem', marginBottom: '16px' }}>
-                <div>
-                  <span style={{ color: 'var(--text-secondary)' }}>Speed limit:</span>{' '}
-                  <strong style={{ color: 'var(--text-primary)' }}>{z.speedLimit} km/h</strong>
-                </div>
-                <div>
-                  <span style={{ color: 'var(--text-secondary)' }}>Zone area:</span>{' '}
-                  <strong style={{ color: 'var(--text-primary)' }}>{z.areaKm2} km²</strong>
-                </div>
-                <div>
-                  <span style={{ color: 'var(--text-secondary)' }}>Entry alert:</span>{' '}
-                  <strong style={{ color: z.alertOnEnter ? 'var(--good)' : 'var(--text-tertiary)' }}>
-                    {z.alertOnEnter ? 'On' : 'Off'}
-                  </strong>
-                </div>
-                <div>
-                  <span style={{ color: 'var(--text-secondary)' }}>Exit alert:</span>{' '}
-                  <strong style={{ color: z.alertOnExit ? 'var(--good)' : 'var(--text-tertiary)' }}>
-                    {z.alertOnExit ? 'On' : 'Off'}
-                  </strong>
-                </div>
-              </div>
-
-              <div style={{ paddingTop: '14px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>
-                  Automatic alerts enabled
-                </span>
-                <button
-                  onClick={() => showToast(`Zone boundaries opened for editing`)}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--accent)',
-                    fontSize: '0.85rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Edit zone →
-                </button>
-              </div>
+        <>
+          {loading ? (
+            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+              Loading zones from database…
             </div>
-          ))}
-        </div>
+          ) : zones.length === 0 ? (
+            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+              No zones configured for this organization yet.
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+              {zones.map((z) => (
+                <div key={z.id} className="card">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
+                    <div>
+                      <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                        {z.name}
+                      </h3>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px', display: 'block' }}>
+                        {z.type}
+                      </span>
+                    </div>
+
+                    <span className={z.activeVehicles > 0 ? 'badge badge-good' : 'badge badge-neutral'}>
+                      <span className={z.activeVehicles > 0 ? 'status-dot status-dot-good' : 'status-dot status-dot-neutral'} />
+                      <span>{z.activeVehicles > 0 ? `${z.activeVehicles} vehicles inside` : 'No vehicles inside'}</span>
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '0.875rem', marginBottom: '16px' }}>
+                    <div>
+                      <span style={{ color: 'var(--text-secondary)' }}>Speed limit:</span>{' '}
+                      <strong style={{ color: 'var(--text-primary)' }}>{z.speedLimit} km/h</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--text-secondary)' }}>Zone area:</span>{' '}
+                      <strong style={{ color: 'var(--text-primary)' }}>{z.areaKm2} km²</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--text-secondary)' }}>Entry alert:</span>{' '}
+                      <strong style={{ color: z.alertOnEnter ? 'var(--good)' : 'var(--text-tertiary)' }}>
+                        {z.alertOnEnter ? 'On' : 'Off'}
+                      </strong>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--text-secondary)' }}>Exit alert:</span>{' '}
+                      <strong style={{ color: z.alertOnExit ? 'var(--good)' : 'var(--text-tertiary)' }}>
+                        {z.alertOnExit ? 'On' : 'Off'}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <div style={{ paddingTop: '14px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>
+                      Automatic alerts enabled
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <button
+                        onClick={() => handleDeleteZone(z.id, z.name)}
+                        title="Delete zone"
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--text-tertiary)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          padding: '4px',
+                          borderRadius: 'var(--radius-sm)',
+                          transition: 'color 0.15s ease',
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.color = '#dc2626')}
+                        onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-tertiary)')}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                      <button
+                        onClick={() => showToast(`Zone boundaries opened for editing`)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--accent)',
+                          fontSize: '0.85rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Edit zone →
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {/* Places Tab */}

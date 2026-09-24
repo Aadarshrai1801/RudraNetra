@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Search, Bell, Building2, LogOut } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Search, Bell, Building2, LogOut, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useAuthStore } from '../../store/authStore';
@@ -43,10 +43,7 @@ export const Header: React.FC = () => {
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
   const clearVehicles = useVehicleStore((state) => state.clearVehicles);
-  const vehiclesMap = useVehicleStore((state) => state.vehicles);
-  const totalCount = useVehicleStore((state) => state.totalCount);
 
-  const vehicleCount = totalCount || vehiclesMap.size;
   const companyName = user?.company_name || (user?.company_id === 2 ? 'EKSC Logistics Dubai' : 'Allied Transport UAE');
   const userDisplayName = user?.full_name || user?.username || 'Fleet Operator';
   const userRole = user?.role ? (user.role.charAt(0).toUpperCase() + user.role.slice(1)) : 'Admin';
@@ -57,6 +54,19 @@ export const Header: React.FC = () => {
     .join('')
     .substring(0, 2)
     .toUpperCase() || 'OP';
+
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -287,51 +297,36 @@ export const Header: React.FC = () => {
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: '10px',
-            padding: '6px 14px',
+            gap: '8px',
+            padding: '8px 16px',
             background: 'var(--bg-page)',
             border: '1px solid var(--border)',
             borderRadius: 'var(--radius-full)',
             boxShadow: 'var(--shadow-sm)',
           }}
         >
-          <Building2 size={15} color="var(--accent)" style={{ flexShrink: 0 }} />
-          <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+          <Building2 size={16} color="var(--accent)" style={{ flexShrink: 0 }} />
+          <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
             {companyName}
-          </span>
-          <span
-            style={{
-              fontSize: '0.75rem',
-              fontWeight: 700,
-              padding: '2px 8px',
-              borderRadius: 'var(--radius-full)',
-              background: user?.company_id === 2 ? 'var(--good-bg)' : 'var(--accent-light)',
-              color: user?.company_id === 2 ? 'var(--good)' : 'var(--accent)',
-              border: user?.company_id === 2 ? '1px solid var(--good-border)' : '1px solid rgba(47, 111, 109, 0.2)',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {vehicleCount} Vehicles
           </span>
         </div>
 
-        {/* User Profile / Admin Button with Exit button placed right UNDER it */}
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'flex-end',
-            justifyContent: 'center',
-            gap: '3px',
-          }}
-        >
-          {/* Admin Button Profile */}
-          <div
+        {/* User Profile / Admin Button with Exit button appearing on clicking Admin */}
+        <div style={{ position: 'relative' }} ref={userMenuRef}>
+          <button
+            onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+            aria-label="User account menu"
             style={{
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
-              cursor: 'default',
+              cursor: 'pointer',
+              background: isUserMenuOpen ? 'var(--bg-hover)' : 'transparent',
+              border: '1px solid',
+              borderColor: isUserMenuOpen ? 'var(--border)' : 'transparent',
+              borderRadius: 'var(--radius-md)',
+              padding: '4px 8px',
+              transition: 'all 0.15s ease',
             }}
           >
             <div
@@ -352,7 +347,7 @@ export const Header: React.FC = () => {
             >
               {userInitials}
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.15 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', lineHeight: 1.15 }}>
               <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
                 {userDisplayName}
               </span>
@@ -360,39 +355,72 @@ export const Header: React.FC = () => {
                 {userRole}
               </span>
             </div>
-          </div>
-
-          {/* Exit Button: positioned directly UNDER admin button */}
-          <button
-            onClick={handleLogout}
-            title="Sign out of organization"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px',
-              background: 'rgba(239, 68, 68, 0.08)',
-              border: '1px solid rgba(239, 68, 68, 0.22)',
-              borderRadius: 'var(--radius-sm)',
-              padding: '2px 8px',
-              color: '#dc2626',
-              fontSize: '0.7rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              transition: 'all 0.15s ease',
-              lineHeight: 1.2,
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'rgba(239, 68, 68, 0.16)';
-              e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.4)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)';
-              e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.22)';
-            }}
-          >
-            <LogOut size={11} />
-            <span>Exit</span>
+            <ChevronDown
+              size={14}
+              color="var(--text-secondary)"
+              style={{
+                transform: isUserMenuOpen ? 'rotate(180deg)' : 'none',
+                transition: 'transform 0.15s ease',
+                marginLeft: '2px',
+              }}
+            />
           </button>
+
+          {/* Exit button appears ONLY on clicking Admin */}
+          {isUserMenuOpen && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 'calc(100% + 8px)',
+                right: '0',
+                width: '170px',
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-md)',
+                boxShadow: 'var(--shadow-lg)',
+                padding: '6px',
+                zIndex: 100,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+              }}
+            >
+              <button
+                onClick={() => {
+                  setIsUserMenuOpen(false);
+                  handleLogout();
+                }}
+                title="Sign out of organization"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: 'rgba(239, 68, 68, 0.08)',
+                  border: '1px solid rgba(239, 68, 68, 0.22)',
+                  borderRadius: 'var(--radius-sm)',
+                  color: '#dc2626',
+                  fontSize: '0.825rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  textAlign: 'left',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(239, 68, 68, 0.16)';
+                  e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)';
+                  e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.22)';
+                }}
+              >
+                <LogOut size={14} />
+                <span>Exit</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </header>

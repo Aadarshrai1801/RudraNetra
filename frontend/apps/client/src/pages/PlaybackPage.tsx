@@ -2,6 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import maplibregl from 'maplibre-gl';
 import { Play, Pause, RotateCcw, Clock, Gauge, Calendar, Layers, Check } from 'lucide-react';
 import { FREE_DUBAI_MAP_STYLES } from '../components/map/LiveMap';
+import { useVehicleStore } from '../store/vehicleStore';
+import { useAuthStore } from '../store/authStore';
+import { fetchWithAuth } from '../utils/api';
 
 interface HistoryPoint {
   lat: number;
@@ -10,34 +13,24 @@ interface HistoryPoint {
   time: string;
 }
 
-// Realistic route points from legacy fleet telemetry (Jebel Ali Corridor)
-const sampleRoute: HistoryPoint[] = [
-  { lat: 24.982437, lng: 55.074723, speed: 8, time: '12:00 am' },
-  { lat: 24.984123, lng: 55.073558, speed: 28, time: '12:00 am' },
-  { lat: 24.992995, lng: 55.083850, speed: 17, time: '12:02 am' },
-  { lat: 24.990173, lng: 55.086768, speed: 33, time: '12:03 am' },
-  { lat: 24.989673, lng: 55.087497, speed: 32, time: '12:03 am' },
-  { lat: 24.993443, lng: 55.091397, speed: 63, time: '12:04 am' },
-  { lat: 24.995805, lng: 55.090547, speed: 65, time: '12:04 am' },
-  { lat: 25.003360, lng: 55.082610, speed: 12, time: '12:05 am' },
-  { lat: 25.010707, lng: 55.075503, speed: 28, time: '12:08 am' },
-  { lat: 25.010442, lng: 55.075338, speed: 25, time: '12:08 am' },
-  { lat: 25.010097, lng: 55.075583, speed: 26, time: '12:08 am' },
-  { lat: 25.003875, lng: 55.081262, speed: 7, time: '12:10 am' },
-  { lat: 25.002487, lng: 55.080205, speed: 0, time: '12:17 am' },
-  { lat: 25.001917, lng: 55.079392, speed: 13, time: '12:24 am' },
-  { lat: 25.002063, lng: 55.078773, speed: 12, time: '12:25 am' },
-];
-
 export const PlaybackPage: React.FC = () => {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markerRef = useRef<maplibregl.Marker | null>(null);
 
+  const user = useAuthStore((state) => state.user);
+  const token = useAuthStore((state) => state.token);
+  const vehiclesMap = useVehicleStore((state) => state.vehicles);
+  const fetchVehicles = useVehicleStore((state) => state.fetchVehicles);
+
+  const vehicleList = Array.from(vehiclesMap.values());
+  const [selectedVehicle, setSelectedVehicle] = useState<string>('');
+  const [routePoints, setRoutePoints] = useState<HistoryPoint[]>([]);
+  const [isLoadingRoute, setIsLoadingRoute] = useState(false);
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
-  const [selectedVehicle, setSelectedVehicle] = useState('33566');
   const [activeStyleId, setActiveStyleId] = useState<string>(() => {
     const saved = localStorage.getItem('rudra_dubai_map_style');
     if (saved && FREE_DUBAI_MAP_STYLES.some((s) => s.id === saved)) {
@@ -47,7 +40,96 @@ export const PlaybackPage: React.FC = () => {
   });
   const [isStyleMenuOpen, setIsStyleMenuOpen] = useState(false);
 
-  // Synchronize localStorage if previous selection was removed
+  // Ensure vehicles are loaded
+  useEffect(() => {
+    if (vehiclesMap.size === 0 && token) {
+      fetchVehicles(token, user?.company_id);
+    }
+  }, [user?.company_id, token]);
+
+  // Set initial selected vehicle when list loads
+  useEffect(() => {
+    if (vehicleList.length > 0) {
+      const exists = vehicleList.some((v) => v.reg_number === selectedVehicle);
+      if (!exists || !selectedVehicle) {
+        setSelectedVehicle(vehicleList[0].reg_number);
+      }
+    }
+  }, [vehicleList]);
+
+  // Fetch real route history for selected vehicle
+  useEffect(() => {
+    if (!selectedVehicle) return;
+
+    let isCancelled = false;
+    setIsLoadingRoute(true);
+
+    fetchWithAuth(`/api/v1/tracking/history/${selectedVehicle}`)
+      .then((res) => res.json())
+      .then((json) => {
+        if (isCancelled) return;
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          const pts: HistoryPoint[] = json.data.map((d: any) => ({
+            lat: d.lat,
+            lng: d.lng,
+            speed: Math.round(d.speed || 0),
+            time: d.time || '12:00 pm',
+          }));
+          setRoutePoints(pts);
+          setCurrentIndex(0);
+          setIsPlaying(false);
+
+          // Update map route source
+          const map = mapRef.current;
+          if (map && map.getSource('route')) {
+            const geoSource = map.getSource('route') as maplibregl.GeoJSONSource;
+            geoSource.setData({
+              type: 'Feature',
+              properties: {},
+              geometry: {
+                type: 'LineString',
+                coordinates: pts.map((p) => [p.lng, p.lat]),
+              },
+            });
+
+            if (pts.length > 0) {
+              map.easeTo({ center: [pts[0].lng, pts[0].lat], zoom: 12.5 });
+              if (markerRef.current) {
+                markerRef.current.setLngLat([pts[0].lng, pts[0].lat]);
+              }
+            }
+          }
+        } else {
+          setRoutePoints([]);
+          setCurrentIndex(0);
+          setIsPlaying(false);
+          const map = mapRef.current;
+          if (map && map.getSource('route')) {
+            const geoSource = map.getSource('route') as maplibregl.GeoJSONSource;
+            geoSource.setData({
+              type: 'Feature',
+              properties: {},
+              geometry: {
+                type: 'LineString',
+                coordinates: [],
+              },
+            });
+          }
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load tracking history:', err);
+      })
+      .finally(() => {
+        if (!isCancelled) setIsLoadingRoute(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedVehicle]);
+
+  // Synchronize localStorage
   useEffect(() => {
     const saved = localStorage.getItem('rudra_dubai_map_style');
     if (saved && !FREE_DUBAI_MAP_STYLES.some((s) => s.id === saved)) {
@@ -55,7 +137,7 @@ export const PlaybackPage: React.FC = () => {
     }
   }, []);
 
-  // Initialize Map with Free Dubai Basemaps
+  // Initialize Map
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
@@ -82,6 +164,10 @@ export const PlaybackPage: React.FC = () => {
       });
     });
 
+    const initialCenter: [number, number] = routePoints.length > 0
+      ? [routePoints[0].lng, routePoints[0].lat]
+      : [55.2341, 25.1382];
+
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
       style: {
@@ -89,12 +175,12 @@ export const PlaybackPage: React.FC = () => {
         sources: sourcesObj,
         layers: layersArr,
       },
-      center: [sampleRoute[0].lng, sampleRoute[0].lat],
+      center: initialCenter,
       zoom: 12.5,
     });
 
     map.on('load', () => {
-      const coordinates = sampleRoute.map((p) => [p.lng, p.lat]);
+      const coordinates = routePoints.map((p) => [p.lng, p.lat]);
 
       map.addSource('route', {
         type: 'geojson',
@@ -108,7 +194,6 @@ export const PlaybackPage: React.FC = () => {
         },
       });
 
-      // Soft quiet teal route line
       map.addLayer({
         id: 'route-line-bg',
         type: 'line',
@@ -133,7 +218,6 @@ export const PlaybackPage: React.FC = () => {
         },
       });
 
-      // Moving Vehicle Marker Element
       const el = document.createElement('div');
       el.className = 'vehicle-playback-marker';
       el.innerHTML = `
@@ -156,7 +240,7 @@ export const PlaybackPage: React.FC = () => {
       `;
 
       const marker = new maplibregl.Marker({ element: el })
-        .setLngLat([sampleRoute[0].lng, sampleRoute[0].lat])
+        .setLngLat(initialCenter)
         .addTo(map);
 
       markerRef.current = marker;
@@ -192,15 +276,15 @@ export const PlaybackPage: React.FC = () => {
   // Animation Loop for Playback
   useEffect(() => {
     let interval: any;
-    if (isPlaying) {
+    if (isPlaying && routePoints.length > 0) {
       interval = setInterval(() => {
         setCurrentIndex((prev) => {
-          if (prev >= sampleRoute.length - 1) {
+          if (prev >= routePoints.length - 1) {
             setIsPlaying(false);
             return prev;
           }
           const next = prev + 1;
-          const pt = sampleRoute[next];
+          const pt = routePoints[next];
           if (markerRef.current) {
             markerRef.current.setLngLat([pt.lng, pt.lat]);
           }
@@ -212,21 +296,28 @@ export const PlaybackPage: React.FC = () => {
       }, 1000 / playbackSpeed);
     }
     return () => clearInterval(interval);
-  }, [isPlaying, playbackSpeed]);
+  }, [isPlaying, playbackSpeed, routePoints]);
 
   const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const idx = parseInt(e.target.value, 10);
     setCurrentIndex(idx);
-    const pt = sampleRoute[idx];
-    if (markerRef.current) {
-      markerRef.current.setLngLat([pt.lng, pt.lat]);
-    }
-    if (mapRef.current) {
-      mapRef.current.easeTo({ center: [pt.lng, pt.lat], duration: 200 });
+    const pt = routePoints[idx];
+    if (pt) {
+      if (markerRef.current) {
+        markerRef.current.setLngLat([pt.lng, pt.lat]);
+      }
+      if (mapRef.current) {
+        mapRef.current.easeTo({ center: [pt.lng, pt.lat], duration: 200 });
+      }
     }
   };
 
-  const currentPoint = sampleRoute[currentIndex];
+  const currentPoint = routePoints[currentIndex] || routePoints[0] || {
+    lat: 25.1382,
+    lng: 55.2341,
+    speed: 0,
+    time: '12:00 pm',
+  };
   const currentStyle =
     FREE_DUBAI_MAP_STYLES.find((s) => s.id === activeStyleId) ||
     FREE_DUBAI_MAP_STYLES[0];
@@ -252,7 +343,7 @@ export const PlaybackPage: React.FC = () => {
             Trip history
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginTop: '2px' }}>
-            Review past routes, stops, and driving speed step-by-step.
+            Review past routes, stops, and driving speed step-by-step from real telemetry.
           </p>
         </div>
 
@@ -326,7 +417,7 @@ export const PlaybackPage: React.FC = () => {
             )}
           </div>
 
-          {/* Vehicle Selector */}
+          {/* Dynamic Vehicle Selector */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
               Vehicle:
@@ -342,13 +433,18 @@ export const PlaybackPage: React.FC = () => {
                 fontSize: '0.875rem',
                 fontFamily: 'var(--font-family)',
                 color: 'var(--text-primary)',
+                minWidth: '220px',
               }}
             >
-              <option value="33566">33566 (Mercedes-Benz 1843)</option>
-              <option value="95321">95321 (Volvo FH400)</option>
-              <option value="82561">82561 (Volvo FH400)</option>
-              <option value="84707">84707 (Volvo FH400)</option>
-              <option value="99292">99292 (Volvo FH400)</option>
+              {vehicleList.length === 0 ? (
+                <option value="">Loading vehicles…</option>
+              ) : (
+                vehicleList.map((v) => (
+                  <option key={v.reg_number} value={v.reg_number}>
+                    {v.reg_number} ({v.name || 'Vehicle'})
+                  </option>
+                ))
+              )}
             </select>
           </div>
 
@@ -389,7 +485,7 @@ export const PlaybackPage: React.FC = () => {
           <input
             type="range"
             min="0"
-            max={sampleRoute.length - 1}
+            max={Math.max(0, routePoints.length - 1)}
             value={currentIndex}
             onChange={handleSliderChange}
             style={{
@@ -400,7 +496,7 @@ export const PlaybackPage: React.FC = () => {
             }}
           />
           <span style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', minWidth: '65px', textAlign: 'right' }}>
-            {sampleRoute[sampleRoute.length - 1].time}
+            {routePoints[routePoints.length - 1]?.time || '12:00 pm'}
           </span>
         </div>
 
@@ -410,7 +506,10 @@ export const PlaybackPage: React.FC = () => {
             <button
               onClick={() => {
                 setCurrentIndex(0);
-                if (markerRef.current) markerRef.current.setLngLat([sampleRoute[0].lng, sampleRoute[0].lat]);
+                if (markerRef.current && routePoints.length > 0) {
+                  markerRef.current.setLngLat([routePoints[0].lng, routePoints[0].lat]);
+                  mapRef.current?.easeTo({ center: [routePoints[0].lng, routePoints[0].lat] });
+                }
               }}
               className="btn btn-secondary btn-sm"
               title="Reset to beginning"
@@ -422,6 +521,7 @@ export const PlaybackPage: React.FC = () => {
               onClick={() => setIsPlaying(!isPlaying)}
               className="btn btn-primary"
               style={{ minHeight: '38px', padding: '6px 18px', gap: '8px' }}
+              disabled={routePoints.length <= 1}
             >
               {isPlaying ? <Pause size={16} /> : <Play size={16} />}
               <span>{isPlaying ? 'Pause' : 'Play route'}</span>
@@ -459,7 +559,9 @@ export const PlaybackPage: React.FC = () => {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
               <Clock size={16} />
-              <span>Point {currentIndex + 1} of {sampleRoute.length}</span>
+              <span>
+                {isLoadingRoute ? 'Loading route…' : `Point ${currentIndex + 1} of ${routePoints.length}`}
+              </span>
             </div>
           </div>
         </div>

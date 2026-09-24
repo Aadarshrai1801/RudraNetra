@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, X, CheckCircle2 } from 'lucide-react';
+import { fetchWithAuth } from '../utils/api';
+import { useAuthStore } from '../store/authStore';
+import { useVehicleStore } from '../store/vehicleStore';
 
 interface GatePass {
   passNo: string;
@@ -29,48 +32,23 @@ interface Driver {
   status: 'Active' | 'On Leave';
 }
 
-const mockGatePasses: GatePass[] = [
-  { passNo: 'GP-2026-0901', vehicle: '95321', driver: 'Yog Raj Sharma', destination: 'Jebel Ali Port Terminal 2', issuedAt: '08:30 am', status: 'In Transit' },
-  { passNo: 'GP-2026-0902', vehicle: '82561', driver: 'Abdul Jelil', destination: 'New Batha In Logistics Zone', issuedAt: '09:15 am', status: 'In Transit' },
-  { passNo: 'GP-2026-0903', vehicle: '33566', driver: 'Salman Moufid', destination: 'Abu Dhabi Mina Free Port', issuedAt: '07:45 am', status: 'In Transit' },
-];
-
-const mockLRs: LoadingReceipt[] = [
-  { lrNo: 'LR-88410', party: 'NESTLE MIDDLE EAST FZE', vehicle: '95321', weightKg: 24500, freightAmt: 3200, advanceAmt: 1000, status: 'Completed' },
-  { lrNo: 'LR-88411', party: 'ABDULLAH ALI AL-SAIHATI CO.', vehicle: '82561', weightKg: 18200, freightAmt: 2850, advanceAmt: 800, status: 'Completed' },
-  { lrNo: 'LR-88412', party: 'RNA RESOURCES GROUP LIMITED', vehicle: '33566', weightKg: 28000, freightAmt: 4100, advanceAmt: 1500, status: 'Pending' },
-];
-
-const mockDrivers: Driver[] = [
-  { id: 1, name: 'Yog Raj Sharma', phone: '+971 50 1000050', licenseNo: 'DRV-101', assignedVehicle: '95321', status: 'Active' },
-  { id: 2, name: 'Abdul Jelil', phone: '+971 50 1000051', licenseNo: 'DRV-102', assignedVehicle: '82561', status: 'Active' },
-  { id: 3, name: 'Salman Moufid', phone: '+971 50 1000078', licenseNo: 'DRV-184', assignedVehicle: '33566', status: 'Active' },
-];
-
 export const FleetPage: React.FC = () => {
-  const [gatePasses, setGatePasses] = useState<GatePass[]>(() => {
-    const saved = localStorage.getItem('rudra_gate_passes');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch (err) {
-        console.warn('Failed to parse saved gate passes from localStorage', err);
-      }
-    }
-    return mockGatePasses;
-  });
+  const user = useAuthStore((state) => state.user);
+  const vehiclesMap = useVehicleStore((state) => state.vehicles);
+  const vehicleList = Array.from(vehiclesMap.values());
 
-  useEffect(() => {
-    localStorage.setItem('rudra_gate_passes', JSON.stringify(gatePasses));
-  }, [gatePasses]);
+  const [gatePasses, setGatePasses] = useState<GatePass[]>([]);
+  const [lrs, setLRs] = useState<LoadingReceipt[]>([]);
+  const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [loading, setLoading] = useState(true);
+
   const [activeTab, setActiveTab] = useState<'gatepasses' | 'lr' | 'drivers'>('gatepasses');
   const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const [newPass, setNewPass] = useState({
-    vehicle: '95321',
-    driver: 'Yog Raj Sharma',
+    vehicle: '',
+    driver: '',
     destination: 'Jebel Ali Freezone Gate 7',
   });
 
@@ -79,19 +57,75 @@ export const FleetPage: React.FC = () => {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  const handleCreatePass = (e: React.FormEvent) => {
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [gpRes, lrRes, drvRes] = await Promise.all([
+        fetchWithAuth('/api/v1/fleet/gate-passes'),
+        fetchWithAuth('/api/v1/fleet/lr'),
+        fetchWithAuth('/api/v1/drivers'),
+      ]);
+
+      if (gpRes.ok) {
+        const json = await gpRes.json();
+        if (json.success && Array.isArray(json.data)) {
+          setGatePasses(json.data);
+        }
+      }
+
+      if (lrRes.ok) {
+        const json = await lrRes.json();
+        if (json.success && Array.isArray(json.data)) {
+          setLRs(json.data);
+        }
+      }
+
+      if (drvRes.ok) {
+        const json = await drvRes.json();
+        if (json.success && Array.isArray(json.data)) {
+          setDrivers(json.data);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load fleet data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, [user?.company_id]);
+
+  useEffect(() => {
+    if (vehicleList.length > 0 && !newPass.vehicle) {
+      setNewPass((prev) => ({
+        ...prev,
+        vehicle: vehicleList[0].reg_number,
+        driver: vehicleList[0].driver_name || '',
+      }));
+    }
+  }, [vehicleList]);
+
+  const handleCreatePass = async (e: React.FormEvent) => {
     e.preventDefault();
-    const created: GatePass = {
-      passNo: `GP-${Date.now().toString().slice(-4)}`,
-      vehicle: newPass.vehicle,
-      driver: newPass.driver,
-      destination: newPass.destination,
-      issuedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      status: 'In Transit',
-    };
-    setGatePasses([created, ...gatePasses]);
-    setIsIssueModalOpen(false);
-    showToast(`Gate pass ${created.passNo} issued for ${created.vehicle}`);
+    try {
+      const res = await fetchWithAuth('/api/v1/fleet/gate-passes', {
+        method: 'POST',
+        body: JSON.stringify(newPass),
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        showToast(`Gate pass ${json.passNo || 'issued'} for ${newPass.vehicle} recorded in database.`);
+        setIsIssueModalOpen(false);
+        loadData();
+      } else {
+        showToast('Failed to create gate pass.');
+      }
+    } catch (err) {
+      showToast('Error issuing gate pass.');
+    }
   };
 
   return (
@@ -152,15 +186,21 @@ export const FleetPage: React.FC = () => {
           onClick={() => setActiveTab('lr')}
           className={activeTab === 'lr' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
         >
-          Delivery receipts ({mockLRs.length})
+          Delivery receipts ({lrs.length})
         </button>
         <button
           onClick={() => setActiveTab('drivers')}
           className={activeTab === 'drivers' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
         >
-          Drivers ({mockDrivers.length})
+          Drivers ({drivers.length})
         </button>
       </div>
+
+      {loading && (
+        <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+          Loading records from database...
+        </div>
+      )}
 
       {/* Gate Passes Tab */}
       {activeTab === 'gatepasses' && (
@@ -216,7 +256,7 @@ export const FleetPage: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {mockLRs.map((lr) => (
+              {lrs.map((lr) => (
                 <tr key={lr.lrNo} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                   <td style={{ padding: '16px 20px', fontWeight: 700, color: 'var(--accent)' }}>
                     {lr.lrNo}
@@ -257,7 +297,7 @@ export const FleetPage: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {mockDrivers.map((d) => (
+              {drivers.map((d) => (
                 <tr key={d.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                   <td style={{ padding: '16px 20px', fontWeight: 700, color: 'var(--text-primary)' }}>
                     {d.name}
@@ -340,7 +380,14 @@ export const FleetPage: React.FC = () => {
                 </label>
                 <select
                   value={newPass.vehicle}
-                  onChange={(e) => setNewPass({ ...newPass, vehicle: e.target.value })}
+                  onChange={(e) => {
+                    const selVeh = vehicleList.find(v => v.reg_number === e.target.value);
+                    setNewPass({
+                      ...newPass,
+                      vehicle: e.target.value,
+                      driver: selVeh?.driver_name || newPass.driver || (drivers[0]?.name || '')
+                    });
+                  }}
                   style={{
                     width: '100%',
                     padding: '10px 12px',
@@ -352,11 +399,15 @@ export const FleetPage: React.FC = () => {
                     color: 'var(--text-primary)',
                   }}
                 >
-                  <option value="95321">95321 (Volvo FH400)</option>
-                  <option value="82561">82561 (Volvo FH400)</option>
-                  <option value="33566">33566 (Mercedes-Benz 1843)</option>
-                  <option value="84707">84707 (Volvo FH400)</option>
-                  <option value="99292">99292 (Volvo FH400)</option>
+                  {vehicleList.length === 0 ? (
+                    <option value="">No vehicles found</option>
+                  ) : (
+                    vehicleList.map((v) => (
+                      <option key={v.device_id || v.reg_number} value={v.reg_number}>
+                        {v.reg_number} ({v.name || 'Vehicle'})
+                      </option>
+                    ))
+                  )}
                 </select>
               </div>
 
@@ -378,11 +429,15 @@ export const FleetPage: React.FC = () => {
                     color: 'var(--text-primary)',
                   }}
                 >
-                  <option value="Yog Raj Sharma">Yog Raj Sharma</option>
-                  <option value="Abdul Jelil">Abdul Jelil</option>
-                  <option value="Salman Moufid">Salman Moufid</option>
-                  <option value="Muhammad Rizwan">Muhammad Rizwan</option>
-                  <option value="Abu Taleb Baker">Abu Taleb Baker</option>
+                  {drivers.length === 0 ? (
+                    <option value="">No drivers found</option>
+                  ) : (
+                    drivers.map((d) => (
+                      <option key={d.id || d.name} value={d.name}>
+                        {d.name} {d.phone ? `(${d.phone})` : ''}
+                      </option>
+                    ))
+                  )}
                 </select>
               </div>
 
