@@ -1,0 +1,11 @@
+{
+  "name": "rudra-netra-frontend",
+  "private": true,
+  "scripts": {
+    "dev:client": "pnpm --filter @rudra-netra/client dev",
+    "dev:admin": "pnpm --filter @rudra-netra/admin dev",
+    "build": "pnpm -r run build",
+    "lint": "pnpm -r run lint"
+  },
+  "packageManager": "pnpm@10.4.1"
+}

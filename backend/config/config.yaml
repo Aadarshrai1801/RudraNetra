@@ -1,0 +1,49 @@
+server:
+  host: "0.0.0.0"
+  port: 8080
+  read_timeout: "30s"
+  write_timeout: "30s"
+  cors_origins:
+    - "http://localhost:3000"
+    - "http://localhost:3001"
+    - "http://localhost:5173"
+
+database:
+  host: "localhost"
+  port: 5432
+  user: "rudra"
+  password: "secretpassword"
+  dbname: "rudra_netra"
+  sslmode: "disable"
+  max_conns: 25
+  min_conns: 5
+
+redis:
+  addr: "localhost:6379"
+  password: ""
+  db: 0
+
+nats:
+  url: "nats://localhost:4222"
+
+jwt:
+  secret: "rudra-netra-super-secret-key-change-in-prod-min-32-chars"
+  access_token_ttl: "15m"
+  refresh_token_ttl: "720h"
+
+ingest:
+  host: "0.0.0.0"
+  port: 5040
+
+sms:
+  provider: "sigma"
+  url: "https://api.sigmasms.com/send"
+  username: "vave_user"
+  password: "vave_password"
+  from: "VAVETK"
+
+email:
+  host: "smtp.mailtrap.io"
+  port: 2525
+  from: "alerts@rudranetra.com"
+  password: "secret_email_password"
