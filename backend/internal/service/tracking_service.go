@@ -50,7 +50,7 @@ func (s *TrackingService) ProcessIncomingPosition(ctx context.Context, pos *doma
 
 	// 3. Broadcast to connected frontend clients via WebSocket hub
 	if s.hub != nil {
-		s.hub.BroadcastPosition(companyID, livePos)
+		s.hub.BroadcastPosition(companyID, pos.DeviceID, livePos)
 	}
 
 	return nil

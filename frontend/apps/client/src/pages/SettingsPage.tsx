@@ -15,10 +15,11 @@ export const SettingsPage: React.FC = () => {
   const [isAddDeviceOpen, setIsAddDeviceOpen] = useState(false);
 
   const [devices, setDevices] = useState([
-    { id: 101, vehicle: 'DXB-A-98124', type: 'Standard GPS unit', status: 'Connected', sim: '+971 50 198 1240' },
-    { id: 102, vehicle: 'DXB-B-43210', type: 'Standard GPS unit', status: 'Connected', sim: '+971 50 198 1241' },
-    { id: 103, vehicle: 'AUH-C-11029', type: 'Cold chain temperature unit', status: 'Connected', sim: '+971 50 198 1242' },
-    { id: 104, vehicle: 'SHJ-D-77123', type: 'Standard GPS unit', status: 'Connected', sim: '+971 50 198 1243' },
+    { id: 101, vehicle: '95321', type: 'Standard GPS unit (Teltonika FMB920)', status: 'Connected', sim: '+971 50 198 1240' },
+    { id: 102, vehicle: '82561', type: 'Standard GPS unit (Teltonika FMB920)', status: 'Connected', sim: '+971 50 198 1241' },
+    { id: 106, vehicle: '84707', type: 'Standard GPS unit (Teltonika FMB920)', status: 'Connected', sim: '+971 50 198 1242' },
+    { id: 104, vehicle: '99292', type: 'Standard GPS unit (Teltonika FMB920)', status: 'Connected', sim: '+971 50 198 1243' },
+    { id: 184, vehicle: '33566', type: 'Standard GPS unit (Teltonika FMB920)', status: 'Connected', sim: '+971 50 198 1244' },
   ]);
 
   const [newDevice, setNewDevice] = useState({
@@ -161,7 +162,7 @@ export const SettingsPage: React.FC = () => {
               </label>
               <input
                 type="text"
-                defaultValue="VAVE Logistics UAE"
+                defaultValue="Allied Transport UAE"
                 style={{
                   width: '100%',
                   padding: '10px 14px',
@@ -181,7 +182,7 @@ export const SettingsPage: React.FC = () => {
               </label>
               <input
                 type="text"
-                defaultValue="Sanjay Kumar"
+                defaultValue="Operations Manager"
                 style={{
                   width: '100%',
                   padding: '10px 14px',
@@ -201,7 +202,7 @@ export const SettingsPage: React.FC = () => {
               </label>
               <input
                 type="text"
-                defaultValue="+971 50 123 4567"
+                defaultValue="+971 4 8800000"
                 style={{
                   width: '100%',
                   padding: '10px 14px',

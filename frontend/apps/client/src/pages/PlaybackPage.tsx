@@ -10,22 +10,23 @@ interface HistoryPoint {
   time: string;
 }
 
-// Realistic route points along Sheikh Zayed Road (Dubai)
+// Realistic route points from legacy fleet telemetry (Jebel Ali Corridor)
 const sampleRoute: HistoryPoint[] = [
-  { lat: 25.1200, lng: 55.2200, speed: 65, time: '09:00 am' },
-  { lat: 25.1230, lng: 55.2225, speed: 72, time: '09:02 am' },
-  { lat: 25.1280, lng: 55.2260, speed: 78, time: '09:04 am' },
-  { lat: 25.1340, lng: 55.2300, speed: 82, time: '09:06 am' },
-  { lat: 25.1410, lng: 55.2350, speed: 75, time: '09:08 am' },
-  { lat: 25.1490, lng: 55.2410, speed: 70, time: '09:10 am' },
-  { lat: 25.1560, lng: 55.2460, speed: 68, time: '09:12 am' },
-  { lat: 25.1630, lng: 55.2510, speed: 74, time: '09:14 am' },
-  { lat: 25.1710, lng: 55.2560, speed: 80, time: '09:16 am' },
-  { lat: 25.1790, lng: 55.2610, speed: 84, time: '09:18 am' },
-  { lat: 25.1860, lng: 55.2650, speed: 76, time: '09:20 am' },
-  { lat: 25.1930, lng: 55.2700, speed: 60, time: '09:22 am' },
-  { lat: 25.1990, lng: 55.2740, speed: 45, time: '09:24 am' },
-  { lat: 25.2048, lng: 55.2708, speed: 30, time: '09:26 am' },
+  { lat: 24.982437, lng: 55.074723, speed: 8, time: '12:00 am' },
+  { lat: 24.984123, lng: 55.073558, speed: 28, time: '12:00 am' },
+  { lat: 24.992995, lng: 55.083850, speed: 17, time: '12:02 am' },
+  { lat: 24.990173, lng: 55.086768, speed: 33, time: '12:03 am' },
+  { lat: 24.989673, lng: 55.087497, speed: 32, time: '12:03 am' },
+  { lat: 24.993443, lng: 55.091397, speed: 63, time: '12:04 am' },
+  { lat: 24.995805, lng: 55.090547, speed: 65, time: '12:04 am' },
+  { lat: 25.003360, lng: 55.082610, speed: 12, time: '12:05 am' },
+  { lat: 25.010707, lng: 55.075503, speed: 28, time: '12:08 am' },
+  { lat: 25.010442, lng: 55.075338, speed: 25, time: '12:08 am' },
+  { lat: 25.010097, lng: 55.075583, speed: 26, time: '12:08 am' },
+  { lat: 25.003875, lng: 55.081262, speed: 7, time: '12:10 am' },
+  { lat: 25.002487, lng: 55.080205, speed: 0, time: '12:17 am' },
+  { lat: 25.001917, lng: 55.079392, speed: 13, time: '12:24 am' },
+  { lat: 25.002063, lng: 55.078773, speed: 12, time: '12:25 am' },
 ];
 
 export const PlaybackPage: React.FC = () => {
@@ -36,7 +37,7 @@ export const PlaybackPage: React.FC = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
-  const [selectedVehicle, setSelectedVehicle] = useState('DXB-A-98124');
+  const [selectedVehicle, setSelectedVehicle] = useState('33566');
   const [activeStyleId, setActiveStyleId] = useState<string>(() => {
     const saved = localStorage.getItem('rudra_dubai_map_style');
     if (saved && FREE_DUBAI_MAP_STYLES.some((s) => s.id === saved)) {
@@ -343,10 +344,11 @@ export const PlaybackPage: React.FC = () => {
                 color: 'var(--text-primary)',
               }}
             >
-              <option value="DXB-A-98124">DXB-A-98124 (Mercedes Actros)</option>
-              <option value="DXB-B-43210">DXB-B-43210 (Volvo FH16)</option>
-              <option value="AUH-C-11029">AUH-C-11029 (Isuzu Reefer)</option>
-              <option value="SHJ-D-77123">SHJ-D-77123 (Toyota Hilux)</option>
+              <option value="33566">33566 (Mercedes-Benz 1843)</option>
+              <option value="95321">95321 (Volvo FH400)</option>
+              <option value="82561">82561 (Volvo FH400)</option>
+              <option value="84707">84707 (Volvo FH400)</option>
+              <option value="99292">99292 (Volvo FH400)</option>
             </select>
           </div>
 

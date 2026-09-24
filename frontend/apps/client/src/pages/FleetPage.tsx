@@ -30,21 +30,21 @@ interface Driver {
 }
 
 const mockGatePasses: GatePass[] = [
-  { passNo: 'GP-2026-0901', vehicle: 'DXB-A-98124', driver: 'Mohammed Imran', destination: 'Jebel Ali Port Terminal 2', issuedAt: '08:30 am', status: 'In Transit' },
-  { passNo: 'GP-2026-0902', vehicle: 'DXB-B-43210', driver: 'Harpreet Singh', destination: 'Sharjah Industrial Zone 4', issuedAt: '09:15 am', status: 'In Transit' },
-  { passNo: 'GP-2026-0903', vehicle: 'AUH-C-11029', driver: 'Ahmed Al-Falasi', destination: 'Abu Dhabi Mina Free Port', issuedAt: '07:45 am', status: 'In Transit' },
+  { passNo: 'GP-2026-0901', vehicle: '95321', driver: 'Yog Raj Sharma', destination: 'Jebel Ali Port Terminal 2', issuedAt: '08:30 am', status: 'In Transit' },
+  { passNo: 'GP-2026-0902', vehicle: '82561', driver: 'Abdul Jelil', destination: 'New Batha In Logistics Zone', issuedAt: '09:15 am', status: 'In Transit' },
+  { passNo: 'GP-2026-0903', vehicle: '33566', driver: 'Salman Moufid', destination: 'Abu Dhabi Mina Free Port', issuedAt: '07:45 am', status: 'In Transit' },
 ];
 
 const mockLRs: LoadingReceipt[] = [
-  { lrNo: 'LR-88410', party: 'Emirates Global Aluminium', vehicle: 'DXB-A-98124', weightKg: 24500, freightAmt: 3200, advanceAmt: 1000, status: 'Completed' },
-  { lrNo: 'LR-88411', party: 'Al Marai Cold Logistics', vehicle: 'AUH-C-11029', weightKg: 8200, freightAmt: 1850, advanceAmt: 500, status: 'Completed' },
-  { lrNo: 'LR-88412', party: 'Danube Building Materials', vehicle: 'DXB-B-43210', weightKg: 28000, freightAmt: 4100, advanceAmt: 1500, status: 'Pending' },
+  { lrNo: 'LR-88410', party: 'NESTLE MIDDLE EAST FZE', vehicle: '95321', weightKg: 24500, freightAmt: 3200, advanceAmt: 1000, status: 'Completed' },
+  { lrNo: 'LR-88411', party: 'ABDULLAH ALI AL-SAIHATI CO.', vehicle: '82561', weightKg: 18200, freightAmt: 2850, advanceAmt: 800, status: 'Completed' },
+  { lrNo: 'LR-88412', party: 'RNA RESOURCES GROUP LIMITED', vehicle: '33566', weightKg: 28000, freightAmt: 4100, advanceAmt: 1500, status: 'Pending' },
 ];
 
 const mockDrivers: Driver[] = [
-  { id: 1, name: 'Mohammed Imran', phone: '+971 50 998 8771', licenseNo: 'DXB-HV-884102', assignedVehicle: 'DXB-A-98124', status: 'Active' },
-  { id: 2, name: 'Harpreet Singh', phone: '+971 55 443 3221', licenseNo: 'DXB-HV-993214', assignedVehicle: 'DXB-B-43210', status: 'Active' },
-  { id: 3, name: 'Ahmed Al-Falasi', phone: '+971 52 112 2334', licenseNo: 'AUH-LC-442198', assignedVehicle: 'AUH-C-11029', status: 'Active' },
+  { id: 1, name: 'Yog Raj Sharma', phone: '+971 50 1000050', licenseNo: 'DRV-101', assignedVehicle: '95321', status: 'Active' },
+  { id: 2, name: 'Abdul Jelil', phone: '+971 50 1000051', licenseNo: 'DRV-102', assignedVehicle: '82561', status: 'Active' },
+  { id: 3, name: 'Salman Moufid', phone: '+971 50 1000078', licenseNo: 'DRV-184', assignedVehicle: '33566', status: 'Active' },
 ];
 
 export const FleetPage: React.FC = () => {
@@ -54,8 +54,8 @@ export const FleetPage: React.FC = () => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const [newPass, setNewPass] = useState({
-    vehicle: 'DXB-A-98124',
-    driver: 'Mohammed Imran',
+    vehicle: '95321',
+    driver: 'Yog Raj Sharma',
     destination: 'Jebel Ali Freezone Gate 7',
   });
 
@@ -337,10 +337,11 @@ export const FleetPage: React.FC = () => {
                     color: 'var(--text-primary)',
                   }}
                 >
-                  <option value="DXB-A-98124">DXB-A-98124 (Mercedes Actros)</option>
-                  <option value="DXB-B-43210">DXB-B-43210 (Volvo FH16)</option>
-                  <option value="AUH-C-11029">AUH-C-11029 (Isuzu Reefer)</option>
-                  <option value="SHJ-D-77123">SHJ-D-77123 (Toyota Hilux)</option>
+                  <option value="95321">95321 (Volvo FH400)</option>
+                  <option value="82561">82561 (Volvo FH400)</option>
+                  <option value="33566">33566 (Mercedes-Benz 1843)</option>
+                  <option value="84707">84707 (Volvo FH400)</option>
+                  <option value="99292">99292 (Volvo FH400)</option>
                 </select>
               </div>
 
@@ -362,10 +363,11 @@ export const FleetPage: React.FC = () => {
                     color: 'var(--text-primary)',
                   }}
                 >
-                  <option value="Mohammed Imran">Mohammed Imran</option>
-                  <option value="Harpreet Singh">Harpreet Singh</option>
-                  <option value="Ahmed Al-Falasi">Ahmed Al-Falasi</option>
-                  <option value="Rajesh Patel">Rajesh Patel</option>
+                  <option value="Yog Raj Sharma">Yog Raj Sharma</option>
+                  <option value="Abdul Jelil">Abdul Jelil</option>
+                  <option value="Salman Moufid">Salman Moufid</option>
+                  <option value="Muhammad Rizwan">Muhammad Rizwan</option>
+                  <option value="Abu Taleb Baker">Abu Taleb Baker</option>
                 </select>
               </div>
 

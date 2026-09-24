@@ -7,14 +7,14 @@ const net = require('net');
 
 const HOST = process.env.INGEST_HOST || '127.0.0.1';
 const PORT = parseInt(process.env.INGEST_PORT || '5040', 10);
-const IMEI = process.env.IMEI || '352093088642068';
+const IMEI = process.env.IMEI || '866907059076488'; // Real Teltonika tracker (Vehicle 58046 - Volvo FH400)
 
-// Starting location in Dubai (Sheikh Zayed Road near Downtown)
-let lat = 25.2048;
-let lng = 55.2708;
-let heading = 45;
+// Starting location in Dubai (Allied Logistics Depot, DWC Dubai)
+let lat = 24.89521;
+let lng = 55.14203;
+let heading = 238;
 let speed = 65; // km/h
-let odometer = 142580;
+let odometer = 1425800;
 
 console.log(`🛰️  Connecting to RudraNetra GPS Ingestion at ${HOST}:${PORT}...`);
 console.log(`📱 Simulating Teltonika FMB920 (IMEI: ${IMEI})`);
