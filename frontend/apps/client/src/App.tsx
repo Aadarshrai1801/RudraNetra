@@ -86,16 +86,21 @@ const PageTitleManager: React.FC = () => {
 const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const token = useAuthStore((state) => state.token);
   const user = useAuthStore((state) => state.user);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const fetchVehicles = useVehicleStore((state) => state.fetchVehicles);
-  const vehiclesMap = useVehicleStore((state) => state.vehicles);
+
+  const activeToken = token || localStorage.getItem('rudra_auth_token') || '';
 
   useEffect(() => {
-    const activeToken = token || localStorage.getItem('rudra_auth_token') || '';
     const activeCompany = user?.company_id || 1;
-    if (vehiclesMap.size === 0) {
+    if (activeToken) {
       fetchVehicles(activeToken, activeCompany);
     }
-  }, [token, user?.company_id, fetchVehicles, vehiclesMap.size]);
+  }, [activeToken, user?.company_id, fetchVehicles]);
+
+  if (!isAuthenticated && !activeToken) {
+    return <Navigate to="/login" replace />;
+  }
 
   return (
     <div className="app-container">

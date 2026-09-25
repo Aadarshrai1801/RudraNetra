@@ -9,7 +9,6 @@ import { RawDataPage } from './pages/RawDataPage';
 import { TollMasterPage } from './pages/TollMasterPage';
 import { RoleRightsPage } from './pages/RoleRightsPage';
 import { MastersPage } from './pages/MastersPage';
-import { AdminLoginPage } from './pages/AdminLoginPage';
 import { isSuperAdminAuthenticated, clearSuperAdminAuth, getSuperAdminUser } from './utils/api';
 
 import { 
@@ -45,16 +44,52 @@ const PageTitleManager: React.FC = () => {
   return null;
 };
 
+function getInitialSuperAdminSession(): { isAuthenticated: boolean; user: any } {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    const userParam = params.get('user');
+
+    if (token && userParam) {
+      const parsedUser = JSON.parse(userParam);
+      if (parsedUser?.role === 'superadmin') {
+        localStorage.setItem('rudra_superadmin_token', token);
+        localStorage.setItem('rudra_superadmin_user', JSON.stringify(parsedUser));
+        localStorage.setItem('rudra_admin_token', token);
+
+        // Clean query parameters from URL bar
+        params.delete('token');
+        params.delete('user');
+        const remaining = params.toString();
+        const cleanUrl = window.location.pathname + (remaining ? `?${remaining}` : '') + window.location.hash;
+        window.history.replaceState({}, document.title, cleanUrl);
+
+        return { isAuthenticated: true, user: parsedUser };
+      }
+    }
+  } catch (err) {
+    console.error('Failed to parse superadmin session from URL params', err);
+  }
+
+  const isAuthed = isSuperAdminAuthenticated();
+  const storedUser = getSuperAdminUser();
+  return { isAuthenticated: isAuthed, user: storedUser };
+}
+
 export const App: React.FC = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => isSuperAdminAuthenticated());
-  const [user, setUser] = useState<any>(() => getSuperAdminUser());
+  const [session, setSession] = useState<{ isAuthenticated: boolean; user: any }>(() =>
+    getInitialSuperAdminSession()
+  );
+  const user = session.user;
+  const isAuthenticated = session.isAuthenticated;
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const handleAuthExpired = () => {
-      setIsAuthenticated(false);
-      setUser(null);
+      clearSuperAdminAuth();
+      setSession({ isAuthenticated: false, user: null });
+      window.location.href = 'http://localhost:3000/login';
     };
     window.addEventListener('rudra:superadmin:auth_expired', handleAuthExpired);
     return () => window.removeEventListener('rudra:superadmin:auth_expired', handleAuthExpired);
@@ -72,18 +107,30 @@ export const App: React.FC = () => {
 
   const handleLogout = () => {
     clearSuperAdminAuth();
-    setIsAuthenticated(false);
-    setUser(null);
+    setSession({ isAuthenticated: false, user: null });
+    window.location.href = 'http://localhost:3000/login';
   };
 
   if (!isAuthenticated) {
+    // Single unified login page: direct unauthenticated visitors to http://localhost:3000/login
+    window.location.href = 'http://localhost:3000/login';
     return (
-      <AdminLoginPage
-        onLoginSuccess={(authUser) => {
-          setUser(authUser);
-          setIsAuthenticated(true);
+      <div
+        style={{
+          display: 'flex',
+          height: '100vh',
+          width: '100vw',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'var(--bg-page)',
+          flexDirection: 'column',
+          gap: '12px',
         }}
-      />
+      >
+        <div style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: '1rem' }}>
+          Redirecting to RudraNetra Unified Login...
+        </div>
+      </div>
     );
   }
 

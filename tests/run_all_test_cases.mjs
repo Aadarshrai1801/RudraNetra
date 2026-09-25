@@ -533,56 +533,73 @@ async function main() {
   // ==========================================
   console.log(`\n${BOLD}Suite 9: Admin Management Suite${RESET}`);
 
-  await runTest('Admin', 'TC-ADM-01', 'Admin dashboard statistics endpoint', async () => {
+  await runTest('Admin', 'TC-ADM-00', 'Organizational admin is denied access to SuperAdmin console (403)', async () => {
     const res = await api('/api/v1/admin/dashboard');
+    assert(res.status === 403, `Expected 403 Forbidden for org admin, got ${res.status}`);
+    return '403 Forbidden confirmed: organizational accounts are strictly prohibited from SuperAdmin console';
+  });
+
+  // Authenticate as SuperAdmin for SuperAdmin Console endpoints
+  let superToken = '';
+  const superLoginRes = await api('/api/v1/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ username: 'superadmin', password: 'password' }),
+  });
+  if (superLoginRes.status === 200 && superLoginRes.json?.token) {
+    superToken = superLoginRes.json.token;
+  }
+  const superHeaders = { Authorization: `Bearer ${superToken}` };
+
+  await runTest('Admin', 'TC-ADM-01', 'Admin dashboard statistics endpoint', async () => {
+    const res = await api('/api/v1/admin/dashboard', { headers: superHeaders });
     assert(res.status === 200, `Expected 200, got ${res.status}`);
     return 'Admin master dashboard operational';
   });
 
   await runTest('Admin', 'TC-ADM-02', 'Admin MIS report endpoint', async () => {
-    const res = await api('/api/v1/admin/mis-report');
+    const res = await api('/api/v1/admin/mis-report', { headers: superHeaders });
     assert(res.status === 200, `Expected 200, got ${res.status}`);
     return 'Admin MIS report returned';
   });
 
   await runTest('Admin', 'TC-ADM-03', 'Admin companies multi-tenant registry', async () => {
-    const res = await api('/api/v1/admin/companies');
+    const res = await api('/api/v1/admin/companies', { headers: superHeaders });
     assert(res.status === 200, `Expected 200, got ${res.status}`);
     return `Found ${res.json.data.length} registered tenant companies`;
   });
 
   await runTest('Admin', 'TC-ADM-04', 'Admin users directory', async () => {
-    const res = await api('/api/v1/admin/users');
+    const res = await api('/api/v1/admin/users', { headers: superHeaders });
     assert(res.status === 200, `Expected 200, got ${res.status}`);
     return `Found ${res.json.data.length} system users`;
   });
 
   await runTest('Admin', 'TC-ADM-05', 'Admin devices hardware registry', async () => {
-    const res = await api('/api/v1/admin/devices');
+    const res = await api('/api/v1/admin/devices', { headers: superHeaders });
     assert(res.status === 200, `Expected 200, got ${res.status}`);
     return `Found ${res.json.data.length} telematics devices`;
   });
 
   await runTest('Admin', 'TC-ADM-06', 'Admin vehicle subscription extensions', async () => {
-    const res = await api('/api/v1/admin/extensions');
+    const res = await api('/api/v1/admin/extensions', { headers: superHeaders });
     assert(res.status === 200, `Expected 200, got ${res.status}`);
     return `Found ${res.json.data.length} extension renewal records`;
   });
 
   await runTest('Admin', 'TC-ADM-07', 'Admin hardware warranty records', async () => {
-    const res = await api('/api/v1/admin/warranty');
+    const res = await api('/api/v1/admin/warranty', { headers: superHeaders });
     assert(res.status === 200, `Expected 200, got ${res.status}`);
     return `Found ${res.json.data.length} warranty entries`;
   });
 
   await runTest('Admin', 'TC-ADM-08', 'Admin billing & subscription ledger', async () => {
-    const res = await api('/api/v1/admin/billing');
+    const res = await api('/api/v1/admin/billing', { headers: superHeaders });
     assert(res.status === 200, `Expected 200, got ${res.status}`);
     return `Found ${res.json.data.length} billing records`;
   });
 
   await runTest('Admin', 'TC-ADM-09', 'Admin toll / Salik data transactions', async () => {
-    const res = await api('/api/v1/admin/toll-data');
+    const res = await api('/api/v1/admin/toll-data', { headers: superHeaders });
     assert(res.status === 200, `Expected 200, got ${res.status}`);
     return `Found ${res.json.data.length} toll transaction records`;
   });

@@ -86,30 +86,9 @@ export const useVehicleStore = create<VehicleState>((set) => ({
         },
       });
 
-      if (res.status === 401 || !activeToken) {
-        // Re-authenticate and retry
-        try {
-          const loginRes = await fetch(`${host}/api/v1/auth/login`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: 'admin', password: 'password' }),
-          });
-          if (loginRes.ok) {
-            const authData = await loginRes.json();
-            if (authData.success && authData.token) {
-              activeToken = authData.token;
-              useAuthStore.getState().setAuth(authData.token, authData.user);
-              res = await fetch(url, {
-                headers: {
-                  Authorization: `Bearer ${activeToken}`,
-                  'Content-Type': 'application/json',
-                },
-              });
-            }
-          }
-        } catch (authErr) {
-          console.error('Auto-login retry failed', authErr);
-        }
+      if (res.status === 401) {
+        useAuthStore.getState().logout();
+        throw new Error('Session expired or unauthorized. Please sign in.');
       }
 
       if (!res.ok) {
