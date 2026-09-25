@@ -185,11 +185,11 @@ export const RemindersPage: React.FC = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Bell size={24} color="var(--accent)" />
             <h1 style={{ fontSize: '1.65rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-              Compliance & Service Reminders
+              Document Master
             </h1>
           </div>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.92rem', marginTop: '4px' }}>
-            Automated alerts for Insurance, RTA Fitness Inspection, PUC Emissions, Oil Change, Road Tax & Permits.
+            Automated alerts for Insurance, RTA Fitness Inspection, Mulkiya Registration, Oil Change, Road Tax & Permits.
           </p>
         </div>
         <button

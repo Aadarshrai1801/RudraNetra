@@ -110,9 +110,9 @@ export const DevicesPage: React.FC = () => {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
         <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 800 }}>GPS Hardware & Devices</h1>
+          <h1 style={{ fontSize: '1.75rem', fontWeight: 800 }}>Asset Manager</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginTop: '4px' }}>
-            Hardware telemetry registry, sensor calibration, and protocol provisioning.
+            Hardware telemetry registry, Teltonika tracker IMEIs, and sensor provisioning.
           </p>
         </div>
         <button

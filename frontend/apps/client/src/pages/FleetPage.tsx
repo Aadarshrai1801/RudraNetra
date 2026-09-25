@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { 
   Plus, X, CheckCircle2, Truck, Navigation, Disc, Receipt, 
-  MapPin, Users, FileText, ArrowRight
+  MapPin, Users, FileText
 } from 'lucide-react';
 import { fetchWithAuth } from '../utils/api';
 import { useAuthStore } from '../store/authStore';
@@ -95,14 +96,25 @@ interface PartyRoute {
   billingRate: number;
 }
 
-export const FleetPage: React.FC = () => {
+export const FleetPage: React.FC<{ initialTab?: 'trips' | 'gatepasses' | 'lr' | 'tyres' | 'vouchers' | 'partyroutes' | 'drivers' }> = ({ initialTab = 'trips' }) => {
   const user = useAuthStore((state) => state.user);
+  const location = useLocation();
   const vehiclesMap = useVehicleStore((state) => state.vehicles);
   const vehicleList = Array.from(vehiclesMap.values());
 
-  const [activeTab, setActiveTab] = useState<'trips' | 'gatepasses' | 'lr' | 'tyres' | 'vouchers' | 'partyroutes' | 'drivers'>('trips');
+  const [activeTab, setActiveTab] = useState<'trips' | 'gatepasses' | 'lr' | 'tyres' | 'vouchers' | 'partyroutes' | 'drivers'>(initialTab);
   const [loading, setLoading] = useState(true);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const qTab = params.get('tab');
+    if (qTab && ['trips', 'gatepasses', 'lr', 'tyres', 'vouchers', 'partyroutes', 'drivers'].includes(qTab)) {
+      setActiveTab(qTab as any);
+    } else if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [location.search, initialTab]);
 
   // Data states
   const [trips, setTrips] = useState<FleetTrip[]>([]);
@@ -300,11 +312,21 @@ export const FleetPage: React.FC = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Truck size={24} color="var(--accent)" />
             <h1 style={{ fontSize: '1.65rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-              Fleet Operations & Asset Management
+              {location.pathname.includes('/driver-manager') || activeTab === 'drivers'
+                ? 'Driver Manager'
+                : location.pathname.includes('/party-manager')
+                ? 'Party/Company Manager'
+                : location.pathname.includes('/party-routes') || activeTab === 'partyroutes'
+                ? 'Party Routes Manager'
+                : location.pathname.includes('/trailor-master') || activeTab === 'tyres'
+                ? 'Trailor Master'
+                : location.pathname.includes('/truck-master')
+                ? 'Truck Master'
+                : 'Trip Manager'}
             </h1>
           </div>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.92rem', marginTop: '4px' }}>
-            Dual-driver trip dispatching, tyre lifecycle management, en-route expense vouchers, and party contracts.
+            Dual-driver trip dispatching, trailer & tyre lifecycle management, en-route expense vouchers, and party contracts.
           </p>
         </div>
 
@@ -335,13 +357,13 @@ export const FleetPage: React.FC = () => {
       {/* Navigation Tabs */}
       <div style={{ display: 'flex', gap: '6px', borderBottom: '1px solid var(--border)', marginBottom: '20px', overflowX: 'auto', paddingBottom: '2px' }}>
         {[
-          { key: 'trips', label: 'Fleet Trips', icon: Navigation, count: trips.length },
-          { key: 'tyres', label: 'Tyre Management', icon: Disc, count: tyres.length },
+          { key: 'trips', label: 'Trip Manager', icon: Navigation, count: trips.length },
+          { key: 'partyroutes', label: 'Party Routes Manager', icon: MapPin, count: partyRoutes.length },
+          { key: 'drivers', label: 'Driver Manager', icon: Users, count: drivers.length },
+          { key: 'tyres', label: 'Trailor & Tyre Master', icon: Disc, count: tyres.length },
           { key: 'vouchers', label: 'Trip Vouchers', icon: Receipt, count: vouchers.length },
-          { key: 'partyroutes', label: 'Party Contracts', icon: MapPin, count: partyRoutes.length },
           { key: 'gatepasses', label: 'Gate Passes', icon: FileText, count: gatePasses.length },
           { key: 'lr', label: 'Loading Receipts', icon: FileText, count: lrs.length },
-          { key: 'drivers', label: 'Drivers', icon: Users, count: drivers.length },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.key;
@@ -415,7 +437,7 @@ export const FleetPage: React.FC = () => {
                     <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{t.partyName}</div>
                     <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <span>{t.source}</span>
-                      <ArrowRight size={11} />
+                      <span style={{ color: 'var(--text-tertiary)' }}>—</span>
                       <span>{t.destination}</span>
                     </div>
                   </td>

@@ -144,7 +144,7 @@ export const ComplaintsPage: React.FC = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <LifeBuoy size={24} color="var(--accent)" />
             <h1 style={{ fontSize: '1.65rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-              Hardware Support & Complaints Register
+              Complaint Manager
             </h1>
           </div>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.92rem', marginTop: '4px' }}>

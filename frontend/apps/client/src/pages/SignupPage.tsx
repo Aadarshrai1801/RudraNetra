@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Lock, User, Mail, Building2, ArrowRight, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Lock, User, Mail, Building2, ShieldCheck, AlertCircle } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useVehicleStore } from '../store/vehicleStore';
 
@@ -428,11 +428,10 @@ export const SignupPage: React.FC = () => {
           <button
             type="submit"
             className="btn btn-primary"
-            style={{ width: '100%', padding: '12px', marginTop: '6px', fontSize: '0.925rem' }}
+            style={{ width: '100%', padding: '12px', marginTop: '6px', fontSize: '0.925rem', justifyContent: 'center' }}
             disabled={loading}
           >
             {loading ? 'Creating Account...' : 'Complete Registration'}
-            <ArrowRight size={18} />
           </button>
         </form>
 

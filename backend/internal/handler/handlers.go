@@ -96,6 +96,14 @@ func loginHandler(c *gin.Context) {
 	}
 
 	// Fallback authentication for standalone / dev mode
+	if req.Password != "password" && req.Password != "admin123" {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"error":   "invalid username or password",
+		})
+		return
+	}
+
 	role := "admin"
 	companyID := int64(1)
 	companyName := "Allied Transport"
