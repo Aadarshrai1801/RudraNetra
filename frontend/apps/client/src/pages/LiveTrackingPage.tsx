@@ -51,6 +51,9 @@ export const LiveTrackingPage: React.FC<{ initialAction?: string }> = ({ initial
     } else if (initialAction === 'nearest-places') {
       const first = Array.from(vehiclesMap.values())[0];
       if (first) openNearestAmenities(first);
+    } else if (window.location.search.includes('modal=teltonika')) {
+      const first = Array.from(vehiclesMap.values())[0];
+      if (first) setSelectedTeltonikaVehicle(first);
     }
   }, [initialAction, vehiclesMap]);
 
