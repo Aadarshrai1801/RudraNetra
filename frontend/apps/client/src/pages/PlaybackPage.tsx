@@ -340,7 +340,7 @@ export const PlaybackPage: React.FC = () => {
       >
         <div>
           <h1 style={{ fontSize: '1.35rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-            Trip history
+            Trip History
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginTop: '2px' }}>
             Review past routes, stops, and driving speed step-by-step from real telemetry.

@@ -213,7 +213,7 @@ export const ReportsPage: React.FC = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <IconComponent size={24} color="var(--accent)" />
             <h1 style={{ fontSize: '1.65rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-              Comprehensive Fleet Reports
+              Report
             </h1>
           </div>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.92rem', marginTop: '4px' }}>

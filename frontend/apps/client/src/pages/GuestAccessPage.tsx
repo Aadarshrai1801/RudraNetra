@@ -159,11 +159,11 @@ export const GuestAccessPage: React.FC = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Share2 size={24} color="var(--accent)" />
             <h1 style={{ fontSize: '1.65rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-              Temporary Guest Tracking Links
+              Enable Feature
             </h1>
           </div>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.92rem', marginTop: '4px' }}>
-            Generate time-limited live tracking links for clients, cargo consignees, brokers, and external auditors without creating user logins.
+            Generate time-limited live tracking links for clients, cargo consignees, brokers, and external auditors without creating permanent user logins.
           </p>
         </div>
         <button
