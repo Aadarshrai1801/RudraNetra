@@ -258,9 +258,9 @@ func RegisterRoutes(router *gin.Engine, d *Dependencies) {
 		}
 	}
 
-	// ─── Admin Routes (require admin role) ───────────────
+	// ─── SuperAdmin Routes (require superadmin role only) ───────────────
 	admin := router.Group("/api/v1/admin")
-	admin.Use(middleware.Auth(), middleware.RequireRole("admin", "superadmin"))
+	admin.Use(middleware.Auth(), middleware.RequireRole("superadmin"))
 	{
 		admin.GET("/dashboard", adminDashboardHandler)
 		admin.GET("/stats", adminStatsHandler)
