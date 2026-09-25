@@ -34,12 +34,13 @@ export const LoginPage: React.FC = () => {
         throw new Error(data.error || 'Invalid credentials.');
       }
 
-      // If user is superadmin, direct them straight to the SuperAdmin Console!
+      // If user is superadmin, direct them straight to the SuperAdmin Console with single sign-on parameters!
       if (data.user?.role === 'superadmin') {
         localStorage.setItem('rudra_superadmin_token', data.token);
         localStorage.setItem('rudra_superadmin_user', JSON.stringify(data.user));
         localStorage.setItem('rudra_admin_token', data.token);
-        window.location.href = 'http://localhost:3001';
+        const adminUrl = `http://localhost:3001/?token=${encodeURIComponent(data.token)}&user=${encodeURIComponent(JSON.stringify(data.user))}`;
+        window.location.href = adminUrl;
         return;
       }
 

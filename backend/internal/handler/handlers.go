@@ -110,9 +110,9 @@ func loginHandler(c *gin.Context) {
 	fullName := "Fleet Administrator"
 	if req.Username == "eksc_admin" {
 		companyID = 2
-		companyName = "EKSC Dubai"
-		fullName = "EKSC Logistics Manager"
-	} else if req.Username == "superadmin" || req.Username == "admin" {
+		companyName = "EKSC Logistics Dubai"
+		fullName = "EKSC Fleet Supervisor"
+	} else if req.Username == "superadmin" {
 		role = "superadmin"
 		companyName = "RudraNetra Global"
 		fullName = "System SuperAdmin"
@@ -1894,23 +1894,58 @@ func updateCompanyHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Company updated successfully"})
 }
 func adminListUsersHandler(c *gin.Context) {
+	if deps != nil && deps.Pool != nil {
+		rows, err := deps.Pool.Query(c.Request.Context(), `
+			SELECT u.id, u.username, COALESCE(u.full_name, u.username), u.email, u.role, 
+			       COALESCE(u.company_id, 1), COALESCE(c.name, 'Default Organization'), 
+			       CASE WHEN u.is_active THEN 'Active' ELSE 'Inactive' END
+			FROM users u
+			LEFT JOIN companies c ON u.company_id = c.id
+			ORDER BY u.id ASC
+		`)
+		if err == nil {
+			defer rows.Close()
+			var users []gin.H
+			for rows.Next() {
+				var id, compID int64
+				var uname, fname, email, role, cname, status string
+				if err := rows.Scan(&id, &uname, &fname, &email, &role, &compID, &cname, &status); err == nil {
+					users = append(users, gin.H{
+						"id":          id,
+						"username":    uname,
+						"fullName":    fname,
+						"email":       email,
+						"role":        role,
+						"companyId":   compID,
+						"companyName": cname,
+						"status":      status,
+					})
+				}
+			}
+			if len(users) > 0 {
+				c.JSON(http.StatusOK, gin.H{"success": true, "data": users})
+				return
+			}
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data": []gin.H{
 			{
 				"id": 1, "username": "admin", "fullName": "Fleet Administrator",
-				"email": "admin@alliedtransport.ae", "role": "superadmin",
+				"email": "admin@alliedtransport.ae", "role": "admin",
 				"companyId": 1, "companyName": "Allied Transport", "status": "Active",
 			},
 			{
 				"id": 2, "username": "eksc_admin", "fullName": "Tariq Al-Mansoor",
 				"email": "tariq@eksc.ae", "role": "admin",
-				"companyId": 2, "companyName": "EKSC Dubai", "status": "Active",
+				"companyId": 2, "companyName": "EKSC Logistics Dubai", "status": "Active",
 			},
 			{
-				"id": 3, "username": "dispatcher_01", "fullName": "Rashid Al-Ketbi",
-				"email": "dispatch@alliedtransport.ae", "role": "dispatcher",
-				"companyId": 1, "companyName": "Allied Transport", "status": "Active",
+				"id": 3, "username": "superadmin", "fullName": "System SuperAdmin",
+				"email": "superadmin@rudranetra.com", "role": "superadmin",
+				"companyId": 1, "companyName": "RudraNetra Global", "status": "Active",
 			},
 		},
 	})
