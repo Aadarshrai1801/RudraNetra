@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Radio, Plus, X, CheckCircle2, Search, Filter, 
-  Building2, Car
+  Building2, Car, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { fetchWithAdminAuth } from '../utils/api';
 
@@ -24,6 +24,8 @@ export const DeviceMasterPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -62,6 +64,10 @@ export const DeviceMasterPage: React.FC = () => {
   useEffect(() => {
     loadDevices();
   }, []);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, statusFilter, pageSize]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -106,6 +112,10 @@ export const DeviceMasterPage: React.FC = () => {
     const matchesStatus = statusFilter === 'all' || d.status.toLowerCase() === statusFilter.toLowerCase();
     return matchesSearch && matchesStatus;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filteredDevices.length / pageSize));
+  const startIndex = (currentPage - 1) * pageSize;
+  const paginatedDevices = filteredDevices.slice(startIndex, startIndex + pageSize);
 
   const onlineCount = devices.filter((d) => d.status === 'Online').length;
   const unassignedCount = devices.filter((d) => d.status === 'Unassigned').length;
@@ -250,7 +260,7 @@ export const DeviceMasterPage: React.FC = () => {
                 </td>
               </tr>
             ) : (
-              filteredDevices.map((dev) => (
+              paginatedDevices.map((dev) => (
                 <tr key={dev.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                   <td style={{ padding: '12px 16px' }}>
                     <div style={{ fontWeight: 700, fontFamily: 'monospace', color: 'var(--accent)' }}>{dev.imei}</div>
@@ -298,6 +308,97 @@ export const DeviceMasterPage: React.FC = () => {
             )}
           </tbody>
         </table>
+
+        {/* Pagination Bar */}
+        {filteredDevices.length > 0 && (
+          <div
+            style={{
+              padding: '12px 20px',
+              borderTop: '1px solid var(--border)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '12px',
+              background: 'var(--bg-subtle)',
+              fontSize: '0.85rem',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }}>
+              <span>Show</span>
+              <select
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                style={{
+                  padding: '4px 8px',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--border)',
+                  fontSize: '0.85rem',
+                  background: 'var(--bg-card)',
+                }}
+              >
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+                <option value={350}>All (330+)</option>
+              </select>
+              <span>per page</span>
+              <span style={{ marginLeft: '12px', color: 'var(--text-tertiary)' }}>
+                Showing {Math.min(filteredDevices.length, startIndex + 1)}–{Math.min(filteredDevices.length, startIndex + paginatedDevices.length)} of {filteredDevices.length}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--border)',
+                  background: 'var(--bg-card)',
+                  cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                  opacity: currentPage === 1 ? 0.5 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontSize: '0.82rem',
+                  fontWeight: 600,
+                }}
+              >
+                <ChevronLeft size={14} />
+                <span>Prev</span>
+              </button>
+
+              <span style={{ padding: '0 8px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                Page {currentPage} of {totalPages}
+              </span>
+
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--border)',
+                  background: 'var(--bg-card)',
+                  cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                  opacity: currentPage === totalPages ? 0.5 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontSize: '0.82rem',
+                  fontWeight: 600,
+                }}
+              >
+                <span>Next</span>
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Provision Modal */}

@@ -9,6 +9,8 @@ import { RawDataPage } from './pages/RawDataPage';
 import { TollMasterPage } from './pages/TollMasterPage';
 import { RoleRightsPage } from './pages/RoleRightsPage';
 import { MastersPage } from './pages/MastersPage';
+import { AdminLoginPage } from './pages/AdminLoginPage';
+import { isSuperAdminAuthenticated, clearSuperAdminAuth, getSuperAdminUser } from './utils/api';
 
 import { 
   ExternalLink, ShieldCheck, ChevronDown, LogOut, 
@@ -44,8 +46,19 @@ const PageTitleManager: React.FC = () => {
 };
 
 export const App: React.FC = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => isSuperAdminAuthenticated());
+  const [user, setUser] = useState<any>(() => getSuperAdminUser());
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      setIsAuthenticated(false);
+      setUser(null);
+    };
+    window.addEventListener('rudra:superadmin:auth_expired', handleAuthExpired);
+    return () => window.removeEventListener('rudra:superadmin:auth_expired', handleAuthExpired);
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -57,11 +70,22 @@ export const App: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleExit = () => {
-    localStorage.removeItem('rudra_admin_token');
-    localStorage.removeItem('rudra_auth_token');
-    window.location.href = 'http://localhost:3000/login';
+  const handleLogout = () => {
+    clearSuperAdminAuth();
+    setIsAuthenticated(false);
+    setUser(null);
   };
+
+  if (!isAuthenticated) {
+    return (
+      <AdminLoginPage
+        onLoginSuccess={(authUser) => {
+          setUser(authUser);
+          setIsAuthenticated(true);
+        }}
+      />
+    );
+  }
 
   return (
     <BrowserRouter>
@@ -168,10 +192,10 @@ export const App: React.FC = () => {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', textAlign: 'left' }}>
                   <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    Platform Admin
+                    {user?.full_name || user?.username || 'System SuperAdmin'}
                   </span>
                   <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
-                    Root Administrator
+                    SuperAdmin · {user?.email || 'superadmin@rudranetrais.com'}
                   </span>
                 </div>
                 <ChevronDown size={14} color="var(--text-secondary)" />
@@ -196,7 +220,7 @@ export const App: React.FC = () => {
                   <button
                     onClick={() => {
                       setIsUserMenuOpen(false);
-                      handleExit();
+                      handleLogout();
                     }}
                     style={{
                       display: 'inline-flex',
@@ -213,7 +237,7 @@ export const App: React.FC = () => {
                     }}
                   >
                     <LogOut size={13} />
-                    <span>Exit</span>
+                    <span>Logout SuperAdmin</span>
                   </button>
                 </div>
               )}
