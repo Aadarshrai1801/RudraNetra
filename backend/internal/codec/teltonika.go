@@ -280,7 +280,8 @@ func (t *TeltonikaCodec) applyIOValue(pos *domain.Position, ioID int, value int6
 	case IO_VOLTAGE:
 		pos.Voltage = float32(value) / 1000.0 // mV to V
 	case IO_TEMPERATURE:
-		pos.Temperature = float32(value)
+		// Scaled by 0.1 to match legacy Teltonika.cs logic (225 -> 22.5°C)
+		pos.Temperature = float32(value) * 0.1
 	case IO_ODOMETER:
 		pos.Odometer = value
 	case IO_RFID:

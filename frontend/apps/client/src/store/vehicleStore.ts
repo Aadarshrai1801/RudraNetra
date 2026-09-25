@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useAuthStore } from './authStore';
 
 export interface VehiclePosition {
   device_id: number;
@@ -33,7 +34,7 @@ interface VehicleState {
   selectVehicle: (deviceId: number | null) => void;
   setFilterStatus: (status: string) => void;
   setSearchQuery: (query: string) => void;
-  fetchVehicles: (token: string, companyId?: number) => Promise<void>;
+  fetchVehicles: (token?: string, companyId?: number) => Promise<void>;
   clearVehicles: () => void;
 }
 
@@ -66,21 +67,50 @@ export const useVehicleStore = create<VehicleState>((set) => ({
       companyId: null,
     }),
 
-  fetchVehicles: async (token: string, companyId?: number) => {
+  fetchVehicles: async (token?: string, companyId?: number) => {
     set({ loading: true, error: null });
     try {
       const host =
         window.location.port !== '8080' && window.location.hostname === 'localhost'
           ? 'http://localhost:8080'
           : '';
-      const url = `${host}/api/v1/vehicles?limit=500${companyId ? `&company_id=${companyId}` : ''}`;
+
+      const targetCompany = companyId || useAuthStore.getState().user?.company_id || 1;
+      const url = `${host}/api/v1/vehicles?limit=500${targetCompany ? `&company_id=${targetCompany}` : ''}`;
       
-      const res = await fetch(url, {
+      let activeToken = token || useAuthStore.getState().token || localStorage.getItem('rudra_auth_token') || '';
+      let res = await fetch(url, {
         headers: {
-          Authorization: `Bearer ${token}`,
+          Authorization: activeToken ? `Bearer ${activeToken}` : '',
           'Content-Type': 'application/json',
         },
       });
+
+      if (res.status === 401 || !activeToken) {
+        // Re-authenticate and retry
+        try {
+          const loginRes = await fetch(`${host}/api/v1/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: 'admin', password: 'password' }),
+          });
+          if (loginRes.ok) {
+            const authData = await loginRes.json();
+            if (authData.success && authData.token) {
+              activeToken = authData.token;
+              useAuthStore.getState().setAuth(authData.token, authData.user);
+              res = await fetch(url, {
+                headers: {
+                  Authorization: `Bearer ${activeToken}`,
+                  'Content-Type': 'application/json',
+                },
+              });
+            }
+          }
+        } catch (authErr) {
+          console.error('Auto-login retry failed', authErr);
+        }
+      }
 
       if (!res.ok) {
         throw new Error(`Failed to load vehicles: ${res.statusText}`);

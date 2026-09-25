@@ -1,10 +1,31 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, NavLink } from 'react-router-dom';
 import { CompanyManagerPage } from './pages/CompanyManagerPage';
-import { ExternalLink, ShieldCheck, ChevronDown, LogOut } from 'lucide-react';
+import { DeviceMasterPage } from './pages/DeviceMasterPage';
+import { ExtensionManagerPage } from './pages/ExtensionManagerPage';
+import { BillingMasterPage } from './pages/BillingMasterPage';
+import { WarrantyMasterPage } from './pages/WarrantyMasterPage';
+import { RawDataPage } from './pages/RawDataPage';
+import { TollMasterPage } from './pages/TollMasterPage';
+import { RoleRightsPage } from './pages/RoleRightsPage';
+import { MastersPage } from './pages/MastersPage';
+
+import { 
+  ExternalLink, ShieldCheck, ChevronDown, LogOut, 
+  Building2, Radio, CalendarClock, CreditCard, Wrench, 
+  Terminal, Milestone, KeyRound, Database 
+} from 'lucide-react';
 
 const routeTitles: Record<string, string> = {
   '/companies': 'Organization & Tenant Registry',
+  '/devices': 'Device & SIM Master',
+  '/extensions': 'Subscription Validity Extensions',
+  '/billing': 'Invoicing & SaaS Billing',
+  '/warranty': 'Hardware Warranty & AMC',
+  '/raw-data': 'Raw Socket Packet Inspector',
+  '/toll-data': 'Toll Plaza & Salik Gate Master',
+  '/roles': 'Module Rights & Permissions Matrix',
+  '/masters': 'System Lookup Masters',
 };
 
 const PageTitleManager: React.FC = () => {
@@ -49,7 +70,7 @@ export const App: React.FC = () => {
         {/* Daylight SuperAdmin Header */}
         <header
           style={{
-            height: 'var(--header-height)',
+            height: 'var(--header-height, 64px)',
             borderBottom: '1px solid var(--border)',
             padding: '0 32px',
             display: 'flex',
@@ -64,13 +85,7 @@ export const App: React.FC = () => {
         >
           {/* Brand & Console Tag */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <img
                 src="/RudraNetraLogo.png"
                 alt="RudraNetra Logo"
@@ -78,14 +93,7 @@ export const App: React.FC = () => {
               />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span
-                style={{
-                  fontWeight: 800,
-                  fontSize: '1.05rem',
-                  letterSpacing: '-0.02em',
-                  color: 'var(--text-primary)',
-                }}
-              >
+              <span style={{ fontWeight: 800, fontSize: '1.05rem', letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
                 RudraNetra
               </span>
               <span
@@ -108,20 +116,14 @@ export const App: React.FC = () => {
             </div>
           </div>
 
-          {/* Client Console Switcher & User Profile */}
+          {/* Quick Switch to Fleet Dispatch Console & User Profile */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            {/* Quick Switch to Fleet Dispatch Console */}
             <a
               href="http://localhost:3000"
               target="_blank"
               rel="noopener noreferrer"
               className="btn btn-secondary"
-              style={{
-                fontSize: '0.78rem',
-                padding: '6px 12px',
-                gap: '6px',
-                textDecoration: 'none',
-              }}
+              style={{ fontSize: '0.78rem', padding: '6px 12px', gap: '6px', textDecoration: 'none' }}
             >
               <span>Fleet Tracking Console</span>
               <ExternalLink size={13} />
@@ -129,7 +131,7 @@ export const App: React.FC = () => {
 
             <div style={{ width: '1px', height: '24px', background: 'var(--border)' }} />
 
-            {/* Admin Profile Chip with Exit button appearing on clicking Admin */}
+            {/* Admin Profile Chip */}
             <div style={{ position: 'relative' }} ref={userMenuRef}>
               <button
                 onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
@@ -172,18 +174,9 @@ export const App: React.FC = () => {
                     Root Administrator
                   </span>
                 </div>
-                <ChevronDown
-                  size={14}
-                  color="var(--text-secondary)"
-                  style={{
-                    transform: isUserMenuOpen ? 'rotate(180deg)' : 'none',
-                    transition: 'transform 0.15s ease',
-                    marginLeft: '2px',
-                  }}
-                />
+                <ChevronDown size={14} color="var(--text-secondary)" />
               </button>
 
-              {/* Exit button sized to the length of the word only */}
               {isUserMenuOpen && (
                 <div
                   style={{
@@ -198,9 +191,6 @@ export const App: React.FC = () => {
                     boxShadow: 'var(--shadow-lg)',
                     padding: '4px',
                     zIndex: 100,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
                   }}
                 >
                   <button
@@ -208,13 +198,10 @@ export const App: React.FC = () => {
                       setIsUserMenuOpen(false);
                       handleExit();
                     }}
-                    title="Sign out of SuperAdmin console"
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: '6px',
-                      width: 'fit-content',
-                      whiteSpace: 'nowrap',
                       padding: '6px 12px',
                       background: 'rgba(239, 68, 68, 0.08)',
                       border: '1px solid rgba(239, 68, 68, 0.22)',
@@ -223,15 +210,6 @@ export const App: React.FC = () => {
                       fontSize: '0.825rem',
                       fontWeight: 600,
                       cursor: 'pointer',
-                      transition: 'all 0.15s ease',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'rgba(239, 68, 68, 0.16)';
-                      e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.4)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)';
-                      e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.22)';
                     }}
                   >
                     <LogOut size={13} />
@@ -243,9 +221,66 @@ export const App: React.FC = () => {
           </div>
         </header>
 
+        {/* SuperAdmin Navigation Sub-Bar */}
+        <nav
+          style={{
+            background: 'var(--bg-card)',
+            borderBottom: '1px solid var(--border)',
+            padding: '0 32px',
+            display: 'flex',
+            gap: '8px',
+            overflowX: 'auto',
+          }}
+        >
+          {[
+            { to: '/companies', label: 'Tenants & Orgs', icon: Building2 },
+            { to: '/devices', label: 'Devices & SIMs', icon: Radio },
+            { to: '/extensions', label: 'Validity Extensions', icon: CalendarClock },
+            { to: '/billing', label: 'Billing & Invoices', icon: CreditCard },
+            { to: '/warranty', label: 'Warranty & AMC', icon: Wrench },
+            { to: '/raw-data', label: 'Raw Socket Packets', icon: Terminal },
+            { to: '/toll-data', label: 'Toll & Salik Master', icon: Milestone },
+            { to: '/roles', label: 'Role Rights Matrix', icon: KeyRound },
+            { to: '/masters', label: 'Lookup Masters', icon: Database },
+          ].map((item) => {
+            const Icon = item.icon;
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                style={({ isActive }) => ({
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '7px',
+                  padding: '12px 14px',
+                  fontSize: '0.86rem',
+                  fontWeight: isActive ? 700 : 500,
+                  color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
+                  borderBottom: isActive ? '2px solid var(--accent)' : '2px solid transparent',
+                  textDecoration: 'none',
+                  whiteSpace: 'nowrap',
+                  transition: 'all 0.15s ease',
+                })}
+              >
+                <Icon size={15} />
+                <span>{item.label}</span>
+              </NavLink>
+            );
+          })}
+        </nav>
+
+        {/* Main Content Area */}
         <main>
           <Routes>
             <Route path="/companies" element={<CompanyManagerPage />} />
+            <Route path="/devices" element={<DeviceMasterPage />} />
+            <Route path="/extensions" element={<ExtensionManagerPage />} />
+            <Route path="/billing" element={<BillingMasterPage />} />
+            <Route path="/warranty" element={<WarrantyMasterPage />} />
+            <Route path="/raw-data" element={<RawDataPage />} />
+            <Route path="/toll-data" element={<TollMasterPage />} />
+            <Route path="/roles" element={<RoleRightsPage />} />
+            <Route path="/masters" element={<MastersPage />} />
             <Route path="*" element={<Navigate to="/companies" replace />} />
           </Routes>
         </main>

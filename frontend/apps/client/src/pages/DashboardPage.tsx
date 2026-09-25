@@ -36,9 +36,7 @@ export const DashboardPage: React.FC = () => {
 
   // Fetch real organization fleet vehicles
   useEffect(() => {
-    if (token) {
-      fetchVehicles(token, user?.company_id);
-    }
+    fetchVehicles(token || undefined, user?.company_id);
   }, [token, user?.company_id, fetchVehicles]);
 
   const vehicleList = Array.from(vehiclesMap.values());

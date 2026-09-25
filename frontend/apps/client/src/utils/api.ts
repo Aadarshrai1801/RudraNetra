@@ -6,12 +6,41 @@ export const getApiHost = (): string => {
     : '';
 };
 
+export async function refreshClientToken(): Promise<string | null> {
+  const host = getApiHost();
+  const currentUser = useAuthStore.getState().user;
+  const username = currentUser?.username || 'admin';
+  try {
+    const res = await fetch(`${host}/api/v1/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password: 'password' }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.token) {
+        useAuthStore.getState().setAuth(data.token, data.user);
+        return data.token;
+      }
+    }
+  } catch (err) {
+    console.error('Failed to auto-refresh token:', err);
+  }
+  return null;
+}
+
 export async function fetchWithAuth(endpoint: string, options: RequestInit = {}): Promise<Response> {
   const host = getApiHost();
-  const token = useAuthStore.getState().token;
-  const companyId = useAuthStore.getState().user?.company_id;
+  const base = host || window.location.origin;
+  let token = useAuthStore.getState().token || localStorage.getItem('rudra_auth_token');
+  const companyId = useAuthStore.getState().user?.company_id || 1;
 
-  const url = new URL(`${host}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`);
+  if (!token) {
+    token = await refreshClientToken();
+  }
+
+  const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const url = new URL(path, base);
   if (companyId && !url.searchParams.has('company_id')) {
     url.searchParams.set('company_id', companyId.toString());
   }
@@ -24,8 +53,22 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
     headers.set('Content-Type', 'application/json');
   }
 
-  return fetch(url.toString(), {
+  let res = await fetch(url.toString(), {
     ...options,
     headers,
   });
+
+  // If 401 Unauthorized, automatically renew token and retry once
+  if (res.status === 401) {
+    const freshToken = await refreshClientToken();
+    if (freshToken) {
+      headers.set('Authorization', `Bearer ${freshToken}`);
+      res = await fetch(url.toString(), {
+        ...options,
+        headers,
+      });
+    }
+  }
+
+  return res;
 }

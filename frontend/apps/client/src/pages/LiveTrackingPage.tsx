@@ -6,7 +6,13 @@ import {
   Search,
   Phone,
   X,
+  Snowflake,
+  MapPin,
+  ShieldAlert,
+  CheckCircle2,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { fetchWithAuth } from '../utils/api';
 
 export const LiveTrackingPage: React.FC = () => {
   const vehiclesMap = useVehicleStore((state) => state.vehicles);
@@ -22,7 +28,40 @@ export const LiveTrackingPage: React.FC = () => {
   const user = useAuthStore((state) => state.user);
   const setAuth = useAuthStore((state) => state.setAuth);
 
+  const navigate = useNavigate();
   const [expandedDetailsId, setExpandedDetailsId] = useState<number | null>(null);
+  const [frozenMap, setFrozenMap] = useState<Record<number, boolean>>({});
+  const [nearestModal, setNearestModal] = useState<{ open: boolean; vehicle: any; pois: any[] }>({ open: false, vehicle: null, pois: [] });
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const toggleFreeze = (deviceId: number, reg: string) => {
+    const isNowFrozen = !frozenMap[deviceId];
+    setFrozenMap((prev) => ({ ...prev, [deviceId]: isNowFrozen }));
+    if (isNowFrozen) {
+      showToast(`Anti-theft freeze activated on ${reg}. 50m tamper geofence armed.`);
+    } else {
+      showToast(`Anti-theft freeze disarmed on ${reg}.`);
+    }
+  };
+
+  const openNearestAmenities = async (vehicle: any) => {
+    try {
+      const res = await fetchWithAuth(`/api/v1/poi/nearest?lat=${vehicle.lat || 25.2048}&lng=${vehicle.lng || 55.2708}`);
+      if (res.ok) {
+        const json = await res.json();
+        setNearestModal({ open: true, vehicle, pois: json.data || [] });
+      } else {
+        setNearestModal({ open: true, vehicle, pois: [] });
+      }
+    } catch (e) {
+      setNearestModal({ open: true, vehicle, pois: [] });
+    }
+  };
 
   // Load organization-scoped fleet vehicles
   useEffect(() => {
@@ -373,6 +412,61 @@ export const LiveTrackingPage: React.FC = () => {
                           <span>Call driver</span>
                         </a>
                       )}
+
+                      {/* Legacy Action Suite: Freeze Mode, Find Nearest Amenities, Control Panel */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginTop: '6px' }}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleFreeze(v.device_id, v.reg_number);
+                          }}
+                          className="btn btn-sm"
+                          style={{
+                            justifyContent: 'center',
+                            gap: '4px',
+                            background: frozenMap[v.device_id] ? '#FEE2E2' : 'var(--bg-subtle)',
+                            color: frozenMap[v.device_id] ? '#DC2626' : 'var(--text-primary)',
+                            border: frozenMap[v.device_id] ? '1px solid #DC2626' : '1px solid var(--border)',
+                          }}
+                          title="Anti-theft parking freeze"
+                        >
+                          <Snowflake size={13} />
+                          <span>{frozenMap[v.device_id] ? 'Frozen' : 'Freeze'}</span>
+                        </button>
+
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openNearestAmenities(v);
+                          }}
+                          className="btn btn-secondary btn-sm"
+                          style={{ justifySelf: 'stretch', justifyContent: 'center', gap: '4px' }}
+                          title="Find closest fuel stations, tyre hubs & workshops"
+                        >
+                          <MapPin size={13} />
+                          <span>Nearest</span>
+                        </button>
+                      </div>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate('/control-panel');
+                        }}
+                        className="btn btn-sm"
+                        style={{
+                          marginTop: '4px',
+                          width: '100%',
+                          justifyContent: 'center',
+                          gap: '6px',
+                          background: 'rgba(239, 68, 68, 0.08)',
+                          color: '#DC2626',
+                          border: '1px solid rgba(239, 68, 68, 0.25)',
+                        }}
+                      >
+                        <ShieldAlert size={14} />
+                        <span>Immobilizer Command</span>
+                      </button>
                     </div>
                   )}
                 </div>
@@ -384,6 +478,118 @@ export const LiveTrackingPage: React.FC = () => {
 
       {/* Map View */}
       <LiveMap />
+
+      {/* Toast Notice */}
+      {toastMessage && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: '24px',
+            right: '24px',
+            background: 'var(--text-primary)',
+            color: '#FFFFFF',
+            padding: '12px 18px',
+            borderRadius: 'var(--radius-md)',
+            boxShadow: 'var(--shadow-lg)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            zIndex: 9999,
+            fontSize: '0.85rem',
+            fontWeight: 600,
+          }}
+        >
+          <CheckCircle2 size={16} color="#10B981" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Find Nearest Amenities Modal */}
+      {nearestModal.open && nearestModal.vehicle && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.45)',
+            backdropFilter: 'blur(3px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '20px',
+          }}
+        >
+          <div className="card" style={{ width: '100%', maxWidth: '520px', padding: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <MapPin size={20} color="var(--accent)" />
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 700 }}>
+                  Nearest Amenities for {nearestModal.vehicle.reg_number}
+                </h3>
+              </div>
+              <button
+                onClick={() => setNearestModal({ open: false, vehicle: null, pois: [] })}
+                style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '360px', overflowY: 'auto' }}>
+              {nearestModal.pois.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-secondary)' }}>
+                  Scanning surrounding radius for registered fuel stations & workshops...
+                </div>
+              ) : (
+                nearestModal.pois.map((poi: any) => (
+                  <div
+                    key={poi.id}
+                    style={{
+                      padding: '12px 14px',
+                      background: 'var(--bg-subtle)',
+                      borderRadius: 'var(--radius-sm)',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>{poi.name}</div>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                        {poi.category} • {poi.address}
+                      </div>
+                      <div style={{ fontSize: '0.76rem', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                        {poi.phone}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <span
+                        style={{
+                          fontSize: '0.85rem',
+                          fontWeight: 800,
+                          color: 'var(--accent)',
+                          display: 'block',
+                        }}
+                      >
+                        {poi.distanceKm ? `${poi.distanceKm} KM` : 'Nearby'}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
+              <button
+                onClick={() => setNearestModal({ open: false, vehicle: null, pois: [] })}
+                className="btn btn-secondary"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

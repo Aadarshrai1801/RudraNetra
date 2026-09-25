@@ -8,11 +8,16 @@ import {
   FileText,
   AlertCircle,
   Settings,
+  Bell,
+  Sliders,
+  BarChart3,
+  LifeBuoy,
+  Share2,
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" style={{ overflowY: 'auto' }}>
       {/* Brand Header */}
       <div className="sidebar-brand">
         <div
@@ -38,13 +43,13 @@ export const Sidebar: React.FC = () => {
         </div>
       </div>
 
-      {/* Nav Menu — Cut down to what a fleet owner thinks about */}
-      <nav className="nav-menu">
+      {/* Nav Menu */}
+      <nav className="nav-menu" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
         <NavLink
           to="/live"
           className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
         >
-          <Truck size={18} />
+          <Truck size={17} />
           <span>Vehicles</span>
         </NavLink>
 
@@ -52,7 +57,7 @@ export const Sidebar: React.FC = () => {
           to="/dashboard"
           className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
         >
-          <LayoutDashboard size={18} />
+          <LayoutDashboard size={17} />
           <span>Overview</span>
         </NavLink>
 
@@ -60,23 +65,75 @@ export const Sidebar: React.FC = () => {
           to="/playback"
           className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
         >
-          <Clock size={18} />
+          <Clock size={17} />
           <span>Trip history</span>
+        </NavLink>
+
+        <div style={{ height: '1px', background: 'var(--border-subtle)', margin: '4px 12px' }} />
+
+        <NavLink
+          to="/fleet"
+          className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+        >
+          <Truck size={17} />
+          <span>Fleet Operations</span>
+        </NavLink>
+
+        <NavLink
+          to="/reminders"
+          className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+        >
+          <Bell size={17} />
+          <span>Reminders</span>
+        </NavLink>
+
+        <NavLink
+          to="/control-panel"
+          className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+        >
+          <Sliders size={17} />
+          <span>Control Panel</span>
+        </NavLink>
+
+        <NavLink
+          to="/analytics"
+          className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+        >
+          <BarChart3 size={17} />
+          <span>Analytics</span>
+        </NavLink>
+
+        <div style={{ height: '1px', background: 'var(--border-subtle)', margin: '4px 12px' }} />
+
+        <NavLink
+          to="/complaints"
+          className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+        >
+          <LifeBuoy size={17} />
+          <span>Support Register</span>
+        </NavLink>
+
+        <NavLink
+          to="/guest-access"
+          className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+        >
+          <Share2 size={17} />
+          <span>Guest Tracking</span>
         </NavLink>
 
         <NavLink
           to="/geofences"
           className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
         >
-          <Compass size={18} />
-          <span>Zones</span>
+          <Compass size={17} />
+          <span>Zones & POI</span>
         </NavLink>
 
         <NavLink
           to="/alerts"
           className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
         >
-          <AlertCircle size={18} />
+          <AlertCircle size={17} />
           <span>Alerts</span>
         </NavLink>
 
@@ -84,7 +141,7 @@ export const Sidebar: React.FC = () => {
           to="/reports"
           className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
         >
-          <FileText size={18} />
+          <FileText size={17} />
           <span>Reports</span>
         </NavLink>
 
@@ -92,30 +149,14 @@ export const Sidebar: React.FC = () => {
           to="/settings"
           className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
         >
-          <Settings size={18} />
+          <Settings size={17} />
           <span>Settings</span>
         </NavLink>
       </nav>
 
-      {/* Calm Status Footer — No server logs or internal DB names */}
-      <div className="sidebar-footer">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span
-            style={{
-              width: '8px',
-              height: '8px',
-              borderRadius: '50%',
-              backgroundColor: 'var(--good)',
-              display: 'inline-block',
-            }}
-          />
-          <span style={{ fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-secondary)' }}>
-            All systems normal
-          </span>
-        </div>
-        <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-          Updated just now
-        </span>
+      {/* Footer */}
+      <div style={{ padding: '16px', borderTop: '1px solid var(--border)', marginTop: 'auto', fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>
+        <div>SIRA Approved Platform</div>
       </div>
     </aside>
   );

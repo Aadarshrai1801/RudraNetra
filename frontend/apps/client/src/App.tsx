@@ -14,14 +14,26 @@ import { SettingsPage } from './pages/SettingsPage';
 import { LoginPage } from './pages/LoginPage';
 import { SignupPage } from './pages/SignupPage';
 
+// Newly added legacy module pages
+import { RemindersPage } from './pages/RemindersPage';
+import { ControlPanelPage } from './pages/ControlPanelPage';
+import { ComplaintsPage } from './pages/ComplaintsPage';
+import { GuestAccessPage } from './pages/GuestAccessPage';
+import { AnalyticsPage } from './pages/AnalyticsPage';
+
 const routeTitles: Record<string, string> = {
   '/live': 'Vehicles',
   '/vehicles': 'Vehicles',
   '/dashboard': 'Overview',
   '/playback': 'Trip History',
-  '/geofences': 'Zones',
+  '/geofences': 'Zones & POI',
   '/devices': 'Settings',
   '/fleet': 'Fleet Operations',
+  '/reminders': 'Compliance & Reminders',
+  '/control-panel': 'Control Panel & Immobilizer',
+  '/complaints': 'Support & Complaints',
+  '/guest-access': 'Guest Tracking Sharing',
+  '/analytics': 'Fleet Analytics',
   '/reports': 'Reports',
   '/alerts': 'Alerts',
   '/settings': 'Settings',
@@ -45,8 +57,24 @@ const PageTitleManager: React.FC = () => {
   return null;
 };
 
+import { useVehicleStore } from './store/vehicleStore';
+import { useAuthStore } from './store/authStore';
+
 // Authenticated layout wrapper
 const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const token = useAuthStore((state) => state.token);
+  const user = useAuthStore((state) => state.user);
+  const fetchVehicles = useVehicleStore((state) => state.fetchVehicles);
+  const vehiclesMap = useVehicleStore((state) => state.vehicles);
+
+  useEffect(() => {
+    const activeToken = token || localStorage.getItem('rudra_auth_token') || '';
+    const activeCompany = user?.company_id || 1;
+    if (vehiclesMap.size === 0) {
+      fetchVehicles(activeToken, activeCompany);
+    }
+  }, [token, user?.company_id, fetchVehicles, vehiclesMap.size]);
+
   return (
     <div className="app-container">
       <Sidebar />
@@ -95,6 +123,60 @@ export const App: React.FC = () => {
         />
 
         <Route
+          path="/fleet"
+          element={
+            <DashboardLayout>
+              <FleetPage />
+            </DashboardLayout>
+          }
+        />
+
+        <Route
+          path="/reminders"
+          element={
+            <DashboardLayout>
+              <RemindersPage />
+            </DashboardLayout>
+          }
+        />
+
+        <Route
+          path="/control-panel"
+          element={
+            <DashboardLayout>
+              <ControlPanelPage />
+            </DashboardLayout>
+          }
+        />
+
+        <Route
+          path="/analytics"
+          element={
+            <DashboardLayout>
+              <AnalyticsPage />
+            </DashboardLayout>
+          }
+        />
+
+        <Route
+          path="/complaints"
+          element={
+            <DashboardLayout>
+              <ComplaintsPage />
+            </DashboardLayout>
+          }
+        />
+
+        <Route
+          path="/guest-access"
+          element={
+            <DashboardLayout>
+              <GuestAccessPage />
+            </DashboardLayout>
+          }
+        />
+
+        <Route
           path="/geofences"
           element={
             <DashboardLayout>
@@ -108,15 +190,6 @@ export const App: React.FC = () => {
           element={
             <DashboardLayout>
               <DevicesPage />
-            </DashboardLayout>
-          }
-        />
-
-        <Route
-          path="/fleet"
-          element={
-            <DashboardLayout>
-              <FleetPage />
             </DashboardLayout>
           }
         />

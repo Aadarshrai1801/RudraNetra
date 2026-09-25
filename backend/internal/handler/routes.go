@@ -108,6 +108,31 @@ func RegisterRoutes(router *gin.Engine, d *Dependencies) {
 			poi.GET("/nearest", nearestPOIHandler)
 		}
 
+		// ── Reminders & Compliance ──────────────────────
+		reminders := api.Group("/reminders")
+		{
+			reminders.GET("", listRemindersHandler)
+			reminders.POST("", createReminderHandler)
+			reminders.PUT("/:id", updateReminderHandler)
+			reminders.DELETE("/:id", deleteReminderHandler)
+		}
+
+		// ── Remote Commands & Immobilizer ────────────────
+		commands := api.Group("/commands")
+		{
+			commands.GET("/logs", listAllCommandLogsHandler)
+		}
+		devices.POST("/:id/commands", sendDeviceCommandHandler)
+		devices.GET("/:id/commands", listDeviceCommandsHandler)
+
+		// ── Temporary Guest Sharing ──────────────────────
+		tempUsers := api.Group("/temp-users")
+		{
+			tempUsers.GET("", listTempUsersHandler)
+			tempUsers.POST("", createTempUserHandler)
+			tempUsers.DELETE("/:id", deleteTempUserHandler)
+		}
+
 		// ── Groups ───────────────────────────────────────
 		groups := api.Group("/groups")
 		{
@@ -151,6 +176,13 @@ func RegisterRoutes(router *gin.Engine, d *Dependencies) {
 			fleet.POST("/lr", createLRHandler)
 			fleet.PUT("/lr/:id", updateLRHandler)
 
+			fleet.GET("/trips", listFleetTripsHandler)
+			fleet.POST("/trips", createFleetTripHandler)
+			fleet.PUT("/trips/:id", updateFleetTripHandler)
+
+			fleet.GET("/party-routes", listPartyRoutesHandler)
+			fleet.POST("/party-routes", createPartyRouteHandler)
+
 			fleet.GET("/vouchers", listVouchersHandler)
 			fleet.POST("/vouchers", createVoucherHandler)
 
@@ -160,6 +192,7 @@ func RegisterRoutes(router *gin.Engine, d *Dependencies) {
 			fleet.GET("/tyres", listTyresHandler)
 			fleet.POST("/tyres", createTyreHandler)
 			fleet.PUT("/tyres/:id", updateTyreHandler)
+			fleet.DELETE("/tyres/:id", deleteTyreHandler)
 		}
 
 		// ── Alerts & SMS ─────────────────────────────────
@@ -244,6 +277,17 @@ func RegisterRoutes(router *gin.Engine, d *Dependencies) {
 		admin.GET("/devices", adminListDevicesHandler)
 		admin.POST("/devices", adminCreateDeviceHandler)
 		admin.PUT("/devices/:id", adminUpdateDeviceHandler)
+
+		admin.GET("/extensions", adminListExtensionsHandler)
+		admin.POST("/extensions", adminCreateExtensionHandler)
+
+		admin.GET("/warranty", adminListWarrantyHandler)
+		admin.POST("/warranty", adminCreateWarrantyHandler)
+
+		admin.GET("/raw-data", adminListRawDataHandler)
+
+		admin.GET("/toll-data", adminListTollDataHandler)
+		admin.POST("/toll-data", adminCreateTollDataHandler)
 
 		admin.GET("/roles", listRolesHandler)
 		admin.POST("/roles", createRoleHandler)
