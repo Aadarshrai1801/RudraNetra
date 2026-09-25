@@ -1143,7 +1143,81 @@ type AdminDeviceResp struct {
 	Status         string `json:"status"` // Online, Offline, Unassigned
 }
 
+func formatDeviceModel(model string) string {
+	m := strings.ReplaceAll(model, "_", " ")
+	upper := strings.ToUpper(m)
+	if strings.HasPrefix(upper, "TELTONIKA") {
+		rest := strings.TrimSpace(m[9:])
+		return "Teltonika " + rest
+	}
+	if strings.HasPrefix(upper, "CONCOX") {
+		rest := strings.TrimSpace(m[6:])
+		return "Concox " + rest
+	}
+	return m
+}
+
+func detectSIMOperator(sim string) string {
+	clean := strings.ReplaceAll(strings.ReplaceAll(sim, " ", ""), "-", "")
+	if strings.HasPrefix(clean, "+97152") || strings.HasPrefix(clean, "+97155") || strings.HasPrefix(clean, "+97158") ||
+		strings.HasPrefix(clean, "052") || strings.HasPrefix(clean, "055") || strings.HasPrefix(clean, "058") {
+		return "du Telecom"
+	}
+	return "e& (Etisalat UAE)"
+}
+
 func adminListDevicesHandler(c *gin.Context) {
+	if deps != nil && deps.Pool != nil {
+		query := `
+			SELECT d.id, d.imei, COALESCE(d.sim_no, ''), COALESCE(d.device_type, 'TELTONIKA_FMB920'),
+			       COALESCE(d.firmware_ver, '03.28.07.Rev.00'), COALESCE(c.name, 'Warehouse Stock'),
+			       COALESCE(v.reg_number, 'Unassigned'), COALESCE(d.status, 'active'), d.last_heartbeat, COALESCE(d.port, 5040)
+			FROM devices d
+			LEFT JOIN companies c ON d.company_id = c.id
+			LEFT JOIN vehicles v ON v.device_id = d.id
+			ORDER BY d.id ASC
+		`
+		rows, err := deps.Pool.Query(c.Request.Context(), query)
+		if err == nil {
+			defer rows.Close()
+			var devices []AdminDeviceResp
+			for rows.Next() {
+				var dev AdminDeviceResp
+				var model, rawStatus string
+				var lastHeartbeat *time.Time
+				var port int
+				if scanErr := rows.Scan(&dev.ID, &dev.IMEI, &dev.SIMCardNo, &model, &dev.Firmware, &dev.AssignedTenant, &dev.VehicleReg, &rawStatus, &lastHeartbeat, &port); scanErr == nil {
+					dev.Model = formatDeviceModel(model)
+					dev.Protocol = fmt.Sprintf("TCP/%d", port)
+					if dev.Protocol == "TCP/0" {
+						dev.Protocol = "TCP/5040"
+					}
+					dev.Operator = detectSIMOperator(dev.SIMCardNo)
+
+					if dev.VehicleReg == "Unassigned" || dev.AssignedTenant == "Warehouse Stock" {
+						dev.Status = "Unassigned"
+					} else if rawStatus == "active" {
+						dev.Status = "Online"
+					} else {
+						dev.Status = "Offline"
+					}
+
+					if lastHeartbeat != nil {
+						dev.LastPing = lastHeartbeat.Format("2006-01-02 15:04")
+					} else {
+						dev.LastPing = "Just now"
+					}
+
+					devices = append(devices, dev)
+				}
+			}
+			if len(devices) > 0 {
+				c.JSON(http.StatusOK, gin.H{"success": true, "data": devices})
+				return
+			}
+		}
+	}
+
 	devices := []AdminDeviceResp{
 		{ID: 1, IMEI: "867829048192019", SIMCardNo: "+971 50 1928374", Operator: "e& (Etisalat UAE)", Model: "Teltonika FMB920", Protocol: "TCP/5040", Firmware: "03.28.07.Rev.00", AssignedTenant: "Emirates Trans Logistics L.L.C", VehicleReg: "DXB-K-49201", LastPing: "Just now", Status: "Online"},
 		{ID: 2, IMEI: "867829048192020", SIMCardNo: "+971 55 9812734", Operator: "du Telecom", Model: "Teltonika FMB125", Protocol: "TCP/5040", Firmware: "03.28.05.Rev.02", AssignedTenant: "Gulf Cold Chain Express", VehicleReg: "AUH-5-88392", LastPing: "1 min ago", Status: "Online"},
@@ -1154,10 +1228,52 @@ func adminListDevicesHandler(c *gin.Context) {
 }
 
 func adminCreateDeviceHandler(c *gin.Context) {
+	var body struct {
+		IMEI        string `json:"imei"`
+		SIMCardNo   string `json:"simCardNo"`
+		Operator    string `json:"operator"`
+		Model       string `json:"model"`
+		Protocol    string `json:"protocol"`
+		Firmware    string `json:"firmware"`
+		CompanyName string `json:"companyName"`
+	}
+	if err := c.ShouldBindJSON(&body); err == nil && body.IMEI != "" && deps != nil && deps.Pool != nil {
+		var companyID *int64
+		if body.CompanyName != "" {
+			var cid int64
+			if err := deps.Pool.QueryRow(c.Request.Context(), "SELECT id FROM companies WHERE name ILIKE $1 LIMIT 1", "%"+body.CompanyName+"%").Scan(&cid); err == nil {
+				companyID = &cid
+			}
+		}
+		_, _ = deps.Pool.Exec(c.Request.Context(), `
+			INSERT INTO devices (imei, sim_no, device_type, firmware_ver, company_id, status, port, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, 'active', 5040, NOW(), NOW())
+			ON CONFLICT (imei) DO UPDATE SET sim_no = EXCLUDED.sim_no, updated_at = NOW()
+		`, body.IMEI, body.SIMCardNo, body.Model, body.Firmware, companyID)
+	}
 	c.JSON(http.StatusCreated, gin.H{"success": true, "message": "Hardware tracker provisioned with SIM ICCID profile"})
 }
 
 func adminUpdateDeviceHandler(c *gin.Context) {
+	idStr := c.Param("id")
+	id, _ := strconv.ParseInt(idStr, 10, 64)
+	var body struct {
+		SIMCardNo string `json:"simCardNo"`
+		Firmware  string `json:"firmware"`
+		Status    string `json:"status"`
+	}
+	if err := c.ShouldBindJSON(&body); err == nil && id > 0 && deps != nil && deps.Pool != nil {
+		status := "active"
+		if strings.ToLower(body.Status) == "offline" {
+			status = "inactive"
+		}
+		_, _ = deps.Pool.Exec(c.Request.Context(), `
+			UPDATE devices SET sim_no = COALESCE(NULLIF($1, ''), sim_no),
+			                   firmware_ver = COALESCE(NULLIF($2, ''), firmware_ver),
+			                   status = $3, updated_at = NOW()
+			WHERE id = $4
+		`, body.SIMCardNo, body.Firmware, status, id)
+	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Device configuration updated"})
 }
 

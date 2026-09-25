@@ -112,7 +112,7 @@ func loginHandler(c *gin.Context) {
 		companyID = 2
 		companyName = "EKSC Dubai"
 		fullName = "EKSC Logistics Manager"
-	} else if req.Username == "superadmin" {
+	} else if req.Username == "superadmin" || req.Username == "admin" {
 		role = "superadmin"
 		companyName = "RudraNetra Global"
 		fullName = "System SuperAdmin"

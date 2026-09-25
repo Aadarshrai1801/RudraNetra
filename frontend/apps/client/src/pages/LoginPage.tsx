@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Lock, User, ShieldCheck, AlertCircle, Building } from 'lucide-react';
+import { Lock, User, ShieldCheck, AlertCircle } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useVehicleStore } from '../store/vehicleStore';
 
 export const LoginPage: React.FC = () => {
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('password');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,13 +34,29 @@ export const LoginPage: React.FC = () => {
         throw new Error(data.error || 'Invalid credentials.');
       }
 
+      // If user is superadmin, direct them straight to the SuperAdmin Console!
+      if (data.user?.role === 'superadmin') {
+        localStorage.setItem('rudra_superadmin_token', data.token);
+        localStorage.setItem('rudra_superadmin_user', JSON.stringify(data.user));
+        localStorage.setItem('rudra_admin_token', data.token);
+        window.location.href = 'http://localhost:3001';
+        return;
+      }
+
+      // Organizational admin or user:
+      // Strip any superadmin tokens so organizational accounts cannot access the SuperAdmin Console
+      localStorage.removeItem('rudra_superadmin_token');
+      localStorage.removeItem('rudra_superadmin_user');
+      localStorage.removeItem('rudra_admin_token');
+
       // Clear previous cached fleet vehicles
       clearVehicles();
 
-      // Save token and user details in store and localStorage
+      // Save token and user details in store and localStorage for client portal
       setAuth(data.token, data.user);
+      localStorage.setItem('rudra_auth_token', data.token);
 
-      // Navigate to live tracking
+      // Navigate to live tracking for their organization
       navigate('/live');
     } catch (err: any) {
       setError(err.message || 'Login failed. Please verify credentials.');
@@ -52,12 +68,6 @@ export const LoginPage: React.FC = () => {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     doLogin(username, password);
-  };
-
-  const selectDemoAccount = (orgUser: string, orgPass: string) => {
-    setUsername(orgUser);
-    setPassword(orgPass);
-    doLogin(orgUser, orgPass);
   };
 
   return (
@@ -141,74 +151,6 @@ export const LoginPage: React.FC = () => {
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '4px' }}>
             Enterprise Multi-Tenant GPS Telematics
           </p>
-        </div>
-
-        {/* Demo Organization Selector */}
-        <div
-          style={{
-            marginBottom: '20px',
-            padding: '12px',
-            background: 'rgba(15, 23, 42, 0.6)',
-            borderRadius: '12px',
-            border: '1px solid var(--border-subtle)',
-          }}
-        >
-          <div
-            style={{
-              fontSize: '0.75rem',
-              fontWeight: 700,
-              color: 'var(--text-muted)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-              marginBottom: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
-          >
-            <Building size={13} color="var(--cyan-accent)" />
-            <span>Select Demo Organization to Test Isolation</span>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-            <button
-              type="button"
-              onClick={() => selectDemoAccount('admin', 'password')}
-              style={{
-                background: username === 'admin' ? 'rgba(0, 242, 254, 0.15)' : 'rgba(255, 255, 255, 0.04)',
-                border: username === 'admin' ? '1px solid var(--cyan-accent)' : '1px solid var(--border-subtle)',
-                borderRadius: '8px',
-                padding: '8px 10px',
-                cursor: 'pointer',
-                textAlign: 'left',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#fff' }}>Allied Transport</div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--cyan-accent)', marginTop: '2px' }}>
-                312 Vehicles (Org 1)
-              </div>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => selectDemoAccount('eksc_admin', 'password')}
-              style={{
-                background: username === 'eksc_admin' ? 'rgba(0, 242, 254, 0.15)' : 'rgba(255, 255, 255, 0.04)',
-                border: username === 'eksc_admin' ? '1px solid var(--cyan-accent)' : '1px solid var(--border-subtle)',
-                borderRadius: '8px',
-                padding: '8px 10px',
-                cursor: 'pointer',
-                textAlign: 'left',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#fff' }}>EKSC Dubai</div>
-              <div style={{ fontSize: '0.7rem', color: '#10b981', marginTop: '2px' }}>
-                5 Vehicles (Org 2)
-              </div>
-            </button>
-          </div>
         </div>
 
         {error && (
