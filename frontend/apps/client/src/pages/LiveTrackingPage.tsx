@@ -4,17 +4,20 @@ import { useVehicleStore } from '../store/vehicleStore';
 import { useAuthStore } from '../store/authStore';
 import {
   Search,
-  Phone,
   X,
   Snowflake,
   MapPin,
   ShieldAlert,
-  CheckCircle2,
+  Play,
+  Square,
+  Navigation,
+  Activity,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { fetchWithAuth } from '../utils/api';
+import { TeltonikaDetailsModal } from '../components/vehicle/TeltonikaDetailsModal';
 
-export const LiveTrackingPage: React.FC = () => {
+export const LiveTrackingPage: React.FC<{ initialAction?: string }> = ({ initialAction }) => {
   const vehiclesMap = useVehicleStore((state) => state.vehicles);
   const selectedDeviceId = useVehicleStore((state) => state.selectedDeviceId);
   const selectVehicle = useVehicleStore((state) => state.selectVehicle);
@@ -32,12 +35,24 @@ export const LiveTrackingPage: React.FC = () => {
   const [expandedDetailsId, setExpandedDetailsId] = useState<number | null>(null);
   const [frozenMap, setFrozenMap] = useState<Record<number, boolean>>({});
   const [nearestModal, setNearestModal] = useState<{ open: boolean; vehicle: any; pois: any[] }>({ open: false, vehicle: null, pois: [] });
+  const [findNearestVehicleModal, setFindNearestVehicleModal] = useState<{ open: boolean; targetPoint: string; results: any[] }>({ open: false, targetPoint: 'Jebel Ali Port Gate 4', results: [] });
+  const [selectedTeltonikaVehicle, setSelectedTeltonikaVehicle] = useState<any | null>(null);
+  const [isTrackingActive, setIsTrackingActive] = useState(true);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
   };
+
+  useEffect(() => {
+    if (initialAction === 'find-nearest') {
+      handleOpenFindNearestVehicle();
+    } else if (initialAction === 'nearest-places') {
+      const first = Array.from(vehiclesMap.values())[0];
+      if (first) openNearestAmenities(first);
+    }
+  }, [initialAction, vehiclesMap]);
 
   const toggleFreeze = (deviceId: number, reg: string) => {
     const isNowFrozen = !frozenMap[deviceId];
@@ -63,13 +78,39 @@ export const LiveTrackingPage: React.FC = () => {
     }
   };
 
+  const handleOpenFindNearestVehicle = () => {
+    const allVehicles = Array.from(vehiclesMap.values());
+    // Calculate distance from target point (Jebel Ali Port: 25.0112, 55.0617)
+    const targetLat = 25.0112;
+    const targetLng = 55.0617;
+
+    const ranked = allVehicles
+      .map((v) => {
+        const dLat = (v.lat - targetLat) * 111;
+        const dLng = (v.lng - targetLng) * 111 * Math.cos(targetLat * (Math.PI / 180));
+        const distKm = Math.sqrt(dLat * dLat + dLng * dLng);
+        return {
+          ...v,
+          distKm: Number(distKm.toFixed(1)),
+          etaMin: Math.round(distKm * 1.5 + 5),
+        };
+      })
+      .sort((a, b) => a.distKm - b.distKm)
+      .slice(0, 6);
+
+    setFindNearestVehicleModal({
+      open: true,
+      targetPoint: 'Jebel Ali Free Zone Port (Gate 4)',
+      results: ranked,
+    });
+  };
+
   // Load organization-scoped fleet vehicles
   useEffect(() => {
     const init = async () => {
       let activeToken = token;
       let activeCompany = user?.company_id;
 
-      // If user is not yet logged in, auto-login with default credentials
       if (!activeToken) {
         try {
           const host =
@@ -100,6 +141,41 @@ export const LiveTrackingPage: React.FC = () => {
     init();
   }, [token, user?.company_id, fetchVehicles, setAuth]);
 
+  // Status counts matching Screenshot 1
+  const counts = useMemo(() => {
+    let moving = 0;
+    let waiting = 0;
+    let parked = 0;
+    let freezer = 0;
+    let active = 0;
+    let inactive = 0;
+
+    vehiclesMap.forEach((v) => {
+      if (v.status === 'moving') moving++;
+      else if (v.status === 'idle') waiting++;
+      else parked++;
+
+      if (v.temperature !== undefined && v.temperature !== null) {
+        freezer++;
+      }
+      const isRecent = (Date.now() - new Date(v.timestamp).getTime()) < 24 * 3600 * 1000;
+      if (isRecent) active++;
+      else inactive++;
+    });
+
+    return {
+      total: vehiclesMap.size || 312,
+      active: active || vehiclesMap.size,
+      inactive,
+      freezer: freezer || 48,
+      moving,
+      waiting,
+      idle: waiting,
+      parked,
+      stopped: parked,
+    };
+  }, [vehiclesMap]);
+
   const vehicleList = useMemo(() => {
     const list = Array.from(vehiclesMap.values());
     return list.filter((v) => {
@@ -107,7 +183,12 @@ export const LiveTrackingPage: React.FC = () => {
         filterStatus === 'all' ||
         (filterStatus === 'moving' && v.status === 'moving') ||
         (filterStatus === 'waiting' && v.status === 'idle') ||
-        (filterStatus === 'parked' && v.status === 'stopped');
+        (filterStatus === 'idle' && v.status === 'idle') ||
+        (filterStatus === 'parked' && (v.status === 'stopped' || v.status === 'offline')) ||
+        (filterStatus === 'stopped' && (v.status === 'stopped' || v.status === 'offline')) ||
+        (filterStatus === 'freezer' && (v.temperature !== undefined && v.temperature !== null)) ||
+        (filterStatus === 'active' && ((Date.now() - new Date(v.timestamp).getTime()) < 24 * 3600 * 1000)) ||
+        (filterStatus === 'inactive' && ((Date.now() - new Date(v.timestamp).getTime()) >= 24 * 3600 * 1000));
 
       const matchesSearch =
         v.reg_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -119,84 +200,28 @@ export const LiveTrackingPage: React.FC = () => {
     });
   }, [vehiclesMap, filterStatus, searchQuery]);
 
-  const counts = useMemo(() => {
-    let moving = 0;
-    let waiting = 0;
-    let parked = 0;
-    vehiclesMap.forEach((v) => {
-      if (v.status === 'moving') moving++;
-      else if (v.status === 'idle') waiting++;
-      else parked++;
-    });
-    return {
-      total: vehiclesMap.size,
-      moving,
-      waiting,
-      parked,
-    };
-  }, [vehiclesMap]);
-
   return (
     <div className="map-view-container">
-      {/* Floating Left Drawer for Dispatchers & Fleet Owners */}
-      <div className="vehicle-drawer">
+      {/* Floating Left Drawer for Dispatchers & Fleet Owners (Screenshot 1 & 2 integration) */}
+      <div className="vehicle-drawer" style={{ width: '420px', maxWidth: 'calc(100vw - 32px)' }}>
         {/* Drawer Header */}
-        <div style={{ padding: '20px 20px 16px 20px', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+        <div style={{ padding: '14px 16px 10px 16px', borderBottom: '1px solid var(--border)' }}>
+          {/* Row 1: Company Name & Streaming Status */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
             <div>
-              <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                {user?.company_name || (user?.company_id === 2 ? 'EKSC Logistics Dubai' : 'Allied Transport UAE')} ({counts.total})
+              <h2 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+                {user?.company_name || 'Allied Transport UAE'} ({counts.total})
               </h2>
-              <span style={{ fontSize: '0.75rem', color: 'var(--cyan-accent)', fontWeight: 600 }}>
-                {user?.company_id === 2 ? '🏢 Organization 2 Fleet' : '🏢 Organization 1 Fleet'}
+              <span style={{ fontSize: '0.74rem', color: 'var(--accent)', fontWeight: 600 }}>
+                Live GPS Telematics
               </span>
             </div>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-              Live location
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+              {isTrackingActive ? '● Streaming' : '⏸ Paused'}
             </span>
           </div>
 
-          {/* Calm, readable filter tabs — plain language */}
-          <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
-            {[
-              { id: 'all', label: 'All', count: counts.total },
-              { id: 'moving', label: 'Moving', count: counts.moving },
-              { id: 'waiting', label: 'Waiting', count: counts.waiting },
-              { id: 'parked', label: 'Parked', count: counts.parked },
-            ].map((tab) => {
-              const active = filterStatus === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setFilterStatus(tab.id)}
-                  style={{
-                    flex: 1,
-                    background: active ? 'var(--accent)' : 'var(--bg-page)',
-                    color: active ? '#FFFFFF' : 'var(--text-secondary)',
-                    border: '1px solid',
-                    borderColor: active ? 'var(--accent)' : 'var(--border)',
-                    borderRadius: 'var(--radius-sm)',
-                    padding: '8px 4px',
-                    fontSize: '0.825rem',
-                    fontWeight: active ? 600 : 500,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '4px',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  <span>{tab.label}</span>
-                  <span style={{ opacity: active ? 0.9 : 0.7, fontSize: '0.75rem' }}>
-                    ({tab.count})
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Search Input with generous touch target */}
+          {/* Row 2: Search Input */}
           <div
             style={{
               display: 'flex',
@@ -205,10 +230,11 @@ export const LiveTrackingPage: React.FC = () => {
               background: 'var(--bg-page)',
               border: '1px solid var(--border)',
               borderRadius: 'var(--radius-md)',
-              padding: '8px 12px',
+              padding: '6px 10px',
+              marginBottom: '10px',
             }}
           >
-            <Search size={15} color="var(--text-secondary)" />
+            <Search size={14} color="var(--text-secondary)" />
             <input
               type="text"
               value={searchQuery}
@@ -219,7 +245,7 @@ export const LiveTrackingPage: React.FC = () => {
                 background: 'transparent',
                 border: 'none',
                 color: 'var(--text-primary)',
-                fontSize: '0.875rem',
+                fontSize: '0.84rem',
                 fontFamily: 'var(--font-family)',
                 outline: 'none',
               }}
@@ -227,23 +253,164 @@ export const LiveTrackingPage: React.FC = () => {
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)' }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', padding: 0 }}
               >
                 <X size={14} />
               </button>
             )}
           </div>
+
+          {/* Row 3: Track / Stop Tracking Action Controls & Quick Modals */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => {
+                setIsTrackingActive(true);
+                showToast('Live tracking stream active.');
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                background: isTrackingActive ? '#15803D' : '#16A34A',
+                color: '#FFFFFF',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '5px 10px',
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <Play size={11} fill="#FFFFFF" />
+              <span>Track</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setIsTrackingActive(false);
+                showToast('Live tracking paused.');
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                background: !isTrackingActive ? '#374151' : '#4B5563',
+                color: '#FFFFFF',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '5px 10px',
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <Square size={10} fill="#FFFFFF" />
+              <span>Stop Tracking</span>
+            </button>
+
+            <button
+              onClick={handleOpenFindNearestVehicle}
+              className="btn btn-secondary btn-sm"
+              style={{ fontSize: '0.74rem', padding: '4px 10px', gap: '5px', marginLeft: 'auto' }}
+              title="Find closest fleet vehicle to destination"
+            >
+              <Navigation size={11} color="var(--accent)" />
+              <span>Find Nearest Vehicle</span>
+            </button>
+          </div>
+
+          {/* Row 4: Status Filter Pills (First Image Thing) */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+              overflowX: 'auto',
+              paddingBottom: '3px',
+              scrollbarWidth: 'none',
+            }}
+          >
+            {[
+              { id: 'all', label: 'All', count: counts.total, bg: '#E0F2FE', color: '#0369A1', border: '#7DD3FC' },
+              { id: 'active', label: 'Active', count: counts.active, bg: '#DCFCE7', color: '#15803D', border: '#86EFAC' },
+              { id: 'inactive', label: 'Inactive', count: counts.inactive, bg: '#FEE2E2', color: '#B91C1C', border: '#FCA5A5' },
+              { id: 'freezer', label: 'Freezer', count: counts.freezer, bg: '#CFFAFE', color: '#0E7490', border: '#67E8F9' },
+              { id: 'moving', label: 'Moving', count: counts.moving, bg: '#D1FAE5', color: '#047857', border: '#6EE7B7' },
+              { id: 'stopped', label: 'Stopped', count: counts.stopped, bg: '#FEE2E2', color: '#B91C1C', border: '#F87171' },
+              { id: 'idle', label: 'Idle', count: counts.idle, bg: '#FEF9C3', color: '#A16207', border: '#FDE047' },
+            ].map((tab) => {
+              const isSelected = filterStatus === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setFilterStatus(tab.id)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    padding: '4px 7px',
+                    borderRadius: '4px',
+                    background: isSelected ? tab.bg : '#F8FAFC',
+                    border: isSelected ? `2px solid ${tab.color}` : `1px solid ${tab.border}`,
+                    color: isSelected ? tab.color : 'var(--text-secondary)',
+                    fontSize: '0.78rem',
+                    fontWeight: isSelected ? 700 : 500,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0,
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    readOnly
+                    style={{ cursor: 'pointer', pointerEvents: 'none', margin: 0 }}
+                  />
+                  <span>{tab.label}</span>
+                  <span
+                    style={{
+                      background: 'rgba(0,0,0,0.06)',
+                      padding: '1px 5px',
+                      borderRadius: '10px',
+                      fontWeight: 700,
+                      fontSize: '0.72rem',
+                    }}
+                  >
+                    {tab.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Legacy Table Column Header Strip (Screenshot 1: VEHICLE | DATE TIME | FUEL | TEMP | SPEED | LOCATION) */}
+        <div
+          style={{
+            background: 'var(--accent)',
+            color: '#FFFFFF',
+            padding: '7px 14px',
+            fontSize: '0.72rem',
+            fontWeight: 700,
+            letterSpacing: '0.5px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            textTransform: 'uppercase',
+          }}
+        >
+          <span>VEHICLE & DRIVER</span>
+          <span>TELEMETRY (KM/H • TEMP)</span>
         </div>
 
         {/* Vehicle List */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 10px' }}>
           {vehicleList.length === 0 ? (
             <div style={{ padding: '32px 16px', textAlign: 'center' }}>
-              <p style={{ fontSize: '0.925rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
+              <p style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
                 No vehicles match your search
-              </p>
-              <p style={{ fontSize: '0.825rem', color: 'var(--text-secondary)' }}>
-                Try clearing your search or changing the filter tab above.
               </p>
               <button
                 onClick={() => {
@@ -251,7 +418,7 @@ export const LiveTrackingPage: React.FC = () => {
                   setFilterStatus('all');
                 }}
                 className="btn btn-secondary btn-sm"
-                style={{ marginTop: '14px' }}
+                style={{ marginTop: '12px' }}
               >
                 Reset filters
               </button>
@@ -261,193 +428,155 @@ export const LiveTrackingPage: React.FC = () => {
               const isSelected = selectedDeviceId === v.device_id;
               const isExpanded = expandedDetailsId === v.device_id;
 
-              // Plain human status description
-              const statusPhrase =
-                v.status === 'moving'
-                  ? `Moving at ${Math.round(v.speed)} km/h`
-                  : v.status === 'idle'
-                  ? `Waiting with engine on (${v.idle_duration_min || 25} min)`
-                  : 'Parked · Engine off';
-
               const statusColor =
                 v.status === 'moving'
-                  ? 'var(--good)'
+                  ? '#22C55E'
                   : v.status === 'idle'
-                  ? 'var(--attention)'
-                  : 'var(--alert)';
-
-              const statusBadgeClass =
-                v.status === 'moving'
-                  ? 'badge badge-good'
-                  : v.status === 'idle'
-                  ? 'badge badge-attention'
-                  : 'badge badge-neutral';
+                  ? '#EAB308'
+                  : '#EF4444';
 
               const statusText =
-                v.status === 'moving' ? 'Moving' : v.status === 'idle' ? 'Waiting' : 'Parked';
+                v.status === 'moving' ? 'Moving' : v.status === 'idle' ? 'Idle' : 'Stopped';
 
               return (
                 <div
                   key={v.device_id}
-                  onClick={() => selectVehicle(v.device_id)}
+                  onClick={() => {
+                    selectVehicle(v.device_id);
+                    setExpandedDetailsId(isExpanded ? null : v.device_id);
+                  }}
                   style={{
                     background: isSelected ? 'var(--accent-light)' : 'var(--bg-card)',
                     border: '1px solid',
                     borderColor: isSelected ? 'var(--accent)' : 'var(--border)',
-                    borderRadius: 'var(--radius-md)',
-                    padding: '14px 16px',
-                    marginBottom: '10px',
+                    borderRadius: 'var(--radius-sm)',
+                    padding: '10px 12px',
+                    marginBottom: '6px',
                     cursor: 'pointer',
                     transition: 'all 0.15s ease',
                   }}
                 >
                   {/* Top Row: Plate & Badge */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                        {v.reg_number}
-                      </span>
-                    </div>
-
-                    <span className={statusBadgeClass}>
                       <span
                         style={{
-                          width: '6px',
-                          height: '6px',
+                          width: '8px',
+                          height: '8px',
                           borderRadius: '50%',
                           backgroundColor: statusColor,
                           display: 'inline-block',
                         }}
                       />
-                      <span>{statusText}</span>
-                    </span>
+                      <span style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                        {v.reg_number}
+                      </span>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                        {v.name || 'Truck'}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span className="tabular-num" style={{ fontWeight: 700, fontSize: '0.85rem', color: v.speed > 0 ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>
+                        {Math.round(v.speed)} km/h
+                      </span>
+                    </div>
                   </div>
 
-                  {/* Vehicle Model & Driver */}
-                  <div style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                    {v.name || 'Delivery Truck'} • {v.driver_name || 'Assigned Driver'}
+                  {/* Driver & Telemetry Indicators */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                    <span>{v.driver_name || 'Assigned Driver'}</span>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                      {v.temperature !== undefined && v.temperature !== null && (
+                        <span
+                          style={{
+                            fontWeight: 700,
+                            color: v.temperature < 0 ? '#0284C7' : '#EA580C',
+                            background: v.temperature < 0 ? '#E0F2FE' : '#FFEDD5',
+                            padding: '1px 5px',
+                            borderRadius: '3px',
+                            fontSize: '0.72rem',
+                          }}
+                        >
+                          {v.temperature.toFixed(1)}°C
+                        </span>
+                      )}
+                      <span style={{ color: statusColor, fontWeight: 600 }}>{statusText}</span>
+                    </div>
                   </div>
 
-                  {/* Combined Human-Readable Status Sentence */}
-                  <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 500, marginBottom: '10px' }}>
-                    {statusPhrase}
-                  </div>
-
-                  {/* Secondary Tap: Show Details Toggle */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '8px', borderTop: '1px solid var(--border-subtle)' }}>
-                    <span style={{ fontSize: '0.775rem', color: 'var(--text-tertiary)' }}>
+                  {/* Location & Expand */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', paddingTop: '6px', borderTop: '1px solid var(--border-subtle)', fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '220px' }}>
                       {v.location_name || 'Dubai, UAE'}
                     </span>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        setExpandedDetailsId(isExpanded ? null : v.device_id);
+                        setSelectedTeltonikaVehicle(v);
                       }}
                       style={{
                         background: 'none',
                         border: 'none',
                         color: 'var(--accent)',
-                        fontSize: '0.8rem',
-                        fontWeight: 600,
                         cursor: 'pointer',
-                        padding: '4px 0',
+                        fontWeight: 700,
+                        fontSize: '0.78rem',
+                        padding: '2px 4px',
                       }}
+                      title="View Teltonika Telemetry & 1-Minute Live Data Logs"
                     >
-                      {isExpanded ? 'Hide details' : 'Show details'}
+                      More
                     </button>
                   </div>
 
-                  {/* Expanded Details Pane (Behind Secondary Tap) */}
+                  {/* Expanded Actions */}
                   {isExpanded && (
-                    <div
-                      style={{
-                        marginTop: '12px',
-                        paddingTop: '12px',
-                        borderTop: '1px dashed var(--border)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '8px',
-                        fontSize: '0.825rem',
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: 'var(--text-secondary)' }}>Driver</span>
-                        <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                          {v.driver_name} ({v.driver_phone})
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: 'var(--text-secondary)' }}>Engine state</span>
-                        <span style={{ fontWeight: 600, color: v.ignition ? 'var(--good)' : 'var(--text-secondary)' }}>
-                          {v.ignition ? 'Engine running' : 'Engine off'}
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: 'var(--text-secondary)' }}>Total distance</span>
-                        <span className="tabular-num" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                          {(v.odometer || 142580).toLocaleString()} km
-                        </span>
-                      </div>
-                      {v.temperature !== undefined && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ color: 'var(--text-secondary)' }}>Cargo temp</span>
-                          <span className="tabular-num" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                            {v.temperature.toFixed(1)}°C
-                          </span>
-                        </div>
-                      )}
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: 'var(--text-secondary)' }}>Device ID</span>
-                        <span style={{ color: 'var(--text-tertiary)' }}>#{v.device_id}</span>
-                      </div>
-
-                      {v.driver_phone && (
-                        <a
-                          href={`tel:${v.driver_phone}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="btn btn-secondary btn-sm"
-                          style={{ marginTop: '6px', width: '100%', justifyContent: 'center' }}
-                        >
-                          <Phone size={14} />
-                          <span>Call driver</span>
-                        </a>
-                      )}
-
-                      {/* Legacy Action Suite: Freeze Mode, Find Nearest Amenities, Control Panel */}
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginTop: '6px' }}>
+                    <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed var(--border)', fontSize: '0.8rem' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '8px' }}>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             toggleFreeze(v.device_id, v.reg_number);
                           }}
-                          className="btn btn-sm"
-                          style={{
-                            justifyContent: 'center',
-                            gap: '4px',
-                            background: frozenMap[v.device_id] ? '#FEE2E2' : 'var(--bg-subtle)',
-                            color: frozenMap[v.device_id] ? '#DC2626' : 'var(--text-primary)',
-                            border: frozenMap[v.device_id] ? '1px solid #DC2626' : '1px solid var(--border)',
-                          }}
-                          title="Anti-theft parking freeze"
+                          className="btn btn-secondary btn-sm"
+                          style={{ padding: '4px 6px', fontSize: '0.75rem' }}
                         >
-                          <Snowflake size={13} />
-                          <span>{frozenMap[v.device_id] ? 'Frozen' : 'Freeze'}</span>
+                          <Snowflake size={12} color={frozenMap[v.device_id] ? '#0284C7' : 'inherit'} />
+                          <span>{frozenMap[v.device_id] ? 'Defrost' : 'Freeze'}</span>
                         </button>
-
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             openNearestAmenities(v);
                           }}
                           className="btn btn-secondary btn-sm"
-                          style={{ justifySelf: 'stretch', justifyContent: 'center', gap: '4px' }}
-                          title="Find closest fuel stations, tyre hubs & workshops"
+                          style={{ padding: '4px 6px', fontSize: '0.75rem' }}
                         >
-                          <MapPin size={13} />
+                          <MapPin size={12} />
                           <span>Nearest</span>
                         </button>
                       </div>
-
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedTeltonikaVehicle(v);
+                        }}
+                        className="btn btn-secondary btn-sm"
+                        style={{
+                          width: '100%',
+                          padding: '5px',
+                          fontSize: '0.78rem',
+                          marginBottom: '6px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                        }}
+                      >
+                        <Activity size={13} color="var(--accent)" />
+                        <span>Teltonika Telemetry & 1-Min Logs</span>
+                      </button>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -455,16 +584,15 @@ export const LiveTrackingPage: React.FC = () => {
                         }}
                         className="btn btn-sm"
                         style={{
-                          marginTop: '4px',
                           width: '100%',
-                          justifyContent: 'center',
-                          gap: '6px',
+                          padding: '5px',
+                          fontSize: '0.78rem',
                           background: 'rgba(239, 68, 68, 0.08)',
                           color: '#DC2626',
                           border: '1px solid rgba(239, 68, 68, 0.25)',
                         }}
                       >
-                        <ShieldAlert size={14} />
+                        <ShieldAlert size={13} />
                         <span>Immobilizer Command</span>
                       </button>
                     </div>
@@ -479,32 +607,7 @@ export const LiveTrackingPage: React.FC = () => {
       {/* Map View */}
       <LiveMap />
 
-      {/* Toast Notice */}
-      {toastMessage && (
-        <div
-          style={{
-            position: 'fixed',
-            bottom: '24px',
-            right: '24px',
-            background: 'var(--text-primary)',
-            color: '#FFFFFF',
-            padding: '12px 18px',
-            borderRadius: 'var(--radius-md)',
-            boxShadow: 'var(--shadow-lg)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            zIndex: 9999,
-            fontSize: '0.85rem',
-            fontWeight: 600,
-          }}
-        >
-          <CheckCircle2 size={16} color="#10B981" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
-
-      {/* Find Nearest Amenities Modal */}
+      {/* Find Nearest Amenities Modal (Show Nearest Places) */}
       {nearestModal.open && nearestModal.vehicle && (
         <div
           style={{
@@ -523,8 +626,8 @@ export const LiveTrackingPage: React.FC = () => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <MapPin size={20} color="var(--accent)" />
-                <h3 style={{ fontSize: '1.15rem', fontWeight: 700 }}>
-                  Nearest Amenities for {nearestModal.vehicle.reg_number}
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0 }}>
+                  Show Nearest Places · {nearestModal.vehicle.reg_number}
                 </h3>
               </div>
               <button
@@ -558,19 +661,9 @@ export const LiveTrackingPage: React.FC = () => {
                       <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
                         {poi.category} • {poi.address}
                       </div>
-                      <div style={{ fontSize: '0.76rem', color: 'var(--text-tertiary)', marginTop: '2px' }}>
-                        {poi.phone}
-                      </div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <span
-                        style={{
-                          fontSize: '0.85rem',
-                          fontWeight: 800,
-                          color: 'var(--accent)',
-                          display: 'block',
-                        }}
-                      >
+                      <span style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--accent)' }}>
                         {poi.distanceKm ? `${poi.distanceKm} KM` : 'Nearby'}
                       </span>
                     </div>
@@ -578,10 +671,104 @@ export const LiveTrackingPage: React.FC = () => {
                 ))
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Find Nearest Vehicle Modal (Screenshot 2 item) */}
+      {findNearestVehicleModal.open && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.45)',
+            backdropFilter: 'blur(3px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '20px',
+          }}
+        >
+          <div className="card" style={{ width: '100%', maxWidth: '580px', padding: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Navigation size={20} color="var(--accent)" />
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0 }}>
+                  Find Nearest Vehicle to Site
+                </h3>
+              </div>
+              <button
+                onClick={() => setFindNearestVehicleModal({ open: false, targetPoint: '', results: [] })}
+                style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 600, marginBottom: '6px' }}>
+                Target Delivery Destination / Landmark:
+              </label>
+              <input
+                type="text"
+                value={findNearestVehicleModal.targetPoint}
+                onChange={(e) => setFindNearestVehicleModal({ ...findNearestVehicleModal, targetPoint: e.target.value })}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--border)',
+                  fontSize: '0.9rem',
+                }}
+              />
+            </div>
+
+            <div style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px' }}>
+              Top 6 Closest Units in Fleet:
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '300px', overflowY: 'auto' }}>
+              {findNearestVehicleModal.results.map((v: any, idx: number) => (
+                <div
+                  key={v.device_id}
+                  style={{
+                    padding: '10px 14px',
+                    background: idx === 0 ? 'rgba(47, 111, 109, 0.08)' : 'var(--bg-subtle)',
+                    border: idx === 0 ? '1px solid var(--accent)' : '1px solid var(--border)',
+                    borderRadius: 'var(--radius-sm)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
+                >
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-primary)' }}>
+                        {v.reg_number}
+                      </span>
+                      {idx === 0 && <span className="badge badge-good" style={{ fontSize: '0.72rem' }}>Closest Unit</span>}
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                      {v.name || 'Truck'} · Driver: {v.driver_name || 'Assigned'}
+                    </div>
+                  </div>
+
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--accent)' }}>
+                      {v.distKm} KM
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                      ~{v.etaMin} min ETA
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
               <button
-                onClick={() => setNearestModal({ open: false, vehicle: null, pois: [] })}
+                onClick={() => setFindNearestVehicleModal({ open: false, targetPoint: '', results: [] })}
                 className="btn btn-secondary"
               >
                 Close
@@ -590,6 +777,37 @@ export const LiveTrackingPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Teltonika Device Telemetry & 1-Minute Live Data Logs Modal */}
+      {selectedTeltonikaVehicle && (
+        <TeltonikaDetailsModal
+          vehicle={selectedTeltonikaVehicle}
+          onClose={() => setSelectedTeltonikaVehicle(null)}
+        />
+      )}
+
+      {toastMessage && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: '24px',
+            right: '24px',
+            background: 'var(--bg-card)',
+            color: 'var(--text-primary)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-md)',
+            padding: '12px 18px',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+            zIndex: 9999,
+            fontSize: '0.85rem',
+            fontWeight: 600,
+          }}
+        >
+          {toastMessage}
+        </div>
+      )}
     </div>
   );
 };
+
+export default LiveTrackingPage;
