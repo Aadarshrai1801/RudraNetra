@@ -14,28 +14,53 @@ import { SettingsPage } from './pages/SettingsPage';
 import { LoginPage } from './pages/LoginPage';
 import { SignupPage } from './pages/SignupPage';
 
-// Newly added legacy module pages
+// Legacy module pages & managers
 import { RemindersPage } from './pages/RemindersPage';
 import { ControlPanelPage } from './pages/ControlPanelPage';
 import { ComplaintsPage } from './pages/ComplaintsPage';
 import { GuestAccessPage } from './pages/GuestAccessPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
+import { ListViewPage } from './pages/ListViewPage';
 
+import { useVehicleStore } from './store/vehicleStore';
+import { useAuthStore } from './store/authStore';
+
+// Page titles strictly based on legacy project feature names
 const routeTitles: Record<string, string> = {
-  '/live': 'Vehicles',
-  '/vehicles': 'Vehicles',
+  '/': 'Vehicle',
+  '/home': 'Vehicle',
+  '/live': 'Vehicle',
+  '/vehicles': 'Vehicle',
+  '/overview': 'Overview',
   '/dashboard': 'Overview',
+  '/list-view': 'List View',
+  '/alert': 'Alert',
+  '/alerts': 'Alert',
+  '/report': 'Report',
+  '/reports': 'Report',
   '/playback': 'Trip History',
-  '/geofences': 'Zones & POI',
-  '/devices': 'Settings',
-  '/fleet': 'Fleet Operations',
-  '/reminders': 'Compliance & Reminders',
-  '/control-panel': 'Control Panel & Immobilizer',
-  '/complaints': 'Support & Complaints',
-  '/guest-access': 'Guest Tracking Sharing',
-  '/analytics': 'Fleet Analytics',
-  '/reports': 'Reports',
-  '/alerts': 'Alerts',
+  '/trip-manager': 'Trip Manager',
+  '/party-routes': 'Party Routes Manager',
+  '/driver-manager': 'Driver Manager',
+  '/trailor-master': 'Trailor Master',
+  '/truck-master': 'Truck Master',
+  '/party-manager': 'Party/Company Manager',
+  '/fleet': 'Trip Manager',
+  '/control-panel': 'Control Panel',
+  '/geofence-manager': 'Geofence Manager',
+  '/geofences': 'Geofence Manager',
+  '/location-manager': 'Location Manager',
+  '/enable-feature': 'Enable Feature',
+  '/guest-access': 'Enable Feature',
+  '/sms-email-config': 'Sms & Email Configuration',
+  '/asset-manager': 'Asset Manager',
+  '/devices': 'Asset Manager',
+  '/complaint-manager': 'Complaint Manager',
+  '/complaints': 'Complaint Manager',
+  '/document-master': 'Document Master',
+  '/reminders': 'Document Master',
+  '/find-nearest-vehicle': 'Find Nearest Vehicle',
+  '/show-nearest-places': 'Show Nearest Places',
   '/settings': 'Settings',
   '/login': 'Login',
   '/signup': 'Create Account',
@@ -56,9 +81,6 @@ const PageTitleManager: React.FC = () => {
 
   return null;
 };
-
-import { useVehicleStore } from './store/vehicleStore';
-import { useAuthStore } from './store/authStore';
 
 // Authenticated layout wrapper
 const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -95,6 +117,7 @@ export const App: React.FC = () => {
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/register" element={<SignupPage />} />
         
+        {/* 1. Vehicle */}
         <Route
           path="/live"
           element={
@@ -103,7 +126,24 @@ export const App: React.FC = () => {
             </DashboardLayout>
           }
         />
+        <Route
+          path="/home"
+          element={
+            <DashboardLayout>
+              <LiveTrackingPage />
+            </DashboardLayout>
+          }
+        />
+        <Route
+          path="/vehicles"
+          element={
+            <DashboardLayout>
+              <LiveTrackingPage />
+            </DashboardLayout>
+          }
+        />
 
+        {/* 2. Overview (Preserved name) */}
         <Route
           path="/dashboard"
           element={
@@ -112,88 +152,52 @@ export const App: React.FC = () => {
             </DashboardLayout>
           }
         />
-
         <Route
-          path="/playback"
+          path="/overview"
           element={
             <DashboardLayout>
-              <PlaybackPage />
+              <DashboardPage />
             </DashboardLayout>
           }
         />
 
+        {/* 3. List View */}
         <Route
-          path="/fleet"
+          path="/list-view"
           element={
             <DashboardLayout>
-              <FleetPage />
+              <ListViewPage />
             </DashboardLayout>
           }
         />
 
+        {/* 4. Alert (Legacy name) */}
         <Route
-          path="/reminders"
+          path="/alert"
           element={
             <DashboardLayout>
-              <RemindersPage />
+              <AlertsPage initialTab="alarms" />
+            </DashboardLayout>
+          }
+        />
+        <Route
+          path="/alerts"
+          element={
+            <DashboardLayout>
+              <AlertsPage initialTab="alarms" />
             </DashboardLayout>
           }
         />
 
+        {/* 5. Report (Legacy name) */}
         <Route
-          path="/control-panel"
+          path="/report"
           element={
             <DashboardLayout>
-              <ControlPanelPage />
+              <ReportsPage />
             </DashboardLayout>
           }
         />
-
-        <Route
-          path="/analytics"
-          element={
-            <DashboardLayout>
-              <AnalyticsPage />
-            </DashboardLayout>
-          }
-        />
-
-        <Route
-          path="/complaints"
-          element={
-            <DashboardLayout>
-              <ComplaintsPage />
-            </DashboardLayout>
-          }
-        />
-
-        <Route
-          path="/guest-access"
-          element={
-            <DashboardLayout>
-              <GuestAccessPage />
-            </DashboardLayout>
-          }
-        />
-
-        <Route
-          path="/geofences"
-          element={
-            <DashboardLayout>
-              <GeofencesPage />
-            </DashboardLayout>
-          }
-        />
-
-        <Route
-          path="/devices"
-          element={
-            <DashboardLayout>
-              <DevicesPage />
-            </DashboardLayout>
-          }
-        />
-
         <Route
           path="/reports"
           element={
@@ -203,15 +207,205 @@ export const App: React.FC = () => {
           }
         />
 
+        {/* 6. Trip Group: Trip Manager, Party Routes Manager, Trip History (Screenshot 3) */}
         <Route
-          path="/alerts"
+          path="/trip-manager"
           element={
             <DashboardLayout>
-              <AlertsPage />
+              <FleetPage initialTab="trips" />
+            </DashboardLayout>
+          }
+        />
+        <Route
+          path="/party-routes"
+          element={
+            <DashboardLayout>
+              <FleetPage initialTab="partyroutes" />
+            </DashboardLayout>
+          }
+        />
+        <Route
+          path="/playback"
+          element={
+            <DashboardLayout>
+              <PlaybackPage />
+            </DashboardLayout>
+          }
+        />
+        <Route
+          path="/fleet"
+          element={
+            <DashboardLayout>
+              <FleetPage initialTab="trips" />
             </DashboardLayout>
           }
         />
 
+        {/* 7. Configuration Group (Screenshot 5) */}
+        <Route
+          path="/enable-feature"
+          element={
+            <DashboardLayout>
+              <GuestAccessPage />
+            </DashboardLayout>
+          }
+        />
+        <Route
+          path="/guest-access"
+          element={
+            <DashboardLayout>
+              <GuestAccessPage />
+            </DashboardLayout>
+          }
+        />
+        <Route
+          path="/geofence-manager"
+          element={
+            <DashboardLayout>
+              <GeofencesPage initialTab="zones" />
+            </DashboardLayout>
+          }
+        />
+        <Route
+          path="/geofences"
+          element={
+            <DashboardLayout>
+              <GeofencesPage initialTab="zones" />
+            </DashboardLayout>
+          }
+        />
+        <Route
+          path="/location-manager"
+          element={
+            <DashboardLayout>
+              <GeofencesPage initialTab="places" />
+            </DashboardLayout>
+          }
+        />
+        <Route
+          path="/sms-email-config"
+          element={
+            <DashboardLayout>
+              <AlertsPage initialTab="rules" />
+            </DashboardLayout>
+          }
+        />
+        <Route
+          path="/control-panel"
+          element={
+            <DashboardLayout>
+              <ControlPanelPage />
+            </DashboardLayout>
+          }
+        />
+
+        {/* 8. Manager Group (Screenshot 2) */}
+        <Route
+          path="/asset-manager"
+          element={
+            <DashboardLayout>
+              <DevicesPage />
+            </DashboardLayout>
+          }
+        />
+        <Route
+          path="/devices"
+          element={
+            <DashboardLayout>
+              <DevicesPage />
+            </DashboardLayout>
+          }
+        />
+        <Route
+          path="/complaint-manager"
+          element={
+            <DashboardLayout>
+              <ComplaintsPage />
+            </DashboardLayout>
+          }
+        />
+        <Route
+          path="/complaints"
+          element={
+            <DashboardLayout>
+              <ComplaintsPage />
+            </DashboardLayout>
+          }
+        />
+        <Route
+          path="/driver-manager"
+          element={
+            <DashboardLayout>
+              <FleetPage initialTab="drivers" />
+            </DashboardLayout>
+          }
+        />
+        <Route
+          path="/party-manager"
+          element={
+            <DashboardLayout>
+              <FleetPage initialTab="partyroutes" />
+            </DashboardLayout>
+          }
+        />
+        <Route
+          path="/trailor-master"
+          element={
+            <DashboardLayout>
+              <FleetPage initialTab="tyres" />
+            </DashboardLayout>
+          }
+        />
+        <Route
+          path="/truck-master"
+          element={
+            <DashboardLayout>
+              <FleetPage initialTab="trips" />
+            </DashboardLayout>
+          }
+        />
+        <Route
+          path="/document-master"
+          element={
+            <DashboardLayout>
+              <RemindersPage />
+            </DashboardLayout>
+          }
+        />
+        <Route
+          path="/reminders"
+          element={
+            <DashboardLayout>
+              <RemindersPage />
+            </DashboardLayout>
+          }
+        />
+        <Route
+          path="/find-nearest-vehicle"
+          element={
+            <DashboardLayout>
+              <LiveTrackingPage initialAction="find-nearest" />
+            </DashboardLayout>
+          }
+        />
+        <Route
+          path="/show-nearest-places"
+          element={
+            <DashboardLayout>
+              <LiveTrackingPage initialAction="nearest-places" />
+            </DashboardLayout>
+          }
+        />
+
+        {/* Other modules */}
+        <Route
+          path="/analytics"
+          element={
+            <DashboardLayout>
+              <AnalyticsPage />
+            </DashboardLayout>
+          }
+        />
         <Route
           path="/settings"
           element={
@@ -221,7 +415,7 @@ export const App: React.FC = () => {
           }
         />
 
-        {/* Fallback & Redirects */}
+        {/* Default Fallback & Redirects */}
         <Route path="/vehicles" element={<Navigate to="/live" replace />} />
         <Route path="/" element={<Navigate to="/live" replace />} />
         <Route path="*" element={<Navigate to="/live" replace />} />

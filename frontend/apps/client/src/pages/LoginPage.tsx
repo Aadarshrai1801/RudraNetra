@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Lock, User, ArrowRight, ShieldCheck, AlertCircle, Building } from 'lucide-react';
+import { Lock, User, ShieldCheck, AlertCircle, Building } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useVehicleStore } from '../store/vehicleStore';
 
@@ -303,11 +303,10 @@ export const LoginPage: React.FC = () => {
           <button
             type="submit"
             className="btn btn-primary"
-            style={{ width: '100%', padding: '12px', marginTop: '6px', fontSize: '0.95rem' }}
+            style={{ width: '100%', padding: '12px', marginTop: '6px', fontSize: '0.95rem', justifyContent: 'center' }}
             disabled={loading}
           >
             {loading ? 'Authenticating & Verifying Tenancy...' : 'Sign In to Portal'}
-            <ArrowRight size={18} />
           </button>
         </form>
 

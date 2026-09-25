@@ -8,7 +8,6 @@ import {
   X,
   Phone,
   AlertTriangle,
-  ArrowRight,
   CheckCircle2,
 } from 'lucide-react';
 
@@ -190,7 +189,6 @@ export const DashboardPage: React.FC = () => {
           style={{ textDecoration: 'none', gap: '8px' }}
         >
           <span>Track all on map</span>
-          <ArrowRight size={16} color="var(--accent)" />
         </Link>
       </div>
 
@@ -370,7 +368,7 @@ export const DashboardPage: React.FC = () => {
               textDecoration: 'none',
             }}
           >
-            Open live map →
+            Open live map
           </Link>
         </div>
 

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  CalendarClock, Plus, X, CheckCircle2, Building2, 
-  ArrowRight
+  CalendarClock, Plus, X, CheckCircle2, Building2
 } from 'lucide-react';
 import { fetchWithAdminAuth } from '../utils/api';
 
@@ -178,10 +177,7 @@ export const ExtensionManagerPage: React.FC = () => {
                     {ext.oldExpiryDate}
                   </td>
                   <td style={{ padding: '12px 16px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <ArrowRight size={13} color="var(--good)" />
-                      <strong style={{ color: 'var(--good)' }}>{ext.newExpiryDate}</strong>
-                    </div>
+                    <strong style={{ color: 'var(--good)' }}>{ext.newExpiryDate}</strong>
                   </td>
                   <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
                     {ext.extendedBy}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Bell, Building2, LogOut, ChevronDown } from 'lucide-react';
+import { Search, Bell, LogOut, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useAuthStore } from '../../store/authStore';
@@ -105,8 +105,8 @@ export const Header: React.FC = () => {
   };
 
   return (
-    <header className="header">
-      {/* Search Bar with Plain Words */}
+    <header className="header" style={{ borderBottom: '1px solid var(--border)' }}>
+      {/* Search Bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, maxWidth: '440px' }}>
         <div
           style={{
@@ -124,7 +124,7 @@ export const Header: React.FC = () => {
           <Search size={16} color="var(--text-secondary)" />
           <input
             type="text"
-            placeholder="Search by vehicle name or driver"
+            placeholder="Search by vehicle plate or driver"
             style={{
               width: '100%',
               background: 'transparent',
@@ -138,9 +138,8 @@ export const Header: React.FC = () => {
         </div>
       </div>
 
-      {/* Right Side: Calm Status (Only if reconnecting), Notifications, and User Profile */}
+      {/* Right Side: Reconnect Notice, Notifications, Profile */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '18px' }}>
-        {/* Calm reconnecting notice — only shown if disconnected, never alarming red */}
         {!isConnected && (
           <div
             style={{
@@ -165,7 +164,7 @@ export const Header: React.FC = () => {
                 display: 'inline-block',
               }}
             />
-            <span>Reconnecting to your fleet…</span>
+            <span>Reconnecting...</span>
           </div>
         )}
 
@@ -175,8 +174,8 @@ export const Header: React.FC = () => {
             onClick={() => setShowNotifications(!showNotifications)}
             aria-label="View notifications"
             style={{
-              width: '42px',
-              height: '42px',
+              width: '40px',
+              height: '40px',
               borderRadius: 'var(--radius-md)',
               border: '1px solid var(--border)',
               background: showNotifications ? 'var(--bg-hover)' : 'var(--bg-card)',
@@ -188,13 +187,13 @@ export const Header: React.FC = () => {
               transition: 'all 0.15s ease',
             }}
           >
-            <Bell size={18} color="var(--text-secondary)" />
+            <Bell size={17} color="var(--text-secondary)" />
             {unreadCount > 0 && (
               <span
                 style={{
                   position: 'absolute',
-                  top: '9px',
-                  right: '9px',
+                  top: '8px',
+                  right: '8px',
                   width: '7px',
                   height: '7px',
                   borderRadius: '50%',
@@ -204,21 +203,18 @@ export const Header: React.FC = () => {
             )}
           </button>
 
-          {/* Notifications Dropdown */}
           {showNotifications && (
             <div
               style={{
                 position: 'absolute',
                 top: 'calc(100% + 8px)',
-                right: '0',
-                width: '360px',
+                right: 0,
+                width: '340px',
                 background: 'var(--bg-card)',
-                border: '1px solid var(--border)',
                 borderRadius: 'var(--radius-lg)',
                 boxShadow: 'var(--shadow-lg)',
+                border: '1px solid var(--border)',
                 zIndex: 100,
-                display: 'flex',
-                flexDirection: 'column',
                 overflow: 'hidden',
               }}
             >
@@ -227,19 +223,13 @@ export const Header: React.FC = () => {
                   padding: '14px 18px',
                   borderBottom: '1px solid var(--border)',
                   display: 'flex',
-                  justifyContent: 'space-between',
                   alignItems: 'center',
-                  background: 'var(--bg-page)',
+                  justifyContent: 'space-between',
                 }}
               >
-                <div>
-                  <h4 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                    Notifications
-                  </h4>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                    {unreadCount > 0 ? `${unreadCount} new updates` : 'All caught up'}
-                  </p>
-                </div>
+                <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                  Notifications ({unreadCount})
+                </span>
                 {unreadCount > 0 && (
                   <button
                     onClick={markAllRead}
@@ -257,28 +247,39 @@ export const Header: React.FC = () => {
                 )}
               </div>
 
-              <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
+              <div style={{ maxHeight: '360px', overflowY: 'auto' }}>
                 {notifications.map((item) => (
                   <div
                     key={item.id}
                     onClick={() => markItemRead(item.id)}
                     style={{
-                      padding: '14px 18px',
+                      padding: '12px 18px',
                       borderBottom: '1px solid var(--border-subtle)',
-                      background: item.read ? 'transparent' : 'var(--accent-light)',
+                      background: item.read ? 'transparent' : 'var(--bg-hover)',
                       cursor: 'pointer',
-                      transition: 'background 0.15s ease',
+                      transition: 'background 0.1s ease',
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                      <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                      <span
+                        style={{
+                          fontWeight: item.read ? 600 : 700,
+                          fontSize: '0.85rem',
+                          color: 'var(--text-primary)',
+                        }}
+                      >
                         {item.title}
                       </span>
-                      <span style={{ fontSize: '0.775rem', color: 'var(--text-tertiary)' }}>
-                        {item.time}
-                      </span>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>{item.time}</span>
                     </div>
-                    <p style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                    <p
+                      style={{
+                        fontSize: '0.8rem',
+                        color: 'var(--text-secondary)',
+                        lineHeight: 1.4,
+                        margin: 0,
+                      }}
+                    >
                       {item.message}
                     </p>
                   </div>
@@ -288,137 +289,92 @@ export const Header: React.FC = () => {
           )}
         </div>
 
-        {/* Divider */}
-        <div style={{ width: '1px', height: '24px', background: 'var(--border)' }} />
-
-        {/* Organization Tenant Button with Equal Spacing */}
-        <div
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px',
-            padding: '8px 16px',
-            background: 'var(--bg-page)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-full)',
-            boxShadow: 'var(--shadow-sm)',
-          }}
-        >
-          <Building2 size={16} color="var(--accent)" style={{ flexShrink: 0 }} />
-          <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
-            {companyName}
-          </span>
-        </div>
-
-        {/* User Profile / Admin Button with Exit button appearing on clicking Admin */}
+        {/* Profile / Account Dropdown */}
         <div style={{ position: 'relative' }} ref={userMenuRef}>
           <button
             onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-            aria-label="User account menu"
+            aria-label="User profile menu"
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '8px',
+              gap: '10px',
+              background: 'transparent',
+              border: 'none',
               cursor: 'pointer',
-              background: isUserMenuOpen ? 'var(--bg-hover)' : 'transparent',
-              border: '1px solid',
-              borderColor: isUserMenuOpen ? 'var(--border)' : 'transparent',
-              borderRadius: 'var(--radius-md)',
               padding: '4px 8px',
-              transition: 'all 0.15s ease',
+              borderRadius: 'var(--radius-md)',
+              transition: 'background 0.15s ease',
             }}
           >
             <div
               style={{
-                width: '32px',
-                height: '32px',
+                width: '36px',
+                height: '36px',
                 borderRadius: 'var(--radius-full)',
-                background: 'var(--accent-light)',
-                color: 'var(--accent)',
+                backgroundColor: 'var(--accent)',
+                color: '#FFFFFF',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 fontWeight: 700,
-                fontSize: '0.8rem',
-                border: '1px solid var(--border)',
-                flexShrink: 0,
+                fontSize: '0.85rem',
+                border: '2px solid var(--border-subtle)',
               }}
             >
               {userInitials}
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', lineHeight: 1.15 }}>
-              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+            <div style={{ textAlign: 'left', display: 'flex', flexDirection: 'column' }}>
+              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                 {userDisplayName}
               </span>
-              <span style={{ fontSize: '0.725rem', color: 'var(--text-secondary)' }}>
-                {userRole}
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                {companyName}
               </span>
             </div>
-            <ChevronDown
-              size={14}
-              color="var(--text-secondary)"
-              style={{
-                transform: isUserMenuOpen ? 'rotate(180deg)' : 'none',
-                transition: 'transform 0.15s ease',
-                marginLeft: '2px',
-              }}
-            />
+            <ChevronDown size={14} color="var(--text-tertiary)" />
           </button>
 
-          {/* Exit button appears ONLY on clicking Admin, sized to the length of the word */}
           {isUserMenuOpen && (
             <div
               style={{
                 position: 'absolute',
-                top: 'calc(100% + 8px)',
-                right: '0',
-                width: 'fit-content',
-                minWidth: 'auto',
+                top: 'calc(100% + 6px)',
+                right: 0,
+                width: '240px',
                 background: 'var(--bg-card)',
-                border: '1px solid var(--border)',
                 borderRadius: 'var(--radius-md)',
                 boxShadow: 'var(--shadow-lg)',
-                padding: '4px',
+                border: '1px solid var(--border)',
+                padding: '8px',
                 zIndex: 100,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
               }}
             >
+              <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border-subtle)', marginBottom: '6px' }}>
+                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{userDisplayName}</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{user?.email || 'admin@alliedtransport.ae'}</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--accent)', fontWeight: 600, marginTop: '2px' }}>Role: {userRole}</div>
+              </div>
+
               <button
-                onClick={() => {
-                  setIsUserMenuOpen(false);
-                  handleLogout();
-                }}
-                title="Sign out of organization"
+                onClick={handleLogout}
                 style={{
-                  display: 'inline-flex',
+                  display: 'flex',
                   alignItems: 'center',
-                  gap: '6px',
-                  width: 'fit-content',
-                  whiteSpace: 'nowrap',
-                  padding: '6px 12px',
-                  background: 'rgba(239, 68, 68, 0.08)',
-                  border: '1px solid rgba(239, 68, 68, 0.22)',
+                  gap: '8px',
+                  width: '100%',
+                  padding: '8px 10px',
+                  background: 'transparent',
+                  border: 'none',
                   borderRadius: 'var(--radius-sm)',
-                  color: '#dc2626',
-                  fontSize: '0.825rem',
+                  color: '#DC2626',
+                  fontSize: '0.85rem',
                   fontWeight: 600,
                   cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(239, 68, 68, 0.16)';
-                  e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.4)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)';
-                  e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.22)';
+                  textAlign: 'left',
                 }}
               >
-                <LogOut size={13} />
-                <span>Exit</span>
+                <LogOut size={15} />
+                <span>Logout / Switch User</span>
               </button>
             </div>
           )}

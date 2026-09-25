@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   Plus,
   MapPin,
@@ -27,14 +28,25 @@ interface SavedPlace {
   address: string;
 }
 
-export const GeofencesPage: React.FC = () => {
+export const GeofencesPage: React.FC<{ initialTab?: 'zones' | 'places' }> = ({ initialTab = 'zones' }) => {
   const user = useAuthStore((state) => state.user);
+  const location = useLocation();
   const [zones, setZones] = useState<ZoneItem[]>([]);
   const [places, setPlaces] = useState<SavedPlace[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'zones' | 'places'>('zones');
+  const [activeTab, setActiveTab] = useState<'zones' | 'places'>(initialTab);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const qTab = params.get('tab');
+    if (qTab && (qTab === 'zones' || qTab === 'places')) {
+      setActiveTab(qTab);
+    } else if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [location.search, initialTab]);
 
   const [newZone, setNewZone] = useState({
     name: '',
@@ -146,10 +158,12 @@ export const GeofencesPage: React.FC = () => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <h1 style={{ fontSize: '1.65rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-            Zones & locations
+            {activeTab === 'places' ? 'Location Manager' : 'Geofence Manager'}
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginTop: '4px' }}>
-            Set delivery boundaries to get notified automatically when your vehicles arrive or depart.
+            {activeTab === 'places'
+              ? 'Manage company locations, hubs, customer terminals, and fuel stops.'
+              : 'Set delivery boundaries to get notified automatically when your vehicles arrive or depart.'}
           </p>
         </div>
         <button
@@ -157,7 +171,7 @@ export const GeofencesPage: React.FC = () => {
           className="btn btn-primary"
         >
           <Plus size={16} />
-          <span>Add new zone</span>
+          <span>{activeTab === 'places' ? 'Add Location' : 'Add Geofence'}</span>
         </button>
       </div>
 
@@ -167,13 +181,13 @@ export const GeofencesPage: React.FC = () => {
           onClick={() => setActiveTab('zones')}
           className={activeTab === 'zones' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
         >
-          Delivery zones ({zones.length})
+          Geofence Manager ({zones.length})
         </button>
         <button
           onClick={() => setActiveTab('places')}
           className={activeTab === 'places' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
         >
-          Saved places & fuel stations ({places.length})
+          Location Manager ({places.length})
         </button>
       </div>
 
@@ -266,7 +280,7 @@ export const GeofencesPage: React.FC = () => {
                           cursor: 'pointer',
                         }}
                       >
-                        Edit zone →
+                        Edit zone
                       </button>
                     </div>
                   </div>
