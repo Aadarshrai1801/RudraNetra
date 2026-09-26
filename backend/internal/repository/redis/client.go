@@ -62,6 +62,21 @@ func (c *Client) GetLivePosition(ctx context.Context, deviceID int64) (*domain.L
 	return &pos, nil
 }
 
+// Publish marshals the payload and publishes it on a Redis channel.
+func (c *Client) Publish(ctx context.Context, channel string, payload interface{}) error {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return c.rdb.Publish(ctx, channel, data).Err()
+}
+
+// Subscribe opens a subscription on a Redis channel. The caller owns the
+// returned PubSub and must close it.
+func (c *Client) Subscribe(ctx context.Context, channel string) *redis.PubSub {
+	return c.rdb.Subscribe(ctx, channel)
+}
+
 // Close closes the Redis connection.
 func (c *Client) Close() error {
 	return c.rdb.Close()

@@ -58,6 +58,7 @@ type VehicleWithTelemetry struct {
 	Odometer     int64      `json:"odometer"`
 	IconType     string     `json:"icon_type"`
 	Status       string     `json:"status"` // moving, idle, stopped, offline
+	Online       bool       `json:"online"` // position received within the freshness window
 	DriverName   string     `json:"driver_name,omitempty"`
 	DriverPhone  string     `json:"driver_phone,omitempty"`
 	LocationName string     `json:"location_name,omitempty"`

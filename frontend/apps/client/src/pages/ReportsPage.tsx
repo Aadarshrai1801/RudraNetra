@@ -274,11 +274,14 @@ export const ReportsPage: React.FC = () => {
             onChange={(e) => setDateRange(e.target.value)}
             style={{ padding: '6px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', fontSize: '0.85rem' }}
           >
-            <option value="today">Today</option>
-            <option value="yesterday">Yesterday</option>
-            <option value="week">Past 7 Days</option>
-            <option value="month">Current Month (31 Days)</option>
+            <option value="today">Last 24h of data</option>
+            <option value="yesterday">Previous 24h</option>
+            <option value="week">Past 7 Days of data</option>
+            <option value="month">Past 31 Days of data</option>
           </select>
+          <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>
+            relative to each vehicle's last update
+          </span>
 
           <select
             value={selectedVehicle}

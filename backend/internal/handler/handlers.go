@@ -16,6 +16,7 @@ import (
 	"github.com/rudra-netra/backend/internal/domain"
 	"github.com/rudra-netra/backend/internal/handler/middleware"
 	"github.com/rudra-netra/backend/internal/repository/postgres"
+	redisrepo "github.com/rudra-netra/backend/internal/repository/redis"
 	"github.com/rudra-netra/backend/internal/service"
 	ws "github.com/rudra-netra/backend/internal/websocket"
 )
@@ -29,6 +30,7 @@ type Dependencies struct {
 	Vehicles  *postgres.VehicleRepository
 	Companies *postgres.CompanyRepository
 	Pool      *pgxpool.Pool
+	Redis     *redisrepo.Client
 }
 
 var deps *Dependencies

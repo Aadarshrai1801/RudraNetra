@@ -30,6 +30,34 @@ const (
 	maxReportRows     = 500
 )
 
+// reportWindow describes the time window a report should cover, expressed
+// relative to each device's LAST recorded position so reports always work on
+// the last known data, however old it is.
+type reportWindow struct {
+	hours  int
+	offset int
+}
+
+// reportWindowFrom maps the UI range selector onto a relative window:
+//
+//	today     → last 24h of recorded data
+//	yesterday → the 24h before that
+//	week      → last 7 days of data
+//	month     → last 31 days of data
+//	default   → last 24h of recorded data
+func reportWindowFrom(c *gin.Context) reportWindow {
+	switch strings.ToLower(c.Query("range")) {
+	case "yesterday":
+		return reportWindow{hours: 24, offset: 24}
+	case "week":
+		return reportWindow{hours: 24 * 7}
+	case "month":
+		return reportWindow{hours: 24 * 31}
+	default:
+		return reportWindow{hours: 24}
+	}
+}
+
 func getReportHandler(c *gin.Context) {
 	if dbUnavailable(c) {
 		return
@@ -130,30 +158,50 @@ func buildReport(c *gin.Context, companyID int64, repType string) (*reportResult
 }
 
 func reportDistance(c *gin.Context, companyID int64) (*reportResult, error) {
+	win := reportWindowFrom(c)
 	query := `
-		WITH pts AS (
+		WITH anchors AS (
+			SELECT device_id, MAX(time) AS anchor
+			FROM (
+				SELECT p.device_id, p.time,
+				       p.time - LAG(p.time) OVER (PARTITION BY p.device_id ORDER BY p.time) AS gap
+				FROM positions p
+				JOIN vehicles v ON v.device_id = p.device_id
+				WHERE v.company_id = $1
+			) x
+			WHERE gap IS NULL OR gap <= INTERVAL '2 hours'
+			GROUP BY device_id
+		),
+		pts AS (
 			SELECT p.device_id, v.id AS vehicle_id, v.reg_number, p.time, p.speed, p.ignition,
 			       p.odometer, p.location,
-			       LAG(p.time) OVER (PARTITION BY p.device_id ORDER BY p.time) AS prev_time
+			       LAG(p.time) OVER (PARTITION BY p.device_id ORDER BY p.time) AS prev_time,
+			       LAG(p.location) OVER (PARTITION BY p.device_id ORDER BY p.time) AS prev_location
 			FROM positions p
 			JOIN vehicles v ON v.device_id = p.device_id
-			WHERE v.company_id = $1 AND p.time >= NOW() - make_interval(hours => $2)
+			JOIN anchors a ON a.device_id = p.device_id
+			WHERE v.company_id = $1
+			  AND p.time >= a.anchor - make_interval(hours => ($2::int + $3::int))
+			  AND p.time <= a.anchor - make_interval(hours => $3)
 		)
 		SELECT pts.vehicle_id, pts.reg_number, COALESCE(dr.name, ''),
 		       COALESCE(MIN(pts.odometer), 0), COALESCE(MAX(pts.odometer), 0),
-		       COALESCE(ROUND((ST_Length(ST_MakeLine(pts.location ORDER BY pts.time)::geography) / 1000.0)::numeric, 1), 0)::float8,
+		       COALESCE(ROUND((SUM(CASE
+		           WHEN pts.prev_time IS NOT NULL AND pts.time - pts.prev_time <= INTERVAL '2 hours'
+		           THEN ST_Distance(pts.location::geography, pts.prev_location::geography)
+		           ELSE 0 END) / 1000.0)::numeric, 1), 0)::float8,
 		       COALESCE(MAX(pts.speed), 0)::float8,
 		       COALESCE(ROUND(AVG(pts.speed)::numeric, 1), 0)::float8,
-		       COALESCE((SUM(EXTRACT(EPOCH FROM (pts.time - pts.prev_time)) / 60) FILTER (WHERE pts.prev_time IS NOT NULL AND pts.ignition AND pts.speed > 2)), 0)::int,
-		       COALESCE((SUM(EXTRACT(EPOCH FROM (pts.time - pts.prev_time)) / 60) FILTER (WHERE pts.prev_time IS NOT NULL AND pts.ignition AND pts.speed <= 2)), 0)::int,
-		       COALESCE((SUM(EXTRACT(EPOCH FROM (pts.time - pts.prev_time)) / 60) FILTER (WHERE pts.prev_time IS NOT NULL AND NOT pts.ignition)), 0)::int
+		       COALESCE((SUM(EXTRACT(EPOCH FROM (pts.time - pts.prev_time)) / 60) FILTER (WHERE pts.prev_time IS NOT NULL AND pts.time - pts.prev_time <= INTERVAL '2 hours' AND pts.ignition AND pts.speed > 2)), 0)::int,
+		       COALESCE((SUM(EXTRACT(EPOCH FROM (pts.time - pts.prev_time)) / 60) FILTER (WHERE pts.prev_time IS NOT NULL AND pts.time - pts.prev_time <= INTERVAL '2 hours' AND pts.ignition AND pts.speed <= 2)), 0)::int,
+		       COALESCE((SUM(EXTRACT(EPOCH FROM (pts.time - pts.prev_time)) / 60) FILTER (WHERE pts.prev_time IS NOT NULL AND pts.time - pts.prev_time <= INTERVAL '2 hours' AND NOT pts.ignition)), 0)::int
 		FROM pts
 		LEFT JOIN drivers dr ON dr.assigned_vehicle_id = pts.vehicle_id
 		GROUP BY pts.vehicle_id, pts.reg_number, dr.name
 		ORDER BY pts.reg_number ASC
-		LIMIT $3
+		LIMIT $4
 	`
-	rows, err := deps.Pool.Query(c.Request.Context(), query, companyID, reportWindowHours, maxReportRows)
+	rows, err := deps.Pool.Query(c.Request.Context(), query, companyID, win.hours, win.offset, maxReportRows)
 	if err != nil {
 		return nil, err
 	}
@@ -188,13 +236,29 @@ func reportDistance(c *gin.Context, companyID int64) (*reportResult, error) {
 }
 
 func reportIdle(c *gin.Context, companyID int64) (*reportResult, error) {
+	win := reportWindowFrom(c)
 	query := `
-		WITH pts AS (
+		WITH anchors AS (
+			SELECT device_id, MAX(time) AS anchor
+			FROM (
+				SELECT p.device_id, p.time,
+				       p.time - LAG(p.time) OVER (PARTITION BY p.device_id ORDER BY p.time) AS gap
+				FROM positions p
+				JOIN vehicles v ON v.device_id = p.device_id
+				WHERE v.company_id = $1
+			) x
+			WHERE gap IS NULL OR gap <= INTERVAL '2 hours'
+			GROUP BY device_id
+		),
+		pts AS (
 			SELECT p.device_id, p.time, p.speed, p.ignition,
 			       LAG(p.time) OVER (PARTITION BY p.device_id ORDER BY p.time) AS prev_time
 			FROM positions p
 			JOIN vehicles v ON v.device_id = p.device_id
-			WHERE v.company_id = $1 AND p.time >= NOW() - make_interval(hours => $2)
+			JOIN anchors a ON a.device_id = p.device_id
+			WHERE v.company_id = $1
+			  AND p.time >= a.anchor - make_interval(hours => ($2::int + $3::int))
+			  AND p.time <= a.anchor - make_interval(hours => $3)
 		)
 		SELECT v.reg_number, COALESCE(dr.name, ''), pts.prev_time, pts.time,
 		       ROUND(EXTRACT(EPOCH FROM (pts.time - pts.prev_time)) / 60)::int AS idle_min
@@ -203,10 +267,11 @@ func reportIdle(c *gin.Context, companyID int64) (*reportResult, error) {
 		LEFT JOIN drivers dr ON dr.assigned_vehicle_id = v.id
 		WHERE pts.prev_time IS NOT NULL AND pts.ignition AND pts.speed <= 2
 		  AND pts.time - pts.prev_time > INTERVAL '2 minutes'
+		  AND pts.time - pts.prev_time <= INTERVAL '2 hours'
 		ORDER BY idle_min DESC
-		LIMIT $3
+		LIMIT $4
 	`
-	rows, err := deps.Pool.Query(c.Request.Context(), query, companyID, reportWindowHours, maxReportRows)
+	rows, err := deps.Pool.Query(c.Request.Context(), query, companyID, win.hours, win.offset, maxReportRows)
 	if err != nil {
 		return nil, err
 	}
@@ -233,18 +298,34 @@ func reportIdle(c *gin.Context, companyID int64) (*reportResult, error) {
 }
 
 func reportOverspeed(c *gin.Context, companyID int64) (*reportResult, error) {
+	win := reportWindowFrom(c)
 	limit := companySpeedThreshold(c, companyID)
 	query := `
-		SELECT v.reg_number, COALESCE(dr.name, ''), p.time, p.speed, $3::int AS speed_limit
+		WITH anchors AS (
+			SELECT device_id, MAX(time) AS anchor
+			FROM (
+				SELECT p.device_id, p.time,
+				       p.time - LAG(p.time) OVER (PARTITION BY p.device_id ORDER BY p.time) AS gap
+				FROM positions p
+				JOIN vehicles v ON v.device_id = p.device_id
+				WHERE v.company_id = $1
+			) x
+			WHERE gap IS NULL OR gap <= INTERVAL '2 hours'
+			GROUP BY device_id
+		)
+		SELECT v.reg_number, COALESCE(dr.name, ''), p.time, p.speed, $4::int AS speed_limit
 		FROM positions p
 		JOIN vehicles v ON v.device_id = p.device_id
+		JOIN anchors a ON a.device_id = p.device_id
 		LEFT JOIN drivers dr ON dr.assigned_vehicle_id = v.id
-		WHERE v.company_id = $1 AND p.time >= NOW() - make_interval(hours => $2)
-		  AND p.speed > $3
+		WHERE v.company_id = $1
+		  AND p.time >= a.anchor - make_interval(hours => ($2::int + $3::int))
+		  AND p.time <= a.anchor - make_interval(hours => $3)
+		  AND p.speed > $4
 		ORDER BY p.speed DESC, p.time DESC
-		LIMIT $4
+		LIMIT $5
 	`
-	rows, err := deps.Pool.Query(c.Request.Context(), query, companyID, reportWindowHours, limit, maxReportRows)
+	rows, err := deps.Pool.Query(c.Request.Context(), query, companyID, win.hours, win.offset, limit, maxReportRows)
 	if err != nil {
 		return nil, err
 	}
@@ -275,18 +356,34 @@ func reportOverspeed(c *gin.Context, companyID int64) (*reportResult, error) {
 }
 
 func reportTemperature(c *gin.Context, companyID int64) (*reportResult, error) {
+	win := reportWindowFrom(c)
 	query := `
+		WITH anchors AS (
+			SELECT device_id, MAX(time) AS anchor
+			FROM (
+				SELECT p.device_id, p.time,
+				       p.time - LAG(p.time) OVER (PARTITION BY p.device_id ORDER BY p.time) AS gap
+				FROM positions p
+				JOIN vehicles v ON v.device_id = p.device_id
+				WHERE v.company_id = $1
+			) x
+			WHERE gap IS NULL OR gap <= INTERVAL '2 hours'
+			GROUP BY device_id
+		)
 		SELECT v.reg_number, COALESCE(MIN(p.temperature), 0)::float8, COALESCE(MAX(p.temperature), 0)::float8,
 		       COALESCE(ROUND(AVG(p.temperature)::numeric, 1), 0)::float8, COUNT(*)
 		FROM positions p
 		JOIN vehicles v ON v.device_id = p.device_id
-		WHERE v.company_id = $1 AND p.time >= NOW() - make_interval(hours => $2)
+		JOIN anchors a ON a.device_id = p.device_id
+		WHERE v.company_id = $1
+		  AND p.time >= a.anchor - make_interval(hours => ($2::int + $3::int))
+		  AND p.time <= a.anchor - make_interval(hours => $3)
 		  AND p.temperature IS NOT NULL AND p.temperature <> 0
 		GROUP BY v.reg_number
 		ORDER BY MIN(p.temperature) ASC
-		LIMIT $3
+		LIMIT $4
 	`
-	rows, err := deps.Pool.Query(c.Request.Context(), query, companyID, reportWindowHours, maxReportRows)
+	rows, err := deps.Pool.Query(c.Request.Context(), query, companyID, win.hours, win.offset, maxReportRows)
 	if err != nil {
 		return nil, err
 	}
@@ -312,26 +409,45 @@ func reportTemperature(c *gin.Context, companyID int64) (*reportResult, error) {
 }
 
 func reportDistanceMatrix(c *gin.Context, companyID int64) (*reportResult, error) {
-	days := atoiDefault(c.Query("days"), 31)
+	win := reportWindowFrom(c)
+	hours := win.hours
+	if qDays := c.Query("days"); qDays != "" {
+		hours = atoiDefault(qDays, 31) * 24
+	}
 	query := `
-		WITH legs AS (
+		WITH anchors AS (
+			SELECT device_id, MAX(time) AS anchor
+			FROM (
+				SELECT p.device_id, p.time,
+				       p.time - LAG(p.time) OVER (PARTITION BY p.device_id ORDER BY p.time) AS gap
+				FROM positions p
+				JOIN vehicles v ON v.device_id = p.device_id
+				WHERE v.company_id = $1
+			) x
+			WHERE gap IS NULL OR gap <= INTERVAL '2 hours'
+			GROUP BY device_id
+		),
+		legs AS (
 			SELECT p.device_id, p.time::date AS day,
+			       p.time - LAG(p.time) OVER (PARTITION BY p.device_id ORDER BY p.time) AS gap,
 			       ST_Distance(p.location::geography,
 			                   LAG(p.location) OVER (PARTITION BY p.device_id ORDER BY p.time)::geography) AS meters
 			FROM positions p
 			JOIN vehicles v ON v.device_id = p.device_id
-			WHERE v.company_id = $1 AND p.time >= CURRENT_DATE - make_interval(days => $2)
+			JOIN anchors a ON a.device_id = p.device_id
+			WHERE v.company_id = $1 AND p.time >= a.anchor - make_interval(hours => $2)
 		)
 		SELECT v.reg_number, TO_CHAR(legs.day, 'YYYY-MM-DD'),
 		       COALESCE(ROUND((SUM(legs.meters) / 1000.0)::numeric, 1), 0)::float8
 		FROM legs
 		JOIN vehicles v ON v.device_id = legs.device_id
 		WHERE legs.meters IS NOT NULL
+		  AND legs.gap <= INTERVAL '2 hours'
 		GROUP BY v.reg_number, legs.day
 		ORDER BY legs.day DESC, v.reg_number ASC
 		LIMIT $3
 	`
-	rows, err := deps.Pool.Query(c.Request.Context(), query, companyID, days, maxReportRows)
+	rows, err := deps.Pool.Query(c.Request.Context(), query, companyID, hours, maxReportRows)
 	if err != nil {
 		return nil, err
 	}
@@ -512,13 +628,29 @@ func reportReminders(c *gin.Context, companyID int64) (*reportResult, error) {
 }
 
 func reportStoppage(c *gin.Context, companyID int64) (*reportResult, error) {
+	win := reportWindowFrom(c)
 	query := `
-		WITH pts AS (
+		WITH anchors AS (
+			SELECT device_id, MAX(time) AS anchor
+			FROM (
+				SELECT p.device_id, p.time,
+				       p.time - LAG(p.time) OVER (PARTITION BY p.device_id ORDER BY p.time) AS gap
+				FROM positions p
+				JOIN vehicles v ON v.device_id = p.device_id
+				WHERE v.company_id = $1
+			) x
+			WHERE gap IS NULL OR gap <= INTERVAL '2 hours'
+			GROUP BY device_id
+		),
+		pts AS (
 			SELECT p.device_id, p.time, p.ignition, p.speed,
 			       LAG(p.time) OVER (PARTITION BY p.device_id ORDER BY p.time) AS prev_time
 			FROM positions p
 			JOIN vehicles v ON v.device_id = p.device_id
-			WHERE v.company_id = $1 AND p.time >= NOW() - make_interval(hours => $2)
+			JOIN anchors a ON a.device_id = p.device_id
+			WHERE v.company_id = $1
+			  AND p.time >= a.anchor - make_interval(hours => ($2::int + $3::int))
+			  AND p.time <= a.anchor - make_interval(hours => $3)
 		)
 		SELECT v.reg_number, COALESCE(dr.name, ''), pts.prev_time, pts.time,
 		       ROUND(EXTRACT(EPOCH FROM (pts.time - pts.prev_time)) / 60)::int
@@ -527,10 +659,11 @@ func reportStoppage(c *gin.Context, companyID int64) (*reportResult, error) {
 		LEFT JOIN drivers dr ON dr.assigned_vehicle_id = v.id
 		WHERE pts.prev_time IS NOT NULL AND NOT pts.ignition
 		  AND pts.time - pts.prev_time > INTERVAL '5 minutes'
+		  AND pts.time - pts.prev_time <= INTERVAL '2 hours'
 		ORDER BY 5 DESC
-		LIMIT $3
+		LIMIT $4
 	`
-	rows, err := deps.Pool.Query(c.Request.Context(), query, companyID, reportWindowHours, maxReportRows)
+	rows, err := deps.Pool.Query(c.Request.Context(), query, companyID, win.hours, win.offset, maxReportRows)
 	if err != nil {
 		return nil, err
 	}
@@ -691,10 +824,9 @@ func dashboardSummaryHandler(c *gin.Context) {
 
 	var total, online, moving, idle, stopped, offline, unacked int64
 	_ = deps.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM vehicles WHERE company_id = $1", companyID).Scan(&total)
-	// Status buckets are mutually exclusive: every vehicle is either
-	// moving / idle / stopped (based on its last known position) or offline
-	// (no position at all). "online" separately reports positions received in
-	// the last 15 minutes.
+	// Status buckets use the LAST KNOWN position from the database: a vehicle
+	// keeps its last moving/idle/stopped state regardless of age and is only
+	// offline when it has never reported. `online` is informational (fresh 15m).
 	_ = deps.Pool.QueryRow(ctx, `
 		SELECT
 			COUNT(*) FILTER (WHERE p.time IS NOT NULL AND p.time > NOW() - INTERVAL '15 minutes'),
@@ -727,10 +859,13 @@ func dashboardAnalyticsHandler(c *gin.Context) {
 	var totalVehicles int64
 	_ = deps.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM vehicles WHERE company_id = $1", companyID).Scan(&totalVehicles)
 
-	var activeVehicles, idleVehicles, stoppedVehicles, runningVehicles, offlineVehicles int64
-	// Mutually exclusive last-known-state buckets (same rules as /vehicles).
+	var onlineVehicles, recordedVehicles, idleVehicles, stoppedVehicles, runningVehicles, offlineVehicles int64
+	// `onlineVehicles` (reporting now) drives "active" counters; the driving
+	// status itself is the last known state from the database and is never
+	// time-expired. `recordedVehicles` have telemetry history on file.
 	_ = deps.Pool.QueryRow(ctx, `
 		SELECT
+			COUNT(*) FILTER (WHERE p.time IS NOT NULL AND p.time > NOW() - INTERVAL '15 minutes'),
 			COUNT(*) FILTER (WHERE p.time IS NOT NULL),
 			COUNT(*) FILTER (WHERE p.time IS NOT NULL AND p.speed > 2),
 			COUNT(*) FILTER (WHERE p.time IS NOT NULL AND p.speed <= 2 AND p.ignition),
@@ -739,11 +874,11 @@ func dashboardAnalyticsHandler(c *gin.Context) {
 		FROM vehicles v
 		LEFT JOIN LATERAL (SELECT speed, ignition, time FROM positions WHERE device_id = v.device_id ORDER BY time DESC LIMIT 1) p ON TRUE
 		WHERE v.company_id = $1
-	`, companyID).Scan(&activeVehicles, &runningVehicles, &idleVehicles, &stoppedVehicles, &offlineVehicles)
+	`, companyID).Scan(&onlineVehicles, &recordedVehicles, &runningVehicles, &idleVehicles, &stoppedVehicles, &offlineVehicles)
 
 	occupancy := 0.0
 	if totalVehicles > 0 {
-		occupancy = float64(activeVehicles) / float64(totalVehicles) * 100
+		occupancy = float64(onlineVehicles) / float64(totalVehicles) * 100
 	}
 
 	// 7-day utilization from real position tracks
@@ -852,7 +987,9 @@ func dashboardAnalyticsHandler(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
 		"fleetOccupancyPct":  occupancy,
-		"activeVehicles":     activeVehicles,
+		"activeVehicles":     onlineVehicles,
+		"onlineVehicles":     onlineVehicles,
+		"recordedVehicles":   recordedVehicles,
 		"idleVehicles":       idleVehicles,
 		"stoppedVehicles":    stoppedVehicles,
 		"runningVehicles":    runningVehicles,

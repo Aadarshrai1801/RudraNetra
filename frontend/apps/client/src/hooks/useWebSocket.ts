@@ -48,6 +48,7 @@ export function useWebSocket() {
             heading: typeof payload.heading === 'number' ? payload.heading : undefined,
             ignition: typeof payload.ignition === 'boolean' ? payload.ignition : undefined,
             status: payload.status,
+            online: true,
             timestamp: payload.timestamp ?? payload.time,
             odometer: typeof payload.odometer === 'number' ? payload.odometer : undefined,
             temperature: typeof payload.temperature === 'number' ? payload.temperature : undefined,

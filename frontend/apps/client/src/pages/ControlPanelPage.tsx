@@ -62,6 +62,16 @@ export const ControlPanelPage: React.FC = () => {
     loadCommandLogs();
   }, [user?.company_id]);
 
+  // Refresh the command ledger so Delivered/Acknowledged states appear
+  // without a manual reload.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadCommandLogs();
+    }, 10000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (vehicleList.length > 0 && !selectedVehicleId) {
       setSelectedVehicleId(String(vehicleList[0].device_id));

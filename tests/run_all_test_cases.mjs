@@ -162,15 +162,18 @@ async function main() {
     assert(allVehicles.length > 0, 'No vehicles to inspect');
     const first = allVehicles[0];
     assert(!!first.reg_number, 'Missing reg_number');
-    assert(typeof first.speed === 'number', 'speed must be a number');
-    assert(typeof first.temperature === 'number', 'temperature must be a number');
-    assert(typeof first.lat === 'number', 'latitude must be a number');
-    assert(typeof first.lng === 'number', 'longitude must be a number');
+    // Telemetry is device-fed: values are absent until a tracker reports.
+    const numberOrMissing = (value) => value === null || value === undefined || typeof value === 'number';
+    assert(numberOrMissing(first.speed), 'speed must be a number or missing');
+    assert(numberOrMissing(first.temperature), 'temperature must be a number or missing');
+    assert(numberOrMissing(first.lat), 'latitude must be a number or missing');
+    assert(numberOrMissing(first.lng), 'longitude must be a number or missing');
     assert(!!first.status, 'status must be defined');
 
     const statuses = new Set(allVehicles.map((v) => v.status));
-    assert(statuses.has('moving') || statuses.has('stopped') || statuses.has('idle'), 'Invalid statuses');
-    return `Schema valid: Reg ${first.reg_number}, Speed: ${first.speed}km/h, Temp: ${first.temperature}°C, Statuses: ${Array.from(statuses).join(', ')}`;
+    const validStatuses = ['moving', 'idle', 'stopped', 'offline'];
+    assert(Array.from(statuses).every((s) => validStatuses.includes(s)), 'Invalid statuses');
+    return `Schema valid: Reg ${first.reg_number}, Speed: ${first.speed ?? '—'}km/h, Temp: ${first.temperature ?? '—'}°C, Statuses: ${Array.from(statuses).join(', ')}`;
   });
 
   await runTest('Vehicles', 'TC-VEH-03', 'Single vehicle retrieval by ID', async () => {
@@ -186,17 +189,19 @@ async function main() {
     let moving = 0;
     let stopped = 0;
     let idle = 0;
+    let offline = 0;
     let freezer = 0;
 
     for (const v of allVehicles) {
       if (v.status === 'moving') moving++;
       else if (v.status === 'idle') idle++;
-      else stopped++;
+      else if (v.status === 'stopped') stopped++;
+      else offline++;
       if (v.temperature !== undefined && v.temperature !== null) freezer++;
     }
 
-    assert(moving + stopped + idle === allVehicles.length, 'Status counts do not sum to total fleet');
-    return `Total: ${allVehicles.length} | Moving: ${moving}, Stopped: ${stopped}, Idle: ${idle}, Freezer Units: ${freezer}`;
+    assert(moving + stopped + idle + offline === allVehicles.length, 'Status counts do not sum to total fleet');
+    return `Total: ${allVehicles.length} | Moving: ${moving}, Stopped: ${stopped}, Idle: ${idle}, Offline: ${offline}, Freezer Units: ${freezer}`;
   });
 
   await runTest('Vehicles', 'TC-VEH-05', 'Live tracking GPS positions endpoint', async () => {

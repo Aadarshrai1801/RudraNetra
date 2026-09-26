@@ -191,7 +191,18 @@ docker compose up -d postgres redis nats
 
 On a **fresh volume**, PostgreSQL automatically applies all migrations and
 seeds (see `infra/postgres-init/00_bootstrap.sh`):
-`000001` → `000002` → base + module seeds → `000003` → DB-only module seed.
+`000001` → `000002` → registry seeds → `000003` → `000004` → `000005` →
+DB-only module seed, and finally purges imported/simulated telemetry.
+
+> **Telemetry is device-fed only.** `positions`, `alerts`, `raw_packets`,
+> `device_commands` and `fuel_records` start empty; they are filled exclusively
+> by real trackers connecting to `rudra-ingest` (TCP `5040`). Optional demo
+> datasets (simulated tracks and derived alerts) live in `backend/scripts/`
+> and can be run manually when a populated demo environment is needed.
+> To restore the **real imported legacy history**, run
+> `backend/scripts/restore_legacy_telemetry.sql` (positions) followed by
+> `backend/scripts/derive_alerts_from_positions.sql` (real alerts derived from
+> those positions).
 
 ### 2. Update an Existing Database
 ```bash
