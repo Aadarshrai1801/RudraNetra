@@ -78,7 +78,7 @@ func (s *AuthService) Register(ctx context.Context, req domain.SignupRequest) (*
 		FullName:     req.FullName,
 		Email:        req.Email,
 		Phone:        req.Phone,
-		Role:         "admin", // Default administrative role for organization member
+		Role:         "viewer", // self-registered accounts start with read-only access
 		IsActive:     true,
 	}
 

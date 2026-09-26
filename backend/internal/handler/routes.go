@@ -203,6 +203,7 @@ func RegisterRoutes(router *gin.Engine, d *Dependencies) {
 		{
 			alerts.GET("", listAlertsHandler)
 			alerts.PUT("/:id/acknowledge", acknowledgeAlertHandler)
+			alerts.POST("/acknowledge-all", acknowledgeAllAlertsHandler)
 			alerts.GET("/rules", listAlertRulesHandler)
 			alerts.POST("/rules", createAlertRuleHandler)
 			alerts.PUT("/rules/:id", updateAlertRuleHandler)
@@ -258,6 +259,13 @@ func RegisterRoutes(router *gin.Engine, d *Dependencies) {
 			masters.POST("/:type", createMasterHandler)
 			masters.PUT("/:type/:id", updateMasterHandler)
 			masters.DELETE("/:type/:id", deleteMasterHandler)
+		}
+
+		// ── Organization settings ────────────────────────
+		settings := api.Group("/settings")
+		{
+			settings.GET("", getCompanySettingsHandler)
+			settings.PUT("", updateCompanySettingsHandler)
 		}
 	}
 

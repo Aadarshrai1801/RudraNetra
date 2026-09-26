@@ -4,18 +4,18 @@ import "time"
 
 // Device represents a GPS tracking device (e.g., Teltonika FMB920).
 type Device struct {
-	ID          int64     `json:"id" db:"id"`
-	CompanyID   int64     `json:"company_id" db:"company_id"`
-	IMEI        string    `json:"imei" db:"imei"`
-	DeviceType  string    `json:"device_type" db:"device_type"` // TELTONIKA_FMB920, etc.
-	SimNo       string    `json:"sim_no" db:"sim_no"`
-	Port        int       `json:"port" db:"port"` // TCP port
-	Status      string    `json:"status" db:"status"`
+	ID          int64      `json:"id" db:"id"`
+	CompanyID   int64      `json:"company_id" db:"company_id"`
+	IMEI        string     `json:"imei" db:"imei"`
+	DeviceType  string     `json:"device_type" db:"device_type"` // TELTONIKA_FMB920, etc.
+	SimNo       string     `json:"sim_no" db:"sim_no"`
+	Port        int        `json:"port" db:"port"` // TCP port
+	Status      string     `json:"status" db:"status"`
 	WarrantyEnd *time.Time `json:"warranty_end,omitempty" db:"warranty_end"`
-	CreatedAt   time.Time `json:"created_at" db:"created_at"`
+	CreatedAt   time.Time  `json:"created_at" db:"created_at"`
 
 	// Joined fields (not stored directly)
-	Vehicle     *Vehicle  `json:"vehicle,omitempty"`
+	Vehicle      *Vehicle  `json:"vehicle,omitempty"`
 	LastPosition *Position `json:"last_position,omitempty"`
 }
 

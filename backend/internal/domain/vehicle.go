@@ -4,27 +4,27 @@ import "time"
 
 // Vehicle represents a tracked vehicle with its configuration.
 type Vehicle struct {
-	ID          int64     `json:"id" db:"id"`
-	CompanyID   int64     `json:"company_id" db:"company_id"`
-	DeviceID    *int64    `json:"device_id,omitempty" db:"device_id"`
-	RegNumber   string    `json:"reg_number" db:"reg_number"`
-	Make        string    `json:"make" db:"make"`
-	Model       string    `json:"model" db:"model"`
-	Variant     string    `json:"variant" db:"variant"`
-	BodyType    string    `json:"body_type" db:"body_type"`
-	FuelType    string    `json:"fuel_type" db:"fuel_type"`
-	MaxSpeed    int       `json:"max_speed" db:"max_speed"`
-	Odometer    int64     `json:"odometer" db:"odometer"`
-	IconType    string    `json:"icon_type" db:"icon_type"` // car, truck, bus, bike
-	CreatedAt   time.Time `json:"created_at" db:"created_at"`
+	ID        int64     `json:"id" db:"id"`
+	CompanyID int64     `json:"company_id" db:"company_id"`
+	DeviceID  *int64    `json:"device_id,omitempty" db:"device_id"`
+	RegNumber string    `json:"reg_number" db:"reg_number"`
+	Make      string    `json:"make" db:"make"`
+	Model     string    `json:"model" db:"model"`
+	Variant   string    `json:"variant" db:"variant"`
+	BodyType  string    `json:"body_type" db:"body_type"`
+	FuelType  string    `json:"fuel_type" db:"fuel_type"`
+	MaxSpeed  int       `json:"max_speed" db:"max_speed"`
+	Odometer  int64     `json:"odometer" db:"odometer"`
+	IconType  string    `json:"icon_type" db:"icon_type"` // car, truck, bus, bike
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
 }
 
 // VehicleConfig holds configurable vehicle parameters.
 type VehicleConfig struct {
 	VehicleID    int64  `json:"vehicle_id" binding:"required"`
 	MaxSpeed     int    `json:"max_speed"`
-	IdleTimeout  int    `json:"idle_timeout"`  // minutes
-	StopTimeout  int    `json:"stop_timeout"`  // minutes
+	IdleTimeout  int    `json:"idle_timeout"` // minutes
+	StopTimeout  int    `json:"stop_timeout"` // minutes
 	IconType     string `json:"icon_type"`
 	FuelCapacity int    `json:"fuel_capacity"` // litres
 }
@@ -53,6 +53,7 @@ type VehicleWithTelemetry struct {
 	Variant      string     `json:"variant"`
 	BodyType     string     `json:"body_type"`
 	FuelType     string     `json:"fuel_type"`
+	FuelCapacity float64    `json:"fuel_capacity,omitempty"`
 	MaxSpeed     int        `json:"max_speed"`
 	Odometer     int64      `json:"odometer"`
 	IconType     string     `json:"icon_type"`
@@ -66,5 +67,7 @@ type VehicleWithTelemetry struct {
 	Heading      *float64   `json:"heading,omitempty"`
 	Ignition     *bool      `json:"ignition,omitempty"`
 	Temperature  *float64   `json:"temperature,omitempty"`
+	FuelPct      *float64   `json:"fuel_pct,omitempty"`
+	BatteryV     *float64   `json:"battery_v,omitempty"`
 	Timestamp    *time.Time `json:"timestamp,omitempty"`
 }

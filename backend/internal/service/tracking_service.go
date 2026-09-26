@@ -13,10 +13,10 @@ import (
 
 // TrackingService orchestrates GPS position storage, caching, and real-time streaming.
 type TrackingService struct {
-	posRepo  *postgres.PositionRepository
-	redis    *redis.Client
-	hub      *ws.Hub
-	logger   *zap.Logger
+	posRepo *postgres.PositionRepository
+	redis   *redis.Client
+	hub     *ws.Hub
+	logger  *zap.Logger
 }
 
 // NewTrackingService creates a new TrackingService.

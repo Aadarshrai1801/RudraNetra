@@ -34,14 +34,14 @@ type ReportType string
 
 const (
 	ReportDistance     ReportType = "distance"
-	ReportSpeed       ReportType = "speed"
-	ReportStoppage    ReportType = "stoppage"
-	ReportTrip        ReportType = "trip"
-	ReportFuel        ReportType = "fuel"
-	ReportGeofence    ReportType = "geofence"
-	ReportIgnition    ReportType = "ignition"
-	ReportIdling      ReportType = "idling"
-	ReportRFID        ReportType = "rfid"
+	ReportSpeed        ReportType = "speed"
+	ReportStoppage     ReportType = "stoppage"
+	ReportTrip         ReportType = "trip"
+	ReportFuel         ReportType = "fuel"
+	ReportGeofence     ReportType = "geofence"
+	ReportIgnition     ReportType = "ignition"
+	ReportIdling       ReportType = "idling"
+	ReportRFID         ReportType = "rfid"
 	ReportDailySummary ReportType = "daily_summary"
 )
 
@@ -70,15 +70,15 @@ type DistanceReportRow struct {
 
 // SpeedViolationRow represents an individual overspeed occurrence.
 type SpeedViolationRow struct {
-	DeviceID   int64     `json:"device_id"`
-	RegNumber  string    `json:"reg_number"`
-	Time       string    `json:"time"`
-	Speed      float32   `json:"speed"`
-	SpeedLimit int       `json:"speed_limit"`
-	ExceededBy float32   `json:"exceeded_by"`
-	Latitude   float64   `json:"lat"`
-	Longitude  float64   `json:"lng"`
-	Location   string    `json:"location,omitempty"`
+	DeviceID   int64   `json:"device_id"`
+	RegNumber  string  `json:"reg_number"`
+	Time       string  `json:"time"`
+	Speed      float32 `json:"speed"`
+	SpeedLimit int     `json:"speed_limit"`
+	ExceededBy float32 `json:"exceeded_by"`
+	Latitude   float64 `json:"lat"`
+	Longitude  float64 `json:"lng"`
+	Location   string  `json:"location,omitempty"`
 }
 
 // StoppageReportRow represents a stationary engine event.
@@ -106,4 +106,3 @@ type TripReportRow struct {
 	DistanceKM      float64 `json:"distance_km"`
 	DurationMinutes int     `json:"duration_minutes"`
 }
-

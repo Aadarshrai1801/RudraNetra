@@ -85,28 +85,28 @@ type TyreRecord struct {
 
 // Invoice represents a billing invoice.
 type Invoice struct {
-	ID         int64     `json:"id" db:"id"`
-	CompanyID  int64     `json:"company_id" db:"company_id"`
-	Number     string    `json:"number" db:"number"`
-	Amount     float64   `json:"amount" db:"amount"`
-	Tax        float64   `json:"tax" db:"tax"`
-	Total      float64   `json:"total" db:"total"`
-	Status     string    `json:"status" db:"status"` // draft, sent, paid, overdue
-	DueDate    time.Time `json:"due_date" db:"due_date"`
-	PaidAt     *time.Time `json:"paid_at,omitempty" db:"paid_at"`
-	CreatedAt  time.Time `json:"created_at" db:"created_at"`
+	ID        int64      `json:"id" db:"id"`
+	CompanyID int64      `json:"company_id" db:"company_id"`
+	Number    string     `json:"number" db:"number"`
+	Amount    float64    `json:"amount" db:"amount"`
+	Tax       float64    `json:"tax" db:"tax"`
+	Total     float64    `json:"total" db:"total"`
+	Status    string     `json:"status" db:"status"` // draft, sent, paid, overdue
+	DueDate   time.Time  `json:"due_date" db:"due_date"`
+	PaidAt    *time.Time `json:"paid_at,omitempty" db:"paid_at"`
+	CreatedAt time.Time  `json:"created_at" db:"created_at"`
 }
 
 // Complaint represents a user-filed complaint.
 type Complaint struct {
-	ID          int64     `json:"id" db:"id"`
-	CompanyID   int64     `json:"company_id" db:"company_id"`
-	UserID      int64     `json:"user_id" db:"user_id"`
-	Subject     string    `json:"subject" db:"subject"`
-	Description string    `json:"description" db:"description"`
-	Status      string    `json:"status" db:"status"` // open, in_progress, resolved, closed
-	Priority    string    `json:"priority" db:"priority"`
-	CreatedAt   time.Time `json:"created_at" db:"created_at"`
+	ID          int64      `json:"id" db:"id"`
+	CompanyID   int64      `json:"company_id" db:"company_id"`
+	UserID      int64      `json:"user_id" db:"user_id"`
+	Subject     string     `json:"subject" db:"subject"`
+	Description string     `json:"description" db:"description"`
+	Status      string     `json:"status" db:"status"` // open, in_progress, resolved, closed
+	Priority    string     `json:"priority" db:"priority"`
+	CreatedAt   time.Time  `json:"created_at" db:"created_at"`
 	ResolvedAt  *time.Time `json:"resolved_at,omitempty" db:"resolved_at"`
 }
 

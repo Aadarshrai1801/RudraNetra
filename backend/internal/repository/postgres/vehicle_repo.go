@@ -38,10 +38,11 @@ func (r *VehicleRepository) ListByCompany(ctx context.Context, companyID int64, 
 			COALESCE(v.model, ''),
 			COALESCE(v.variant, ''),
 			COALESCE(v.body_type, ''),
-			COALESCE(v.fuel_type, 'Diesel'),
-			COALESCE(v.max_speed, 80),
+			COALESCE(v.fuel_type, ''),
+			COALESCE(v.fuel_capacity, 0),
+			COALESCE(v.max_speed, 0),
 			COALESCE(v.odometer, 0),
-			COALESCE(v.icon_type, 'truck'),
+			COALESCE(v.icon_type, ''),
 			COALESCE(d.name, ''),
 			COALESCE(d.phone, ''),
 			p.lat,
@@ -50,6 +51,8 @@ func (r *VehicleRepository) ListByCompany(ctx context.Context, companyID int64, 
 			p.heading,
 			p.ignition,
 			p.temperature,
+			p.fuel_pct,
+			p.battery_v,
 			p.time
 		FROM vehicles v
 		LEFT JOIN drivers d ON d.assigned_vehicle_id = v.id
@@ -61,6 +64,8 @@ func (r *VehicleRepository) ListByCompany(ctx context.Context, companyID int64, 
 				heading, 
 				ignition, 
 				temperature,
+				fuel_level_pct AS fuel_pct,
+				backup_battery_v AS battery_v,
 				time 
 			FROM positions 
 			WHERE device_id = v.device_id 
@@ -88,6 +93,8 @@ func (r *VehicleRepository) ListByCompany(ctx context.Context, companyID int64, 
 			heading     *float64
 			ignition    *bool
 			temperature *float64
+			fuelPct     *float64
+			batteryV    *float64
 			posTime     *time.Time
 		)
 
@@ -101,6 +108,7 @@ func (r *VehicleRepository) ListByCompany(ctx context.Context, companyID int64, 
 			&v.Variant,
 			&v.BodyType,
 			&v.FuelType,
+			&v.FuelCapacity,
 			&v.MaxSpeed,
 			&v.Odometer,
 			&v.IconType,
@@ -112,6 +120,8 @@ func (r *VehicleRepository) ListByCompany(ctx context.Context, companyID int64, 
 			&heading,
 			&ignition,
 			&temperature,
+			&fuelPct,
+			&batteryV,
 			&posTime,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan vehicle: %w", err)
@@ -123,6 +133,8 @@ func (r *VehicleRepository) ListByCompany(ctx context.Context, companyID int64, 
 		v.Heading = heading
 		v.Ignition = ignition
 		v.Temperature = temperature
+		v.FuelPct = fuelPct
+		v.BatteryV = batteryV
 		v.Timestamp = posTime
 
 		// Compute operational status
@@ -134,12 +146,6 @@ func (r *VehicleRepository) ListByCompany(ctx context.Context, companyID int64, 
 			v.Status = "idle"
 		} else {
 			v.Status = "stopped"
-		}
-
-		// Provide readable driver fallback if none assigned
-		if v.DriverName == "" {
-			v.DriverName = fmt.Sprintf("Operator #%d", v.ID%100+1)
-			v.DriverPhone = fmt.Sprintf("+971 50 %07d", 1000000+v.ID)
 		}
 
 		vehicles = append(vehicles, v)
@@ -168,10 +174,11 @@ func (r *VehicleRepository) GetByID(ctx context.Context, id int64, companyID int
 			COALESCE(v.model, ''),
 			COALESCE(v.variant, ''),
 			COALESCE(v.body_type, ''),
-			COALESCE(v.fuel_type, 'Diesel'),
-			COALESCE(v.max_speed, 80),
+			COALESCE(v.fuel_type, ''),
+			COALESCE(v.fuel_capacity, 0),
+			COALESCE(v.max_speed, 0),
 			COALESCE(v.odometer, 0),
-			COALESCE(v.icon_type, 'truck'),
+			COALESCE(v.icon_type, ''),
 			COALESCE(d.name, ''),
 			COALESCE(d.phone, ''),
 			p.lat,
@@ -180,6 +187,8 @@ func (r *VehicleRepository) GetByID(ctx context.Context, id int64, companyID int
 			p.heading,
 			p.ignition,
 			p.temperature,
+			p.fuel_pct,
+			p.battery_v,
 			p.time
 		FROM vehicles v
 		LEFT JOIN drivers d ON d.assigned_vehicle_id = v.id
@@ -191,6 +200,8 @@ func (r *VehicleRepository) GetByID(ctx context.Context, id int64, companyID int
 				heading, 
 				ignition, 
 				temperature,
+				fuel_level_pct AS fuel_pct,
+				backup_battery_v AS battery_v,
 				time 
 			FROM positions 
 			WHERE device_id = v.device_id 
@@ -207,6 +218,8 @@ func (r *VehicleRepository) GetByID(ctx context.Context, id int64, companyID int
 		heading     *float64
 		ignition    *bool
 		temperature *float64
+		fuelPct     *float64
+		batteryV    *float64
 		posTime     *time.Time
 	)
 
@@ -220,6 +233,7 @@ func (r *VehicleRepository) GetByID(ctx context.Context, id int64, companyID int
 		&v.Variant,
 		&v.BodyType,
 		&v.FuelType,
+		&v.FuelCapacity,
 		&v.MaxSpeed,
 		&v.Odometer,
 		&v.IconType,
@@ -231,6 +245,8 @@ func (r *VehicleRepository) GetByID(ctx context.Context, id int64, companyID int
 		&heading,
 		&ignition,
 		&temperature,
+		&fuelPct,
+		&batteryV,
 		&posTime,
 	)
 	if err != nil {
@@ -243,6 +259,8 @@ func (r *VehicleRepository) GetByID(ctx context.Context, id int64, companyID int
 	v.Heading = heading
 	v.Ignition = ignition
 	v.Temperature = temperature
+	v.FuelPct = fuelPct
+	v.BatteryV = batteryV
 	v.Timestamp = posTime
 
 	if lat == nil || lng == nil {
