@@ -1,0 +1,9 @@
+{
+  "name": "rudra-netra-root",
+  "private": true,
+  "scripts": {
+    "dev:client": "pnpm --dir frontend dev:client",
+    "dev:admin": "pnpm --dir frontend dev:admin",
+    "test": "node ./tests/run_all_test_cases.mjs"
+  }
+}
