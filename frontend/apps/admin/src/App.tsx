@@ -239,10 +239,10 @@ export const App: React.FC = () => {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', textAlign: 'left' }}>
                   <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    {user?.full_name || user?.username || 'System SuperAdmin'}
+                    {user?.full_name || user?.username || ''}
                   </span>
                   <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
-                    SuperAdmin · {user?.email || 'superadmin@rudranetrais.com'}
+                    {user?.email ? `SuperAdmin · ${user.email}` : 'SuperAdmin'}
                   </span>
                 </div>
                 <ChevronDown size={14} color="var(--text-secondary)" />

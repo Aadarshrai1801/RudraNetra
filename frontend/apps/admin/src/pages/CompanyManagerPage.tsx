@@ -31,23 +31,63 @@ export interface TenantCompany {
   contactEmail: string;
   contactPhone: string;
   dbShard: string;
+  city: string;
+  address: string;
   siraRelay: boolean;
   apiKey: string;
   createdAt: string;
 }
 
+interface AdminStats {
+  totalTenants: number;
+  activeVehicles: number;
+  systemUsers: number;
+  siraRelayActive: number;
+}
+
+interface AdminDashboard {
+  totalTenants: number;
+  totalDevices: number;
+  onlineDevices: number;
+  totalVehicles: number;
+  systemUsers: number;
+  unacknowledgedAlerts: number;
+  activeTrips: number;
+  totalInvoices: number;
+  positionsLast24h: number;
+}
+
 export const CompanyManagerPage: React.FC = () => {
   const [companies, setCompanies] = useState<TenantCompany[]>([]);
+  const [stats, setStats] = useState<AdminStats | null>(null);
+  const [dashboard, setDashboard] = useState<AdminDashboard | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadCompanies = async () => {
     setLoading(true);
     try {
-      const res = await fetchWithAdminAuth('/api/v1/auth/companies');
-      if (res.ok) {
-        const json = await res.json();
+      const [companiesRes, statsRes, dashboardRes] = await Promise.all([
+        fetchWithAdminAuth('/api/v1/admin/companies'),
+        fetchWithAdminAuth('/api/v1/admin/stats'),
+        fetchWithAdminAuth('/api/v1/admin/dashboard'),
+      ]);
+
+      if (companiesRes.ok) {
+        const json = await companiesRes.json();
         if (json.success && Array.isArray(json.data)) {
           setCompanies(json.data);
+        }
+      }
+      if (statsRes.ok) {
+        const json = await statsRes.json();
+        if (json.success && json.data) {
+          setStats(json.data);
+        }
+      }
+      if (dashboardRes.ok) {
+        const json = await dashboardRes.json();
+        if (json.success && json.data) {
+          setDashboard(json.data);
         }
       }
     } catch (err) {
@@ -78,14 +118,16 @@ export const CompanyManagerPage: React.FC = () => {
   const [newCompany, setNewCompany] = useState<Partial<TenantCompany>>({
     name: '',
     code: '',
-    maxDevices: 100,
-    maxUsers: 10,
+    maxDevices: undefined,
+    maxUsers: undefined,
     status: 'Active',
     contactPerson: '',
     contactEmail: '',
     contactPhone: '',
     dbShard: 'pg_shard_uae_01',
-    siraRelay: true,
+    city: '',
+    address: '',
+    siraRelay: false,
   });
 
   const showToast = (msg: string) => {
@@ -114,6 +156,11 @@ export const CompanyManagerPage: React.FC = () => {
           contactPhone: editForm.contactPhone,
           dbShard: editForm.dbShard,
           status: editForm.status,
+          maxDevices: Number(editForm.maxDevices) || 0,
+          maxUsers: Number(editForm.maxUsers) || 0,
+          siraRelay: Boolean(editForm.siraRelay),
+          city: editForm.city,
+          address: editForm.address,
         }),
       });
 
@@ -122,7 +169,8 @@ export const CompanyManagerPage: React.FC = () => {
         setIsEditModalOpen(false);
         loadCompanies();
       } else {
-        showToast('Failed to update organization in database.');
+        const errJson = await res.json().catch(() => ({}));
+        showToast(errJson.error || 'Failed to update organization in database.');
       }
     } catch (err) {
       showToast('Network error updating organization.');
@@ -142,28 +190,40 @@ export const CompanyManagerPage: React.FC = () => {
         body: JSON.stringify({
           name: newCompany.name,
           code: newCompany.code.toUpperCase().replace(/\s+/g, '_'),
-          contactPerson: newCompany.contactPerson || 'Operations Lead',
-          contactEmail: newCompany.contactEmail || `admin@${newCompany.code.toLowerCase()}.ae`,
-          contactPhone: newCompany.contactPhone || '+971-4-8800000',
-          dbShard: newCompany.dbShard || 'pg_shard_uae_01',
+          contactPerson: newCompany.contactPerson || '',
+          contactEmail: newCompany.contactEmail || '',
+          contactPhone: newCompany.contactPhone || '',
+          dbShard: newCompany.dbShard || '',
           status: newCompany.status || 'Active',
+          maxDevices: Number(newCompany.maxDevices) || 0,
+          maxUsers: Number(newCompany.maxUsers) || 0,
+          siraRelay: Boolean(newCompany.siraRelay),
+          city: newCompany.city || '',
+          address: newCompany.address || '',
         }),
       });
 
       if (res.ok) {
-        showToast(`Organization "${newCompany.name}" provisioned in PostgreSQL database.`);
+        const json = await res.json().catch(() => ({}));
+        showToast(
+          json.apiKey
+            ? `Organization "${newCompany.name}" provisioned. API key: ${json.apiKey}`
+            : `Organization "${newCompany.name}" provisioned in PostgreSQL database.`
+        );
         setIsCreateModalOpen(false);
         setNewCompany({
           name: '',
           code: '',
-          maxDevices: 100,
-          maxUsers: 10,
+          maxDevices: undefined,
+          maxUsers: undefined,
           status: 'Active',
           contactPerson: '',
           contactEmail: '',
           contactPhone: '',
           dbShard: 'pg_shard_uae_01',
-          siraRelay: true,
+          city: '',
+          address: '',
+          siraRelay: false,
         });
         loadCompanies();
       } else {
@@ -181,28 +241,49 @@ export const CompanyManagerPage: React.FC = () => {
     setTimeout(() => setCopiedKey(false), 2000);
   };
 
-  const handleRegenerateKey = () => {
+  const handleRegenerateKey = async () => {
     if (!selectedCompany) return;
-    const freshKey = `RN-DEV-KEY-${selectedCompany.code.toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
-    setEditForm((prev) => ({ ...prev, apiKey: freshKey }));
-    showToast('Generated new API key. Click "Save Configuration" to apply.');
+    try {
+      const res = await fetchWithAdminAuth(`/api/v1/admin/companies/${selectedCompany.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ regenerateKey: true }),
+      });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        showToast(errJson.error || 'Failed to regenerate API key.');
+        return;
+      }
+      const json = await res.json().catch(() => ({}));
+      if (json.apiKey) {
+        setEditForm((prev) => ({ ...prev, apiKey: json.apiKey }));
+        showToast('API key regenerated and stored in the database.');
+        loadCompanies();
+      } else {
+        showToast('API key regeneration did not return a key.');
+      }
+    } catch (err) {
+      showToast('Network error regenerating API key.');
+    }
   };
 
   // Filtered companies
   const filteredCompanies = companies.filter((c) => {
+    const query = searchQuery.toLowerCase();
     const matchesSearch =
-      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.contactPerson.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.contactEmail.toLowerCase().includes(searchQuery.toLowerCase());
+      (c.name || '').toLowerCase().includes(query) ||
+      (c.code || '').toLowerCase().includes(query) ||
+      (c.contactPerson || '').toLowerCase().includes(query) ||
+      (c.contactEmail || '').toLowerCase().includes(query);
     const matchesStatus = statusFilter === 'ALL' || c.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
-  // Aggregated metrics
-  const totalTrackers = companies.reduce((acc, c) => acc + c.devices, 0);
-  const totalMaxTrackers = companies.reduce((acc, c) => acc + c.maxDevices, 0);
-  const totalUsers = companies.reduce((acc, c) => acc + c.users, 0);
+  // Aggregated metrics — every value here is returned by /admin/stats or /admin/dashboard.
+  const totalTrackers = dashboard?.totalDevices ?? companies.reduce((acc, c) => acc + (c.devices || 0), 0);
+  const totalMaxTrackers = companies.reduce((acc, c) => acc + (c.maxDevices || 0), 0);
+  const totalUsers = dashboard?.systemUsers ?? stats?.systemUsers ?? companies.reduce((acc, c) => acc + (c.users || 0), 0);
+  const totalTenants = stats?.totalTenants ?? dashboard?.totalTenants ?? companies.length;
+  const capacityPercent = totalMaxTrackers > 0 ? Math.round((totalTrackers / totalMaxTrackers) * 100) : null;
 
   return (
     <div style={{ padding: '32px', maxWidth: '1440px', margin: '0 auto' }}>
@@ -299,7 +380,7 @@ export const CompanyManagerPage: React.FC = () => {
         <div className="admin-card" style={{ padding: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
             <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-              Active Organizations
+              Registered Organizations
             </span>
             <div
               style={{
@@ -317,14 +398,16 @@ export const CompanyManagerPage: React.FC = () => {
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
             <span className="mono-num" style={{ fontSize: '1.85rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-              {companies.length}
+              {totalTenants}
             </span>
-            <span className="badge badge-good" style={{ fontSize: '0.72rem', padding: '2px 8px' }}>
-              100% Online
-            </span>
+            {stats && (
+              <span className="badge badge-subtle" style={{ fontSize: '0.72rem', padding: '2px 8px' }}>
+                {stats.siraRelayActive} SIRA relays
+              </span>
+            )}
           </div>
           <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', marginTop: '6px' }}>
-            All tenants routing live telemetry
+            Tenants provisioned in PostgreSQL
           </div>
         </div>
 
@@ -332,7 +415,7 @@ export const CompanyManagerPage: React.FC = () => {
         <div className="admin-card" style={{ padding: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
             <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-              Allocated Trackers
+              Registered Trackers
             </span>
             <div
               style={{
@@ -352,12 +435,16 @@ export const CompanyManagerPage: React.FC = () => {
             <span className="mono-num" style={{ fontSize: '1.85rem', fontWeight: 800, color: 'var(--text-primary)' }}>
               {totalTrackers}
             </span>
-            <span className="mono-num" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-              / {totalMaxTrackers} cap
-            </span>
+            {totalMaxTrackers > 0 && (
+              <span className="mono-num" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                / {totalMaxTrackers} cap
+              </span>
+            )}
           </div>
           <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', marginTop: '6px' }}>
-            {Math.round((totalTrackers / (totalMaxTrackers || 1)) * 100)}% network capacity utilized
+            {capacityPercent !== null
+              ? `${capacityPercent}% of configured device capacity used`
+              : 'No device capacity configured across tenants'}
           </div>
         </div>
 
@@ -386,19 +473,19 @@ export const CompanyManagerPage: React.FC = () => {
               {totalUsers}
             </span>
             <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-              Active users
+              Users
             </span>
           </div>
           <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', marginTop: '6px' }}>
-            Assigned across all dispatch consoles
+            User accounts registered across all tenants
           </div>
         </div>
 
-        {/* Metric 4: Live Telemetry Ingest */}
+        {/* Metric 4: Telemetry Positions Ingested */}
         <div className="admin-card" style={{ padding: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
             <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-              Ingest Throughput
+              Positions Ingested (24h)
             </span>
             <div
               style={{
@@ -416,14 +503,14 @@ export const CompanyManagerPage: React.FC = () => {
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
             <span className="mono-num" style={{ fontSize: '1.85rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-              1,420
+              {dashboard ? dashboard.positionsLast24h : '—'}
             </span>
-            <span className="mono-num" style={{ fontSize: '0.82rem', color: 'var(--good)', fontWeight: 600 }}>
-              msgs/sec
+            <span className="mono-num" style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+              positions
             </span>
           </div>
           <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', marginTop: '6px' }}>
-            Port 5040 · Real-time pipeline
+            Telemetry positions recorded in the last 24 hours
           </div>
         </div>
       </div>
@@ -579,7 +666,10 @@ export const CompanyManagerPage: React.FC = () => {
           }}
         >
           {filteredCompanies.map((c) => {
-            const usagePercent = Math.min(100, Math.round((c.devices / (c.maxDevices || 1)) * 100));
+            const hasDeviceCap = c.maxDevices > 0;
+            const usagePercent = hasDeviceCap
+              ? Math.min(100, Math.round(((c.devices || 0) / c.maxDevices) * 100))
+              : 0;
 
             return (
               <div
@@ -673,8 +763,10 @@ export const CompanyManagerPage: React.FC = () => {
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '8px' }}>
                       <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Trackers Assigned</span>
                       <span className="mono-num" style={{ color: 'var(--text-primary)', fontWeight: 700 }}>
-                        {c.devices} / {c.maxDevices}{' '}
-                        <span style={{ color: 'var(--text-tertiary)', fontWeight: 500 }}>({usagePercent}%)</span>
+                        {c.devices} / {hasDeviceCap ? c.maxDevices : '—'}{' '}
+                        {hasDeviceCap && (
+                          <span style={{ color: 'var(--text-tertiary)', fontWeight: 500 }}>({usagePercent}%)</span>
+                        )}
                       </span>
                     </div>
                     <div style={{ width: '100%', height: '6px', background: '#DCE4DF', borderRadius: 'var(--radius-full)', overflow: 'hidden' }}>
@@ -704,7 +796,7 @@ export const CompanyManagerPage: React.FC = () => {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
                       <Users size={14} color="var(--text-tertiary)" />
                       <span>
-                        Seats: <strong className="mono-num" style={{ color: 'var(--text-primary)' }}>{c.users} / {c.maxUsers}</strong>
+                        Seats: <strong className="mono-num" style={{ color: 'var(--text-primary)' }}>{c.users} / {c.maxUsers > 0 ? c.maxUsers : '—'}</strong>
                       </span>
                     </div>
 
@@ -721,8 +813,13 @@ export const CompanyManagerPage: React.FC = () => {
                     <div style={{ gridColumn: 'span 2', display: 'flex', alignItems: 'center', gap: '7px' }}>
                       <Mail size={14} color="var(--text-tertiary)" />
                       <span style={{ color: 'var(--text-secondary)' }}>
-                        {c.contactPerson} &middot;{' '}
-                        <span style={{ color: 'var(--text-tertiary)' }}>{c.contactEmail}</span>
+                        {c.contactPerson || '—'}
+                        {c.contactEmail ? (
+                          <>
+                            {' '}&middot;{' '}
+                            <span style={{ color: 'var(--text-tertiary)' }}>{c.contactEmail}</span>
+                          </>
+                        ) : null}
                       </span>
                     </div>
                   </div>
@@ -862,9 +959,29 @@ export const CompanyManagerPage: React.FC = () => {
                         value={editForm.status || 'Active'}
                         onChange={(e) => setEditForm((prev) => ({ ...prev, status: e.target.value as 'Active' | 'Suspended' }))}
                       >
-                        <option value="Active">Active (Routing Live Telemetry)</option>
-                        <option value="Suspended">Suspended (Ingest Throttled)</option>
+                        <option value="Active">Active</option>
+                        <option value="Suspended">Suspended</option>
                       </select>
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '14px', marginTop: '14px' }}>
+                    <div>
+                      <label className="form-label">City</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        value={editForm.city || ''}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, city: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <label className="form-label">Address</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        value={editForm.address || ''}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, address: e.target.value }))}
+                      />
                     </div>
                   </div>
                 </div>
@@ -882,8 +999,8 @@ export const CompanyManagerPage: React.FC = () => {
                       <input
                         type="number"
                         className="form-input mono-num"
-                        min={selectedCompany.devices}
-                        value={editForm.maxDevices || 100}
+                        min={0}
+                        value={editForm.maxDevices ?? 0}
                         onChange={(e) => setEditForm((prev) => ({ ...prev, maxDevices: Number(e.target.value) }))}
                       />
                       <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginTop: '4px', display: 'block' }}>
@@ -896,8 +1013,8 @@ export const CompanyManagerPage: React.FC = () => {
                       <input
                         type="number"
                         className="form-input mono-num"
-                        min={selectedCompany.users}
-                        value={editForm.maxUsers || 10}
+                        min={0}
+                        value={editForm.maxUsers ?? 0}
                         onChange={(e) => setEditForm((prev) => ({ ...prev, maxUsers: Number(e.target.value) }))}
                       />
                       <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginTop: '4px', display: 'block' }}>
@@ -919,9 +1036,10 @@ export const CompanyManagerPage: React.FC = () => {
                       <label className="form-label">TimescaleDB Shard</label>
                       <select
                         className="form-select mono-num"
-                        value={editForm.dbShard || 'pg_shard_uae_01'}
+                        value={editForm.dbShard || ''}
                         onChange={(e) => setEditForm((prev) => ({ ...prev, dbShard: e.target.value }))}
                       >
+                        <option value="" disabled>Select shard</option>
                         <option value="pg_shard_uae_01">pg_shard_uae_01 (Dubai Datacenter)</option>
                         <option value="pg_shard_uae_02">pg_shard_uae_02 (Abu Dhabi Datacenter)</option>
                         <option value="pg_shard_isolated">pg_shard_isolated (Dedicated Hypertable)</option>
@@ -1142,7 +1260,7 @@ export const CompanyManagerPage: React.FC = () => {
                     <input
                       type="text"
                       className="form-input"
-                      placeholder="e.g. Emirates Express Cargo"
+                      placeholder="Enter organization name"
                       value={newCompany.name || ''}
                       onChange={(e) => setNewCompany((prev) => ({ ...prev, name: e.target.value }))}
                       required
@@ -1153,7 +1271,7 @@ export const CompanyManagerPage: React.FC = () => {
                     <input
                       type="text"
                       className="form-input mono-num"
-                      placeholder="e.g. EMIRATES_EXP"
+                      placeholder="Enter unique tenant code"
                       value={newCompany.code || ''}
                       onChange={(e) => setNewCompany((prev) => ({ ...prev, code: e.target.value }))}
                       required
@@ -1167,8 +1285,9 @@ export const CompanyManagerPage: React.FC = () => {
                     <input
                       type="number"
                       className="form-input mono-num"
-                      value={newCompany.maxDevices || 100}
-                      onChange={(e) => setNewCompany((prev) => ({ ...prev, maxDevices: Number(e.target.value) }))}
+                      min={0}
+                      value={newCompany.maxDevices ?? ''}
+                      onChange={(e) => setNewCompany((prev) => ({ ...prev, maxDevices: e.target.value === '' ? undefined : Number(e.target.value) }))}
                     />
                   </div>
                   <div>
@@ -1181,6 +1300,52 @@ export const CompanyManagerPage: React.FC = () => {
                       <option value="pg_shard_uae_01">pg_shard_uae_01 (Dubai DC)</option>
                       <option value="pg_shard_uae_02">pg_shard_uae_02 (Abu Dhabi DC)</option>
                     </select>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+                  <div>
+                    <label className="form-label">Dispatcher User Seats</label>
+                    <input
+                      type="number"
+                      className="form-input mono-num"
+                      min={0}
+                      value={newCompany.maxUsers ?? ''}
+                      onChange={(e) => setNewCompany((prev) => ({ ...prev, maxUsers: e.target.value === '' ? undefined : Number(e.target.value) }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="form-label">Contact Phone</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="e.g. +971 4 000 0000"
+                      value={newCompany.contactPhone || ''}
+                      onChange={(e) => setNewCompany((prev) => ({ ...prev, contactPhone: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '14px' }}>
+                  <div>
+                    <label className="form-label">City</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="e.g. Dubai"
+                      value={newCompany.city || ''}
+                      onChange={(e) => setNewCompany((prev) => ({ ...prev, city: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="form-label">Address</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Street, area, emirate"
+                      value={newCompany.address || ''}
+                      onChange={(e) => setNewCompany((prev) => ({ ...prev, address: e.target.value }))}
+                    />
                   </div>
                 </div>
 

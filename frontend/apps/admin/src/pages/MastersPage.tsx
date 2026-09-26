@@ -17,9 +17,11 @@ export const MastersPage: React.FC = () => {
   const [items, setItems] = useState<MasterItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<MasterItem | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const [form, setForm] = useState({ code: '', name: '' });
+  const [form, setForm] = useState({ code: '', name: '', isDefault: false });
+  const [editForm, setEditForm] = useState({ code: '', name: '', isDefault: false });
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -34,10 +36,15 @@ export const MastersPage: React.FC = () => {
         const json = await res.json();
         if (json.success && Array.isArray(json.data)) {
           setItems(json.data);
+        } else {
+          setItems([]);
         }
+      } else {
+        setItems([]);
       }
     } catch (err) {
       console.error(err);
+      setItems([]);
     } finally {
       setLoading(false);
     }
@@ -59,11 +66,59 @@ export const MastersPage: React.FC = () => {
       if (res.ok) {
         showToast('Master lookup entry created');
         setIsModalOpen(false);
-        setForm({ code: '', name: '' });
+        setForm({ code: '', name: '', isDefault: false });
         loadMasters();
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        showToast(errJson.error || 'Failed to add master record');
       }
     } catch (err) {
       showToast('Failed to add master record');
+    }
+  };
+
+  const handleOpenEdit = (item: MasterItem) => {
+    setEditingItem(item);
+    setEditForm({ code: item.code || '', name: item.name || '', isDefault: Boolean(item.isDefault) });
+  };
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingItem) return;
+    try {
+      const res = await fetchWithAdminAuth(`/api/v1/admin/masters/${activeType}/${editingItem.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editForm),
+      });
+      if (res.ok) {
+        showToast('Master lookup entry updated');
+        setEditingItem(null);
+        loadMasters();
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        showToast(errJson.error || 'Failed to update master record');
+      }
+    } catch (err) {
+      showToast('Failed to update master record');
+    }
+  };
+
+  const handleDelete = async (item: MasterItem) => {
+    if (!window.confirm(`Delete lookup "${item.name || item.code}"?`)) return;
+    try {
+      const res = await fetchWithAdminAuth(`/api/v1/admin/masters/${activeType}/${item.id}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        showToast('Master lookup entry deleted');
+        loadMasters();
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        showToast(errJson.error || 'Failed to delete master record');
+      }
+    } catch (err) {
+      showToast('Failed to delete master record');
     }
   };
 
@@ -152,18 +207,19 @@ export const MastersPage: React.FC = () => {
               <th style={{ padding: '12px 16px', fontWeight: 600 }}>Lookup Code</th>
               <th style={{ padding: '12px 16px', fontWeight: 600 }}>Display Value / Name</th>
               <th style={{ padding: '12px 16px', fontWeight: 600 }}>Default Setting</th>
+              <th style={{ padding: '12px 16px', fontWeight: 600 }}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={4} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)' }}>
+                <td colSpan={5} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)' }}>
                   Loading lookup dictionary...
                 </td>
               </tr>
             ) : items.length === 0 ? (
               <tr>
-                <td colSpan={4} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)' }}>
+                <td colSpan={5} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)' }}>
                   No lookup values defined for this category.
                 </td>
               </tr>
@@ -171,8 +227,8 @@ export const MastersPage: React.FC = () => {
               items.map((it) => (
                 <tr key={it.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                   <td style={{ padding: '12px 16px', color: 'var(--text-tertiary)' }}>#{it.id}</td>
-                  <td style={{ padding: '12px 16px', fontWeight: 700, fontFamily: 'monospace' }}>{it.code}</td>
-                  <td style={{ padding: '12px 16px', fontWeight: 600, color: 'var(--text-primary)' }}>{it.name}</td>
+                  <td style={{ padding: '12px 16px', fontWeight: 700, fontFamily: 'monospace' }}>{it.code || '—'}</td>
+                  <td style={{ padding: '12px 16px', fontWeight: 600, color: 'var(--text-primary)' }}>{it.name || '—'}</td>
                   <td style={{ padding: '12px 16px' }}>
                     {it.isDefault ? (
                       <span style={{ padding: '2px 8px', borderRadius: 'var(--radius-sm)', background: 'var(--accent-light)', color: 'var(--accent)', fontSize: '0.76rem', fontWeight: 700 }}>
@@ -181,6 +237,21 @@ export const MastersPage: React.FC = () => {
                     ) : (
                       <span style={{ color: 'var(--text-tertiary)', fontSize: '0.8rem' }}>Standard</span>
                     )}
+                  </td>
+                  <td style={{ padding: '12px 16px' }}>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button type="button" onClick={() => handleOpenEdit(it)} className="btn btn-secondary" style={{ padding: '5px 12px', fontSize: '0.78rem' }}>
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(it)}
+                        className="btn btn-secondary"
+                        style={{ padding: '5px 12px', fontSize: '0.78rem', color: 'var(--alert)', borderColor: 'var(--alert-border)' }}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -205,9 +276,43 @@ export const MastersPage: React.FC = () => {
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Display Label</label>
                 <input type="text" placeholder="e.g. Bridgestone" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} required />
               </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.84rem', cursor: 'pointer' }}>
+                <input type="checkbox" checked={form.isDefault} onChange={(e) => setForm({ ...form, isDefault: e.target.checked })} style={{ width: '16px', height: '16px', accentColor: 'var(--accent)' }} />
+                <span>Set as default choice for this category</span>
+              </label>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
                 <button type="button" onClick={() => setIsModalOpen(false)} className="btn btn-secondary">Cancel</button>
                 <button type="submit" className="btn btn-primary">Save Lookup</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Lookup Modal */}
+      {editingItem && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0, 0, 0, 0.45)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '440px', padding: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 700 }}>Edit Lookup Value</h3>
+              <button onClick={() => setEditingItem(null)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} /></button>
+            </div>
+            <form onSubmit={handleUpdate} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Code / Identifier</label>
+                <input type="text" value={editForm.code} onChange={(e) => setEditForm({ ...editForm, code: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} required />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Display Label</label>
+                <input type="text" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} required />
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.84rem', cursor: 'pointer' }}>
+                <input type="checkbox" checked={editForm.isDefault} onChange={(e) => setEditForm({ ...editForm, isDefault: e.target.checked })} style={{ width: '16px', height: '16px', accentColor: 'var(--accent)' }} />
+                <span>Set as default choice for this category</span>
+              </label>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+                <button type="button" onClick={() => setEditingItem(null)} className="btn btn-secondary">Cancel</button>
+                <button type="submit" className="btn btn-primary">Save Changes</button>
               </div>
             </form>
           </div>

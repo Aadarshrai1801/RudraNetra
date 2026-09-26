@@ -19,18 +19,24 @@ interface BillingRecord {
   paidAt?: string;
 }
 
+interface CompanyOption {
+  id: number;
+  name: string;
+}
+
 export const BillingMasterPage: React.FC = () => {
   const [invoices, setInvoices] = useState<BillingRecord[]>([]);
+  const [companies, setCompanies] = useState<CompanyOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const [newInvoice, setNewInvoice] = useState({
-    companyName: 'Emirates Trans Logistics L.L.C',
-    billingPlan: 'Enterprise GPS + SIRA Relay',
-    deviceCount: 18,
-    ratePerDevice: 40,
-    dueDate: '2026-10-15',
+    companyId: 0,
+    billingPlan: '',
+    deviceCount: '' as string,
+    ratePerDevice: '' as string,
+    dueDate: '',
   });
 
   const showToast = (msg: string) => {
@@ -55,32 +61,68 @@ export const BillingMasterPage: React.FC = () => {
     }
   };
 
+  const loadCompanies = async () => {
+    try {
+      const res = await fetchWithAdminAuth('/api/v1/admin/companies');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+          setCompanies(json.data);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   useEffect(() => {
     loadBilling();
+    loadCompanies();
   }, []);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newInvoice.companyId) {
+      showToast('Please select a client organization.');
+      return;
+    }
+    const deviceCount = Number(newInvoice.deviceCount);
+    const ratePerDevice = Number(newInvoice.ratePerDevice);
+    if (!Number.isFinite(deviceCount) || deviceCount <= 0 || !Number.isFinite(ratePerDevice) || ratePerDevice <= 0) {
+      showToast('Device count and rate per device must be greater than zero.');
+      return;
+    }
     try {
       const res = await fetchWithAdminAuth('/api/v1/admin/billing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newInvoice),
+        body: JSON.stringify({
+          companyId: newInvoice.companyId,
+          billingPlan: newInvoice.billingPlan,
+          deviceCount,
+          ratePerDevice,
+          dueDate: newInvoice.dueDate,
+        }),
       });
 
       if (res.ok) {
-        showToast('Tax invoice generated and sent to tenant accounts');
+        const json = await res.json().catch(() => ({}));
+        showToast(json.invoiceNo ? `Tax invoice ${json.invoiceNo} generated.` : 'Tax invoice generated.');
         setIsModalOpen(false);
+        setNewInvoice({ companyId: 0, billingPlan: '', deviceCount: '', ratePerDevice: '', dueDate: '' });
         loadBilling();
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        showToast(errJson.error || 'Failed to generate tax invoice');
       }
     } catch (err) {
       showToast('Failed to generate tax invoice');
     }
   };
 
-  const totalBilled = invoices.reduce((acc, i) => acc + i.totalAmount, 0);
-  const totalPaid = invoices.filter((i) => i.status === 'Paid').reduce((acc, i) => acc + i.totalAmount, 0);
-  const totalUnpaid = invoices.filter((i) => i.status !== 'Paid').reduce((acc, i) => acc + i.totalAmount, 0);
+  const totalBilled = invoices.reduce((acc, i) => acc + (Number(i.totalAmount) || 0), 0);
+  const totalPaid = invoices.filter((i) => i.status === 'Paid').reduce((acc, i) => acc + (Number(i.totalAmount) || 0), 0);
+  const totalUnpaid = invoices.filter((i) => i.status !== 'Paid').reduce((acc, i) => acc + (Number(i.totalAmount) || 0), 0);
 
   return (
     <div style={{ padding: '32px', maxWidth: '1440px', margin: '0 auto' }}>
@@ -118,7 +160,7 @@ export const BillingMasterPage: React.FC = () => {
             </h1>
           </div>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.92rem', marginTop: '4px' }}>
-            Multi-tenant SaaS invoicing, per-device subscription rates, 5% UAE VAT calculation, and payment status tracking.
+            Multi-tenant SaaS invoicing, per-device subscription rates, VAT calculated from each tenant's billing settings, and payment status tracking.
           </p>
         </div>
 
@@ -169,7 +211,7 @@ export const BillingMasterPage: React.FC = () => {
               <th style={{ padding: '12px 16px', fontWeight: 600 }}>Subscription Plan</th>
               <th style={{ padding: '12px 16px', fontWeight: 600 }}>Trackers</th>
               <th style={{ padding: '12px 16px', fontWeight: 600 }}>Subtotal (AED)</th>
-              <th style={{ padding: '12px 16px', fontWeight: 600 }}>VAT (5%)</th>
+              <th style={{ padding: '12px 16px', fontWeight: 600 }}>VAT</th>
               <th style={{ padding: '12px 16px', fontWeight: 600 }}>Total (AED)</th>
               <th style={{ padding: '12px 16px', fontWeight: 600 }}>Status</th>
               <th style={{ padding: '12px 16px', fontWeight: 600 }}>Due Date</th>
@@ -201,19 +243,19 @@ export const BillingMasterPage: React.FC = () => {
                     </div>
                   </td>
                   <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
-                    {inv.billingPlan}
+                    {inv.billingPlan || '—'}
                   </td>
                   <td style={{ padding: '12px 16px', fontWeight: 600 }}>
-                    {inv.deviceCount} units
+                    {inv.deviceCount ?? '—'} units
                   </td>
                   <td style={{ padding: '12px 16px' }}>
-                    AED {inv.subTotal.toFixed(2)}
+                    AED {(Number(inv.subTotal) || 0).toFixed(2)}
                   </td>
                   <td style={{ padding: '12px 16px', color: 'var(--text-tertiary)' }}>
-                    AED {inv.taxVat.toFixed(2)}
+                    AED {(Number(inv.taxVat) || 0).toFixed(2)}
                   </td>
                   <td style={{ padding: '12px 16px', fontWeight: 800, color: 'var(--text-primary)' }}>
-                    AED {inv.totalAmount.toFixed(2)}
+                    AED {(Number(inv.totalAmount) || 0).toFixed(2)}
                   </td>
                   <td style={{ padding: '12px 16px' }}>
                     <span
@@ -230,7 +272,7 @@ export const BillingMasterPage: React.FC = () => {
                     </span>
                   </td>
                   <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
-                    {inv.dueDate}
+                    {inv.dueDate || '—'}
                   </td>
                 </tr>
               ))
@@ -250,20 +292,25 @@ export const BillingMasterPage: React.FC = () => {
             <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Client Organization</label>
-                <input type="text" value={newInvoice.companyName} onChange={(e) => setNewInvoice({ ...newInvoice, companyName: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} required />
+                <select value={newInvoice.companyId} onChange={(e) => setNewInvoice({ ...newInvoice, companyId: Number(e.target.value) })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} required>
+                  <option value={0}>{companies.length === 0 ? 'No organizations available' : 'Select organization'}</option>
+                  {companies.map((company) => (
+                    <option key={company.id} value={company.id}>{company.name}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Plan Description</label>
-                <input type="text" value={newInvoice.billingPlan} onChange={(e) => setNewInvoice({ ...newInvoice, billingPlan: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
+                <input type="text" placeholder="Enter subscription plan" value={newInvoice.billingPlan} onChange={(e) => setNewInvoice({ ...newInvoice, billingPlan: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Device Count</label>
-                  <input type="number" value={newInvoice.deviceCount} onChange={(e) => setNewInvoice({ ...newInvoice, deviceCount: Number(e.target.value) })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
+                  <input type="number" min={1} value={newInvoice.deviceCount} onChange={(e) => setNewInvoice({ ...newInvoice, deviceCount: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} required />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Rate / Device (AED)</label>
-                  <input type="number" value={newInvoice.ratePerDevice} onChange={(e) => setNewInvoice({ ...newInvoice, ratePerDevice: Number(e.target.value) })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
+                  <input type="number" min={0} step="0.01" value={newInvoice.ratePerDevice} onChange={(e) => setNewInvoice({ ...newInvoice, ratePerDevice: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} required />
                 </div>
               </div>
               <div>
@@ -272,7 +319,7 @@ export const BillingMasterPage: React.FC = () => {
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
                 <button type="button" onClick={() => setIsModalOpen(false)} className="btn btn-secondary">Cancel</button>
-                <button type="submit" className="btn btn-primary">Generate & Email Invoice</button>
+                <button type="submit" className="btn btn-primary">Generate Invoice</button>
               </div>
             </form>
           </div>

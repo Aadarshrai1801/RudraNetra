@@ -33,6 +33,11 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({ onLoginSuccess }
         throw new Error(data.error || 'Invalid credentials.');
       }
 
+      const token: string = data.token || data.access_token || '';
+      if (!token) {
+        throw new Error('Authentication response did not include an access token.');
+      }
+
       // STRICT ROLE VALIDATION: Organizational admins or regular users are strictly forbidden!
       if (data.user?.role !== 'superadmin') {
         throw new Error(
@@ -41,11 +46,11 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({ onLoginSuccess }
       }
 
       // Valid SuperAdmin authenticated
-      localStorage.setItem('rudra_superadmin_token', data.token);
+      localStorage.setItem('rudra_superadmin_token', token);
       localStorage.setItem('rudra_superadmin_user', JSON.stringify(data.user));
-      localStorage.setItem('rudra_admin_token', data.token);
+      localStorage.setItem('rudra_admin_token', token);
 
-      onLoginSuccess(data.user, data.token);
+      onLoginSuccess(data.user, token);
     } catch (err: any) {
       setError(err.message || 'Authentication failed.');
     } finally {

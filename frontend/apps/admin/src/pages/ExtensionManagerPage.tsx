@@ -19,18 +19,24 @@ interface ExtensionRecord {
   createdAt: string;
 }
 
+interface CompanyOption {
+  id: number;
+  name: string;
+}
+
 export const ExtensionManagerPage: React.FC = () => {
   const [extensions, setExtensions] = useState<ExtensionRecord[]>([]);
+  const [companies, setCompanies] = useState<CompanyOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const [form, setForm] = useState({
-    companyId: 1,
-    extensionType: 'Company Subscription',
-    months: 12,
-    reason: 'Annual Contract Renewal',
-    amountPaid: 14400,
+    companyId: 0,
+    extensionType: '',
+    months: '' as string,
+    reason: '',
+    amountPaid: '' as string,
   });
 
   const showToast = (msg: string) => {
@@ -55,24 +61,58 @@ export const ExtensionManagerPage: React.FC = () => {
     }
   };
 
+  const loadCompanies = async () => {
+    try {
+      const res = await fetchWithAdminAuth('/api/v1/admin/companies');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+          setCompanies(json.data);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   useEffect(() => {
     loadExtensions();
+    loadCompanies();
   }, []);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.companyId) {
+      showToast('Please select an organization.');
+      return;
+    }
+    const months = Number(form.months);
+    if (!Number.isFinite(months) || months <= 0) {
+      showToast('Please enter a valid extension term in months.');
+      return;
+    }
     try {
       const res = await fetchWithAdminAuth('/api/v1/admin/extensions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          companyId: form.companyId,
+          extensionType: form.extensionType,
+          months,
+          reason: form.reason,
+          amountPaid: form.amountPaid === '' ? 0 : Number(form.amountPaid),
+        }),
       });
 
       if (res.ok) {
-        const json = await res.json();
+        const json = await res.json().catch(() => ({}));
         showToast(json.message || 'Subscription extended successfully');
         setIsModalOpen(false);
+        setForm({ companyId: 0, extensionType: '', months: '', reason: '', amountPaid: '' });
         loadExtensions();
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        showToast(errJson.error || 'Failed to extend subscription');
       }
     } catch (err) {
       showToast('Failed to extend subscription');
@@ -166,7 +206,7 @@ export const ExtensionManagerPage: React.FC = () => {
                     </div>
                   </td>
                   <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
-                    {ext.deviceImei || 'All Fleet Units'}
+                    {ext.deviceImei || 'All Devices'}
                   </td>
                   <td style={{ padding: '12px 16px' }}>
                     <span style={{ padding: '3px 8px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-subtle)', fontSize: '0.78rem', fontWeight: 600 }}>
@@ -174,16 +214,16 @@ export const ExtensionManagerPage: React.FC = () => {
                     </span>
                   </td>
                   <td style={{ padding: '12px 16px', color: 'var(--text-tertiary)', fontSize: '0.82rem' }}>
-                    {ext.oldExpiryDate}
+                    {ext.oldExpiryDate || '—'}
                   </td>
                   <td style={{ padding: '12px 16px' }}>
-                    <strong style={{ color: 'var(--good)' }}>{ext.newExpiryDate}</strong>
+                    <strong style={{ color: 'var(--good)' }}>{ext.newExpiryDate || '—'}</strong>
                   </td>
                   <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
-                    {ext.extendedBy}
+                    {ext.extendedBy || '—'}
                   </td>
                   <td style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    AED {ext.amountPaid.toLocaleString()}
+                    {ext.amountPaid ? `AED ${Number(ext.amountPaid).toLocaleString()}` : '—'}
                   </td>
                 </tr>
               ))
@@ -203,30 +243,27 @@ export const ExtensionManagerPage: React.FC = () => {
             <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Organization</label>
-                <select value={form.companyId} onChange={(e) => setForm({ ...form, companyId: Number(e.target.value) })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                  <option value={1}>Emirates Trans Logistics L.L.C</option>
-                  <option value={2}>Gulf Cold Chain Express</option>
+                <select value={form.companyId} onChange={(e) => setForm({ ...form, companyId: Number(e.target.value) })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} required>
+                  <option value={0}>{companies.length === 0 ? 'No organizations available' : 'Select organization'}</option>
+                  {companies.map((company) => (
+                    <option key={company.id} value={company.id}>{company.name}</option>
+                  ))}
                 </select>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Extension Term</label>
-                  <select value={form.months} onChange={(e) => setForm({ ...form, months: Number(e.target.value) })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                    <option value={1}>1 Month</option>
-                    <option value={3}>3 Months</option>
-                    <option value={6}>6 Months</option>
-                    <option value={12}>12 Months (1 Year)</option>
-                    <option value={24}>24 Months (2 Years)</option>
-                  </select>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Extension Term (Months)</label>
+                  <input type="number" min={1} placeholder="e.g. 12" value={form.months} onChange={(e) => setForm({ ...form, months: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} required />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Amount Paid (AED)</label>
-                  <input type="number" value={form.amountPaid} onChange={(e) => setForm({ ...form, amountPaid: Number(e.target.value) })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
+                  <input type="number" min={0} placeholder="0.00" value={form.amountPaid} onChange={(e) => setForm({ ...form, amountPaid: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
                 </div>
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Extension Scope</label>
                 <select value={form.extensionType} onChange={(e) => setForm({ ...form, extensionType: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                  <option value="">Select extension scope</option>
                   <option value="Company Subscription">Company Subscription (All Fleet)</option>
                   <option value="Device License">Single Device License</option>
                   <option value="SIRA Gateway Relay">SIRA Secure Relay Compliance</option>
@@ -234,7 +271,7 @@ export const ExtensionManagerPage: React.FC = () => {
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Contract Remarks / Reason</label>
-                <input type="text" placeholder="e.g. Annual renewal cheque #99210" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
+                <input type="text" placeholder="e.g. renewal reference" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
                 <button type="button" onClick={() => setIsModalOpen(false)} className="btn btn-secondary">Cancel</button>
