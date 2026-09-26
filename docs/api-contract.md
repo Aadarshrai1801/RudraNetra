@@ -25,7 +25,9 @@ NULL — display `—` or hide, never invent a value.
   `{total,count,data:[Vehicle]}`
   Vehicle: `id, company_id, device_id?, reg_number, make, model, variant, body_type,
   fuel_type, fuel_capacity, max_speed, odometer, icon_type,
-  status: "moving"|"idle"|"stopped"|"offline",
+  status: last known state from the database "moving"|"idle"|"stopped"|"offline"
+  (offline only when the vehicle has never reported), online (bool: position
+  within 15 min, informational),
   driver_name?, driver_phone?, lat?, lng?, speed?, heading?, ignition?,
   temperature?, fuel_pct?, battery_v?, timestamp?`
 - `GET /api/v1/vehicles/:id` → `{data:Vehicle}` / 404
@@ -60,8 +62,12 @@ NULL — display `—` or hide, never invent a value.
 - `DELETE /api/v1/devices/:id`
 - `POST /api/v1/devices/:id/assign` `{vehicleId|vehicleReg}`
 - `GET/PUT /api/v1/devices/:id/config` — `{port,protocol,firmware,status,settings:{idleThresholdMinutes,speedThresholdKmh,timezone,language}}`
-- `GET /api/v1/devices/:id/commands` → `data:[{id,deviceId,vehicleReg,commandType,commandStr,sentBy,status,sentAt,ackAt?}]`
-- `POST /api/v1/devices/:id/commands` `{commandType,pin,notes}` → `{commandId,status:"Sent",rawCommand,message}`; wrong PIN → 401.
+- `GET /api/v1/devices/:id/commands` → `data:[{id,deviceId,vehicleReg,commandType,commandStr,sentBy,status,sentAt,deliveredAt?,ackAt?,response?}]`
+- `POST /api/v1/devices/:id/commands` `{commandType,pin,notes}` → `{commandId,status:"Sent",rawCommand,queued,message}`; wrong PIN → 401.
+  Lifecycle: `Sent` (stored) → `Delivered` (written to the device socket as a
+  Codec 12 frame) → `Acknowledged` (device replied; `ackAt`/`response` set).
+  Delivery requires the device to be online and Redis to be reachable; commands
+  for offline devices stay `Sent`.
 
 ## Drivers
 
@@ -146,17 +152,15 @@ Types and row keys:
 
 - `GET /api/v1/dashboard/summary` →
   `data:{totalVehicles,online,moving,idle,stopped,offline,unacknowledgedAlerts}`
-  Status buckets are mutually exclusive: `moving + idle + stopped + offline = totalVehicles`
-  (each vehicle by its last known position; `offline` = no position at all).
-  `online` separately counts vehicles that reported within the last 15 minutes.
+  `moving/idle/stopped` come from the **last known position stored in the
+  database** (state is kept regardless of age); `offline` means the vehicle has
+  never reported. `online` is informational (position within the last 15 min).
 - `GET /api/v1/dashboard/analytics` →
-  `data:{fleetOccupancyPct,activeVehicles,idleVehicles,stoppedVehicles,runningVehicles,
-  offlineVehicles,avgDistancePerDay,totalFleetKmToday,totalKm31Days,fuelEfficiencyKmpl,
-  totalFuelBurnedLtr,totalFuelCost,carbonEmissionsKg,
-  utilizationTrend:[{day,occupancy,km}],
-  engineStatusRatio:{running,idle,stopped},
-  topSpeedViolators:[{vehicle,driver,topSpeed,count}]}`
-  (`running/idle/stopped/offline` are mutually exclusive too)
+  `data:{fleetOccupancyPct,activeVehicles,onlineVehicles,idleVehicles,stoppedVehicles,
+  runningVehicles,offlineVehicles,avgDistancePerDay,...}`
+  `activeVehicles` counts vehicles with a recorded position; `running/idle/stopped`
+  use their last known state and `offlineVehicles` have never reported.
+  `onlineVehicles` is the fresh (15 min) subset.
 
 ## Trips / Routes / Groups
 
@@ -228,6 +232,72 @@ Types and row keys:
 
 ## WebSocket
 
-`ws://<host>/ws/tracking?token=<JWT>` — the token query parameter is now
+`ws://<host>/ws/tracking?token=<JWT>` — the token query parameter is
 **required**; unauthenticated sockets get HTTP 401. The client should treat
 polling (`GET /tracking/positions`, `/vehicles`) as the reliable refresh path.
+
+Live positions are pushed as soon as the ingestion tier stores them
+(ingest → Redis `rudra.positions` → API hub):
+
+```json
+{ "type": "position",
+  "payload": {
+    "company_id": 1, "device_id": 139, "reg_number": "58046",
+    "lat": 24.89521, "lng": 55.14203, "speed": 64, "heading": 238,
+    "ignition": true, "status": "moving",
+    "temperature": -18.4, "voltage": 24.1, "fuel_pct": 57,
+    "battery_v": 3.95, "door_open": false,
+    "odometer": 1425800, "timestamp": "2026-09-26T10:00:00Z"
+  } }
+```
+
+Alerts raised by the worker's live engine are pushed the same way
+(worker → Redis `rudra.alerts` → API hub):
+
+```json
+{ "type": "alert",
+  "payload": { "id": 101, "company_id": 1, "device_id": 139, "vehicle": "58046",
+               "type": "overspeed", "severity": "critical",
+               "message": "Vehicle 58046 overspeeding at 92 km/h (limit 80 km/h)",
+               "lat": 24.89, "lng": 55.14, "timestamp": "2026-09-26T10:05:00Z" } }
+```
+
+## Device ingestion (TCP :5040)
+
+- Teltonika **Codec 8 (`0x08`)** and **Codec 8 Extended (`0x8E`)** are decoded;
+  Codec 16 is recognised but not decoded yet.
+- **Device-fed telemetry:** on a fresh install `positions`, `alerts`,
+  `raw_packets`, `device_commands` and `fuel_records` are empty; they only ever
+  contain frames received from registered trackers (or explicit manual test
+  runs). The fleet registry (companies, users, vehicles, devices, drivers,
+  geofences, POI, business records) is seeded separately.
+- TCP stream framing reassembles fragmented reads, multiple frames per read and
+  buffered bursts, and resynchronises automatically after corruption.
+- CRC-16 is validated when present; `CRC=off` devices are still accepted.
+- Unknown IMEIs are rejected (`0x00`); registered devices get `0x01` and their
+  AVL frames are acknowledged with the accepted record count.
+- Sensor IOs mapped to columns: ignition (1/239), door DIN2 (2), voltage
+  (7/66), backup battery (67), 1-wire temperature (72), fuel level (84),
+  odometer (16), RFID (207). Every element is preserved in `positions.raw_data`.
+- **Socket-tier metrics:** `GET http://localhost:5041/stats` (frames, records,
+  positions stored, CRC mismatches, resyncs, batch errors, connected devices,
+  commands sent/acked) and `GET http://localhost:5041/healthz`.
+- Host ports: `5040` (primary) and `15040` (alternate, useful when a Windows
+  Docker port forwarder goes stale). `compose` also health-checks both services
+  and caps container logs at 10 MB × 3 files.
+- **Live alert engine (worker):** subscribes to `rudra.positions` and raises
+  `overspeed`, `over_idle`, `power_cut` and `temperature` alerts with per-device
+  cooldowns (5–30 min), using `company_settings.speed_threshold_kmh` and
+  `idle_threshold_minutes` (15/80 defaults).
+- **TimescaleDB lifecycle:** `positions` is compressed after 30 days
+  (segmented by `device_id`) and retained for 730 days.
+
+### Device simulator (no hardware needed)
+
+```bash
+# Codec 8 Extended, fragmented frames, bursts of 3, command listener
+CODEC=8e BURST=3 FRAGMENT=on LISTEN_COMMANDS=on POSITIONS=30 node backend/scripts/simulate_device.js
+
+# Assert the API WebSocket delivers live positions
+EXPECT=3 TIMEOUT_MS=30000 node backend/scripts/test_ws_client.mjs
+```
