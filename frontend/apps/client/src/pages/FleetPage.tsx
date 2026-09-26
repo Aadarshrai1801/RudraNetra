@@ -96,6 +96,28 @@ interface PartyRoute {
   billingRate: number;
 }
 
+interface MasterItem {
+  id: number;
+  type: string;
+  code: string;
+  name: string;
+  isDefault: boolean;
+}
+
+// Null/undefined API values are shown as an em dash instead of inventing data.
+const dash = (value: unknown): string =>
+  value === null || value === undefined || value === '' ? '—' : String(value);
+
+const numberDash = (value: number | null | undefined): string =>
+  value === null || value === undefined || Number.isNaN(value) ? '—' : value.toLocaleString();
+
+const nullableNumber = (value: string): number | null => {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const num = Number(trimmed);
+  return Number.isFinite(num) ? num : null;
+};
+
 export const FleetPage: React.FC<{ initialTab?: 'trips' | 'gatepasses' | 'lr' | 'tyres' | 'vouchers' | 'partyroutes' | 'drivers' }> = ({ initialTab = 'trips' }) => {
   const user = useAuthStore((state) => state.user);
   const location = useLocation();
@@ -125,12 +147,17 @@ export const FleetPage: React.FC<{ initialTab?: 'trips' | 'gatepasses' | 'lr' | 
   const [partyRoutes, setPartyRoutes] = useState<PartyRoute[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
 
+  // Master lookups (tyre brands, axle positions, voucher categories)
+  const [tyreBrands, setTyreBrands] = useState<MasterItem[]>([]);
+  const [axlePositions, setAxlePositions] = useState<MasterItem[]>([]);
+  const [voucherCategories, setVoucherCategories] = useState<MasterItem[]>([]);
+
   // Modals
   const [isTripModalOpen, setIsTripModalOpen] = useState(false);
   const [isTyreModalOpen, setIsTyreModalOpen] = useState(false);
   const [isVoucherModalOpen, setIsVoucherModalOpen] = useState(false);
 
-  // Form states
+  // Form states (empty until the user enters real values)
   const [newTrip, setNewTrip] = useState({
     vehicleId: '',
     driver1Name: '',
@@ -138,26 +165,26 @@ export const FleetPage: React.FC<{ initialTab?: 'trips' | 'gatepasses' | 'lr' | 
     partyName: '',
     source: '',
     destination: '',
-    freightAmount: 3000,
-    advanceAmount: 1000,
+    freightAmount: '',
+    advanceAmount: '',
   });
 
   const [newTyre, setNewTyre] = useState({
     vehicleId: '',
     tyreNumber: '',
-    axlePosition: 'Front-Left (FL)',
-    brand: 'Bridgestone',
-    model: 'R150 Premium',
-    size: '295/80 R22.5',
-    treadDepthMm: 15.0,
-    plyRating: 16,
-    lifeKmLimit: 100000,
+    axlePosition: '',
+    brand: '',
+    model: '',
+    size: '',
+    treadDepthMm: '',
+    plyRating: '',
+    lifeKmLimit: '',
   });
 
   const [newVoucher, setNewVoucher] = useState({
-    tripId: 1,
-    voucherType: 'Fuel (Diesel)',
-    amount: 350,
+    tripId: '',
+    voucherType: '',
+    amount: '',
     billNo: '',
     notes: '',
   });
@@ -171,7 +198,7 @@ export const FleetPage: React.FC<{ initialTab?: 'trips' | 'gatepasses' | 'lr' | 
   const loadData = async () => {
     setLoading(true);
     try {
-      const [tripsRes, gpRes, lrRes, tyreRes, vchRes, prRes, drvRes] = await Promise.all([
+      const [tripsRes, gpRes, lrRes, tyreRes, vchRes, prRes, drvRes, brandRes, axleRes, catRes] = await Promise.all([
         fetchWithAuth('/api/v1/fleet/trips'),
         fetchWithAuth('/api/v1/fleet/gate-passes'),
         fetchWithAuth('/api/v1/fleet/lr'),
@@ -179,6 +206,9 @@ export const FleetPage: React.FC<{ initialTab?: 'trips' | 'gatepasses' | 'lr' | 
         fetchWithAuth('/api/v1/fleet/vouchers'),
         fetchWithAuth('/api/v1/fleet/party-routes'),
         fetchWithAuth('/api/v1/drivers'),
+        fetchWithAuth('/api/v1/masters/tyre-brands'),
+        fetchWithAuth('/api/v1/masters/axle-positions'),
+        fetchWithAuth('/api/v1/masters/voucher-categories'),
       ]);
 
       if (tripsRes.ok) {
@@ -209,6 +239,18 @@ export const FleetPage: React.FC<{ initialTab?: 'trips' | 'gatepasses' | 'lr' | 
         const j = await drvRes.json();
         if (j.success && Array.isArray(j.data)) setDrivers(j.data);
       }
+      if (brandRes.ok) {
+        const j = await brandRes.json();
+        if (j.success && Array.isArray(j.data)) setTyreBrands(j.data);
+      }
+      if (axleRes.ok) {
+        const j = await axleRes.json();
+        if (j.success && Array.isArray(j.data)) setAxlePositions(j.data);
+      }
+      if (catRes.ok) {
+        const j = await catRes.json();
+        if (j.success && Array.isArray(j.data)) setVoucherCategories(j.data);
+      }
     } catch (err) {
       console.error('Failed to load fleet modules:', err);
     } finally {
@@ -222,19 +264,46 @@ export const FleetPage: React.FC<{ initialTab?: 'trips' | 'gatepasses' | 'lr' | 
 
   const handleCreateTrip = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newTrip.vehicleId) {
+      showToast('Please select a vehicle');
+      return;
+    }
     try {
+      const body: Record<string, unknown> = {
+        vehicleId: Number(newTrip.vehicleId),
+        driver1Name: newTrip.driver1Name.trim(),
+        driver2Name: newTrip.driver2Name.trim(),
+        partyName: newTrip.partyName.trim(),
+        source: newTrip.source.trim(),
+        destination: newTrip.destination.trim(),
+      };
+      const freight = nullableNumber(newTrip.freightAmount);
+      const advance = nullableNumber(newTrip.advanceAmount);
+      if (freight !== null) body.freightAmount = freight;
+      if (advance !== null) body.advanceAmount = advance;
+
       const res = await fetchWithAuth('/api/v1/fleet/trips', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...newTrip,
-          vehicleId: Number(newTrip.vehicleId) || 1,
-        }),
+        body: JSON.stringify(body),
       });
+      const json = await res.json().catch(() => null);
       if (res.ok) {
         showToast('Fleet trip created and dispatched');
         setIsTripModalOpen(false);
+        setNewTrip({
+          vehicleId: '',
+          driver1Name: '',
+          driver2Name: '',
+          partyName: '',
+          source: '',
+          destination: '',
+          freightAmount: '',
+          advanceAmount: '',
+        });
         loadData();
+      } else {
+        showToast(json?.error || 'Failed to dispatch trip');
       }
     } catch (err) {
       showToast('Error dispatching trip');
@@ -243,19 +312,49 @@ export const FleetPage: React.FC<{ initialTab?: 'trips' | 'gatepasses' | 'lr' | 
 
   const handleCreateTyre = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newTyre.vehicleId) {
+      showToast('Please select the vehicle the tyre is mounted on');
+      return;
+    }
     try {
+      const body: Record<string, unknown> = {
+        vehicleId: Number(newTyre.vehicleId),
+        tyreNumber: newTyre.tyreNumber.trim(),
+      };
+      if (newTyre.axlePosition) body.axlePosition = newTyre.axlePosition;
+      if (newTyre.brand) body.brand = newTyre.brand;
+      if (newTyre.model.trim()) body.model = newTyre.model.trim();
+      if (newTyre.size.trim()) body.size = newTyre.size.trim();
+      const tread = nullableNumber(newTyre.treadDepthMm);
+      const ply = nullableNumber(newTyre.plyRating);
+      const life = nullableNumber(newTyre.lifeKmLimit);
+      if (tread !== null) body.treadDepthMm = tread;
+      if (ply !== null) body.plyRating = ply;
+      if (life !== null) body.lifeKmLimit = life;
+
       const res = await fetchWithAuth('/api/v1/fleet/tyres', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...newTyre,
-          vehicleId: Number(newTyre.vehicleId) || 1,
-        }),
+        body: JSON.stringify(body),
       });
+      const json = await res.json().catch(() => null);
       if (res.ok) {
         showToast('Tyre serial registered in asset registry');
         setIsTyreModalOpen(false);
+        setNewTyre({
+          vehicleId: '',
+          tyreNumber: '',
+          axlePosition: '',
+          brand: '',
+          model: '',
+          size: '',
+          treadDepthMm: '',
+          plyRating: '',
+          lifeKmLimit: '',
+        });
         loadData();
+      } else {
+        showToast(json?.error || 'Failed to register tyre');
       }
     } catch (err) {
       showToast('Error registering tyre');
@@ -264,16 +363,32 @@ export const FleetPage: React.FC<{ initialTab?: 'trips' | 'gatepasses' | 'lr' | 
 
   const handleCreateVoucher = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newVoucher.tripId || !newVoucher.voucherType || !(Number(newVoucher.amount) > 0)) {
+      showToast('Select a trip, voucher type and enter the amount');
+      return;
+    }
     try {
+      const body: Record<string, unknown> = {
+        tripId: Number(newVoucher.tripId),
+        voucherType: newVoucher.voucherType,
+        amount: Number(newVoucher.amount),
+      };
+      if (newVoucher.billNo.trim()) body.billNo = newVoucher.billNo.trim();
+      if (newVoucher.notes.trim()) body.notes = newVoucher.notes.trim();
+
       const res = await fetchWithAuth('/api/v1/fleet/vouchers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newVoucher),
+        body: JSON.stringify(body),
       });
+      const json = await res.json().catch(() => null);
       if (res.ok) {
         showToast('Expense voucher added and balance updated');
         setIsVoucherModalOpen(false);
+        setNewVoucher({ tripId: '', voucherType: '', amount: '', billNo: '', notes: '' });
         loadData();
+      } else {
+        showToast(json?.error || 'Failed to submit voucher');
       }
     } catch (err) {
       showToast('Error submitting voucher');
@@ -424,29 +539,29 @@ export const FleetPage: React.FC<{ initialTab?: 'trips' | 'gatepasses' | 'lr' | 
               {trips.map((t) => (
                 <tr key={t.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                   <td style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--accent)' }}>
-                    {t.tripNo}
+                    {dash(t.tripNo)}
                   </td>
                   <td style={{ padding: '12px 16px', fontWeight: 700 }}>
-                    {t.vehicleReg}
+                    {dash(t.vehicleReg)}
                   </td>
                   <td style={{ padding: '12px 16px' }}>
-                    <div style={{ fontWeight: 600 }}>{t.driver1}</div>
+                    <div style={{ fontWeight: 600 }}>{dash(t.driver1)}</div>
                     {t.driver2 && <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>Co-driver: {t.driver2}</div>}
                   </td>
                   <td style={{ padding: '12px 16px' }}>
-                    <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{t.partyName}</div>
+                    <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{dash(t.partyName)}</div>
                     <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <span>{t.source}</span>
+                      <span>{dash(t.source)}</span>
                       <span style={{ color: 'var(--text-tertiary)' }}>—</span>
-                      <span>{t.destination}</span>
+                      <span>{dash(t.destination)}</span>
                     </div>
                   </td>
                   <td style={{ padding: '12px 16px' }}>
                     <div style={{ fontSize: '0.82rem' }}>
-                      <strong>Freight:</strong> AED {t.freightAmount.toLocaleString()}
+                      <strong>Freight:</strong> AED {numberDash(t.freightAmount)}
                     </div>
                     <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>
-                      Adv: {t.advanceAmount} • Exp: {t.expenseAmount} • <strong>Bal: AED {t.balanceAmount}</strong>
+                      Adv: {numberDash(t.advanceAmount)} • Exp: {numberDash(t.expenseAmount)} • <strong>Bal: AED {numberDash(t.balanceAmount)}</strong>
                     </div>
                   </td>
                   <td style={{ padding: '12px 16px' }}>
@@ -460,7 +575,7 @@ export const FleetPage: React.FC<{ initialTab?: 'trips' | 'gatepasses' | 'lr' | 
                         color: t.status === 'In Transit' ? 'var(--accent)' : t.status === 'Delivered' ? 'var(--good)' : 'var(--text-secondary)',
                       }}
                     >
-                      {t.status}
+                      {dash(t.status)}
                     </span>
                   </td>
                 </tr>
@@ -488,41 +603,47 @@ export const FleetPage: React.FC<{ initialTab?: 'trips' | 'gatepasses' | 'lr' | 
               {tyres.map((ty) => (
                 <tr key={ty.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                   <td style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--accent)' }}>
-                    {ty.tyreNumber}
+                    {dash(ty.tyreNumber)}
                   </td>
                   <td style={{ padding: '12px 16px' }}>
-                    <div style={{ fontWeight: 700 }}>{ty.vehicleReg}</div>
-                    <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{ty.axlePosition}</div>
+                    <div style={{ fontWeight: 700 }}>{dash(ty.vehicleReg)}</div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{dash(ty.axlePosition)}</div>
                   </td>
                   <td style={{ padding: '12px 16px' }}>
-                    <div style={{ fontWeight: 600 }}>{ty.brand} {ty.model}</div>
-                    <div style={{ fontSize: '0.76rem', color: 'var(--text-tertiary)' }}>{ty.size} • {ty.plyRating} PR</div>
+                    <div style={{ fontWeight: 600 }}>
+                      {ty.brand || ty.model ? `${ty.brand || ''} ${ty.model || ''}`.trim() : '—'}
+                    </div>
+                    <div style={{ fontSize: '0.76rem', color: 'var(--text-tertiary)' }}>
+                      {dash(ty.size)} • {ty.plyRating != null ? `${ty.plyRating} PR` : '—'}
+                    </div>
                   </td>
                   <td style={{ padding: '12px 16px' }}>
-                    <span style={{ fontWeight: 700, color: ty.treadDepthMm < 5 ? '#DC2626' : 'var(--text-primary)' }}>
-                      {ty.treadDepthMm} mm
+                    <span style={{ fontWeight: 700, color: ty.treadDepthMm != null && ty.treadDepthMm < 5 ? '#DC2626' : 'var(--text-primary)' }}>
+                      {ty.treadDepthMm != null ? `${ty.treadDepthMm} mm` : '—'}
                     </span>
-                    {ty.treadDepthMm < 5 && (
+                    {ty.treadDepthMm != null && ty.treadDepthMm < 5 && (
                       <span style={{ fontSize: '0.72rem', color: '#DC2626', display: 'block' }}>Replace / Retread</span>
                     )}
                   </td>
                   <td style={{ padding: '12px 16px', minWidth: '150px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', marginBottom: '4px' }}>
-                      <span>{ty.currentKm.toLocaleString()} / {ty.lifeKmLimit.toLocaleString()} KM</span>
-                      <strong style={{ color: ty.healthPct < 30 ? '#DC2626' : 'var(--good)' }}>{ty.healthPct}%</strong>
+                      <span>{numberDash(ty.currentKm)} / {numberDash(ty.lifeKmLimit)} KM</span>
+                      <strong style={{ color: ty.healthPct != null && ty.healthPct < 30 ? '#DC2626' : 'var(--good)' }}>
+                        {ty.healthPct != null ? `${ty.healthPct}%` : '—'}
+                      </strong>
                     </div>
                     <div style={{ height: '6px', background: 'var(--bg-subtle)', borderRadius: '3px', overflow: 'hidden' }}>
                       <div
                         style={{
-                          width: `${ty.healthPct}%`,
+                          width: `${ty.healthPct || 0}%`,
                           height: '100%',
-                          background: ty.healthPct < 30 ? '#DC2626' : ty.healthPct < 60 ? 'var(--attention)' : 'var(--good)',
+                          background: ty.healthPct != null && ty.healthPct < 30 ? '#DC2626' : ty.healthPct != null && ty.healthPct < 60 ? 'var(--attention)' : 'var(--good)',
                         }}
                       />
                     </div>
                   </td>
                   <td style={{ padding: '12px 16px', fontWeight: 600 }}>
-                    {ty.retreadingCount} times
+                    {ty.retreadingCount != null ? `${ty.retreadingCount} times` : '—'}
                   </td>
                 </tr>
               ))}
@@ -549,22 +670,22 @@ export const FleetPage: React.FC<{ initialTab?: 'trips' | 'gatepasses' | 'lr' | 
               {vouchers.map((v) => (
                 <tr key={v.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                   <td style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--accent)' }}>
-                    {v.tripNo}
+                    {dash(v.tripNo)}
                   </td>
                   <td style={{ padding: '12px 16px', fontWeight: 600 }}>
-                    {v.voucherType}
+                    {dash(v.voucherType)}
                   </td>
                   <td style={{ padding: '12px 16px', fontWeight: 800, color: 'var(--text-primary)' }}>
-                    AED {v.amount.toFixed(2)}
+                    {v.amount != null ? `AED ${v.amount.toFixed(2)}` : '—'}
                   </td>
                   <td style={{ padding: '12px 16px', fontFamily: 'monospace', fontSize: '0.82rem' }}>
                     {v.billNo || '—'}
                   </td>
                   <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
-                    {v.notes}
+                    {v.notes || '—'}
                   </td>
                   <td style={{ padding: '12px 16px', color: 'var(--text-tertiary)', fontSize: '0.82rem' }}>
-                    {v.date}
+                    {dash(v.date)}
                   </td>
                 </tr>
               ))}
@@ -590,19 +711,19 @@ export const FleetPage: React.FC<{ initialTab?: 'trips' | 'gatepasses' | 'lr' | 
               {partyRoutes.map((p) => (
                 <tr key={p.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                   <td style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    {p.partyName}
+                    {dash(p.partyName)}
                   </td>
                   <td style={{ padding: '12px 16px', color: 'var(--text-secondary)' }}>
-                    {p.source}
+                    {dash(p.source)}
                   </td>
                   <td style={{ padding: '12px 16px', color: 'var(--text-secondary)' }}>
-                    {p.destination}
+                    {dash(p.destination)}
                   </td>
                   <td style={{ padding: '12px 16px', fontWeight: 600 }}>
-                    {p.standardKm} KM
+                    {p.standardKm != null ? `${numberDash(p.standardKm)} KM` : '—'}
                   </td>
                   <td style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--good)' }}>
-                    AED {p.billingRate.toLocaleString()}
+                    AED {numberDash(p.billingRate)}
                   </td>
                 </tr>
               ))}
@@ -628,14 +749,14 @@ export const FleetPage: React.FC<{ initialTab?: 'trips' | 'gatepasses' | 'lr' | 
             <tbody>
               {gatePasses.map((gp) => (
                 <tr key={gp.passNo} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--accent)' }}>{gp.passNo}</td>
-                  <td style={{ padding: '12px 16px', fontWeight: 600 }}>{gp.vehicle}</td>
-                  <td style={{ padding: '12px 16px', color: 'var(--text-secondary)' }}>{gp.driver}</td>
-                  <td style={{ padding: '12px 16px', color: 'var(--text-secondary)' }}>{gp.destination}</td>
-                  <td style={{ padding: '12px 16px', color: 'var(--text-tertiary)', fontSize: '0.82rem' }}>{gp.issuedAt}</td>
+                  <td style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--accent)' }}>{dash(gp.passNo)}</td>
+                  <td style={{ padding: '12px 16px', fontWeight: 600 }}>{dash(gp.vehicle)}</td>
+                  <td style={{ padding: '12px 16px', color: 'var(--text-secondary)' }}>{dash(gp.driver)}</td>
+                  <td style={{ padding: '12px 16px', color: 'var(--text-secondary)' }}>{dash(gp.destination)}</td>
+                  <td style={{ padding: '12px 16px', color: 'var(--text-tertiary)', fontSize: '0.82rem' }}>{dash(gp.issuedAt)}</td>
                   <td style={{ padding: '12px 16px' }}>
                     <span style={{ padding: '3px 10px', borderRadius: 'var(--radius-full)', fontSize: '0.76rem', fontWeight: 700, background: 'var(--good-bg)', color: 'var(--good)' }}>
-                      {gp.status}
+                      {dash(gp.status)}
                     </span>
                   </td>
                 </tr>
@@ -662,14 +783,14 @@ export const FleetPage: React.FC<{ initialTab?: 'trips' | 'gatepasses' | 'lr' | 
             <tbody>
               {lrs.map((l) => (
                 <tr key={l.lrNo} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--accent)' }}>{l.lrNo}</td>
-                  <td style={{ padding: '12px 16px', fontWeight: 600 }}>{l.party}</td>
-                  <td style={{ padding: '12px 16px' }}>{l.vehicle}</td>
-                  <td style={{ padding: '12px 16px' }}>{l.weightKg} kg</td>
-                  <td style={{ padding: '12px 16px', fontWeight: 700 }}>AED {l.freightAmt}</td>
+                  <td style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--accent)' }}>{dash(l.lrNo)}</td>
+                  <td style={{ padding: '12px 16px', fontWeight: 600 }}>{dash(l.party)}</td>
+                  <td style={{ padding: '12px 16px' }}>{dash(l.vehicle)}</td>
+                  <td style={{ padding: '12px 16px' }}>{l.weightKg != null ? `${numberDash(l.weightKg)} kg` : '—'}</td>
+                  <td style={{ padding: '12px 16px', fontWeight: 700 }}>AED {numberDash(l.freightAmt)}</td>
                   <td style={{ padding: '12px 16px' }}>
                     <span style={{ padding: '3px 10px', borderRadius: 'var(--radius-full)', fontSize: '0.76rem', fontWeight: 700, background: 'var(--good-bg)', color: 'var(--good)' }}>
-                      {l.status}
+                      {dash(l.status)}
                     </span>
                   </td>
                 </tr>
@@ -695,13 +816,13 @@ export const FleetPage: React.FC<{ initialTab?: 'trips' | 'gatepasses' | 'lr' | 
             <tbody>
               {drivers.map((d) => (
                 <tr key={d.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '12px 16px', fontWeight: 700 }}>{d.name}</td>
-                  <td style={{ padding: '12px 16px', color: 'var(--text-secondary)' }}>{d.phone}</td>
-                  <td style={{ padding: '12px 16px', fontFamily: 'monospace' }}>{d.licenseNo}</td>
-                  <td style={{ padding: '12px 16px', fontWeight: 600 }}>{d.assignedVehicle}</td>
+                  <td style={{ padding: '12px 16px', fontWeight: 700 }}>{dash(d.name)}</td>
+                  <td style={{ padding: '12px 16px', color: 'var(--text-secondary)' }}>{dash(d.phone)}</td>
+                  <td style={{ padding: '12px 16px', fontFamily: 'monospace' }}>{dash(d.licenseNo)}</td>
+                  <td style={{ padding: '12px 16px', fontWeight: 600 }}>{dash(d.assignedVehicle)}</td>
                   <td style={{ padding: '12px 16px' }}>
                     <span style={{ padding: '3px 10px', borderRadius: 'var(--radius-full)', fontSize: '0.76rem', fontWeight: 700, background: 'var(--good-bg)', color: 'var(--good)' }}>
-                      {d.status}
+                      {dash(d.status)}
                     </span>
                   </td>
                 </tr>
@@ -759,11 +880,11 @@ export const FleetPage: React.FC<{ initialTab?: 'trips' | 'gatepasses' | 'lr' | 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Freight Rate (AED)</label>
-                  <input type="number" value={newTrip.freightAmount} onChange={(e) => setNewTrip({ ...newTrip, freightAmount: Number(e.target.value) })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
+                  <input type="number" min="0" placeholder="Enter freight amount" value={newTrip.freightAmount} onChange={(e) => setNewTrip({ ...newTrip, freightAmount: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Advance Cash (AED)</label>
-                  <input type="number" value={newTrip.advanceAmount} onChange={(e) => setNewTrip({ ...newTrip, advanceAmount: Number(e.target.value) })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
+                  <input type="number" min="0" placeholder="Enter advance amount" value={newTrip.advanceAmount} onChange={(e) => setNewTrip({ ...newTrip, advanceAmount: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
                 </div>
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
@@ -791,32 +912,58 @@ export const FleetPage: React.FC<{ initialTab?: 'trips' | 'gatepasses' | 'lr' | 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Mount Vehicle</label>
-                  <select value={newTyre.vehicleId} onChange={(e) => setNewTyre({ ...newTyre, vehicleId: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                    <option value="">Spare Depot Stock</option>
+                  <select value={newTyre.vehicleId} onChange={(e) => setNewTyre({ ...newTyre, vehicleId: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} required>
+                    <option value="">Select vehicle...</option>
                     {vehicleList.map((v) => <option key={v.device_id} value={v.device_id}>{v.reg_number || v.name || v.device_id}</option>)}
                   </select>
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Axle Position</label>
                   <select value={newTyre.axlePosition} onChange={(e) => setNewTyre({ ...newTyre, axlePosition: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                    <option value="Front-Left (FL)">Front-Left (FL)</option>
-                    <option value="Front-Right (FR)">Front-Right (FR)</option>
-                    <option value="Rear-Outer-Left (ROL)">Rear-Outer-Left (ROL)</option>
-                    <option value="Rear-Inner-Left (RIL)">Rear-Inner-Left (RIL)</option>
-                    <option value="Rear-Outer-Right (ROR)">Rear-Outer-Right (ROR)</option>
-                    <option value="Rear-Inner-Right (RIR)">Rear-Inner-Right (RIR)</option>
-                    <option value="Spare Axle">Spare Axle</option>
+                    <option value="">Select axle position...</option>
+                    {axlePositions.length === 0 ? (
+                      <option value="" disabled>No axle positions configured</option>
+                    ) : (
+                      axlePositions.map((m) => <option key={m.id} value={m.name}>{m.name}</option>)
+                    )}
                   </select>
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Brand & Model</label>
-                  <input type="text" placeholder="Bridgestone R150" value={`${newTyre.brand} ${newTyre.model}`} onChange={(e) => setNewTyre({ ...newTyre, brand: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Brand</label>
+                  <select value={newTyre.brand} onChange={(e) => setNewTyre({ ...newTyre, brand: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                    <option value="">Select brand...</option>
+                    {tyreBrands.length === 0 ? (
+                      <option value="" disabled>No tyre brands configured</option>
+                    ) : (
+                      tyreBrands.map((m) => <option key={m.id} value={m.name}>{m.name}</option>)
+                    )}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Model</label>
+                  <input type="text" placeholder="Enter tyre model" value={newTyre.model} onChange={(e) => setNewTyre({ ...newTyre, model: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Tyre Size</label>
+                  <input type="text" placeholder="Enter tyre size" value={newTyre.size} onChange={(e) => setNewTyre({ ...newTyre, size: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Current Tread Depth (mm)</label>
-                  <input type="number" step="0.1" value={newTyre.treadDepthMm} onChange={(e) => setNewTyre({ ...newTyre, treadDepthMm: Number(e.target.value) })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
+                  <input type="number" min="0" step="0.1" placeholder="Enter tread depth" value={newTyre.treadDepthMm} onChange={(e) => setNewTyre({ ...newTyre, treadDepthMm: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Ply Rating</label>
+                  <input type="number" min="0" placeholder="e.g. 16" value={newTyre.plyRating} onChange={(e) => setNewTyre({ ...newTyre, plyRating: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Life Limit (KM)</label>
+                  <input type="number" min="0" placeholder="e.g. 100000" value={newTyre.lifeKmLimit} onChange={(e) => setNewTyre({ ...newTyre, lifeKmLimit: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
                 </div>
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
@@ -839,24 +986,30 @@ export const FleetPage: React.FC<{ initialTab?: 'trips' | 'gatepasses' | 'lr' | 
             <form onSubmit={handleCreateVoucher} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Trip Reference</label>
-                <select value={newVoucher.tripId} onChange={(e) => setNewVoucher({ ...newVoucher, tripId: Number(e.target.value) })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                  {trips.map((t) => <option key={t.id} value={t.id}>{t.tripNo} ({t.vehicleReg} - {t.destination})</option>)}
+                <select value={newVoucher.tripId} onChange={(e) => setNewVoucher({ ...newVoucher, tripId: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} required>
+                  <option value="">Select trip...</option>
+                  {trips.length === 0 ? (
+                    <option value="" disabled>No trips available</option>
+                  ) : (
+                    trips.map((t) => <option key={t.id} value={t.id}>{dash(t.tripNo)} ({dash(t.vehicleReg)} - {dash(t.destination)})</option>)
+                  )}
                 </select>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Voucher Type</label>
-                  <select value={newVoucher.voucherType} onChange={(e) => setNewVoucher({ ...newVoucher, voucherType: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                    <option value="Fuel (Diesel)">Fuel (Diesel)</option>
-                    <option value="Salik / Toll Gate">Salik / Toll Gate</option>
-                    <option value="Loading / Pallet Handling">Loading / Pallet</option>
-                    <option value="Mechanical Maintenance">Maintenance</option>
-                    <option value="Driver Daily Allowance">Driver Batta</option>
+                  <select value={newVoucher.voucherType} onChange={(e) => setNewVoucher({ ...newVoucher, voucherType: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} required>
+                    <option value="">Select voucher type...</option>
+                    {voucherCategories.length === 0 ? (
+                      <option value="" disabled>No voucher categories configured</option>
+                    ) : (
+                      voucherCategories.map((m) => <option key={m.id} value={m.name}>{m.name}</option>)
+                    )}
                   </select>
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Amount (AED)</label>
-                  <input type="number" step="0.01" value={newVoucher.amount} onChange={(e) => setNewVoucher({ ...newVoucher, amount: Number(e.target.value) })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} required />
+                  <input type="number" min="0" step="0.01" placeholder="Enter amount" value={newVoucher.amount} onChange={(e) => setNewVoucher({ ...newVoucher, amount: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} required />
                 </div>
               </div>
               <div>

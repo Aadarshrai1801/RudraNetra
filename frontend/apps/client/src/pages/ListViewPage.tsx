@@ -1,6 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useVehicleStore } from '../store/vehicleStore';
+import type { VehiclePosition } from '../store/vehicleStore';
 import { useAuthStore } from '../store/authStore';
+import { fetchWithAuth } from '../utils/api';
 import { useNavigate } from 'react-router-dom';
 import {
   Search,
@@ -24,13 +26,47 @@ export const ListViewPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive' | 'freezer' | 'moving' | 'stopped' | 'idle'>('all');
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [fuelByReg, setFuelByReg] = useState<Map<string, number>>(new Map());
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  const vehicleList = Array.from(vehiclesMap.values());
+  // `fuel_pct` is returned by GET /api/v1/vehicles. Prefer the value on the
+  // store record; the store does not always carry it, so read the API once
+  // and fall back to '—' when the database has no fuel level.
+  useEffect(() => {
+    const loadFuelLevels = async () => {
+      try {
+        const res = await fetchWithAuth('/api/v1/vehicles?limit=500');
+        if (!res.ok) return;
+        const json = await res.json();
+        if (!json.success || !Array.isArray(json.data)) return;
+        const map = new Map<string, number>();
+        json.data.forEach((item: any) => {
+          if (typeof item.reg_number === 'string' && typeof item.fuel_pct === 'number') {
+            map.set(item.reg_number, item.fuel_pct);
+          }
+        });
+        setFuelByReg(map);
+      } catch (err) {
+        console.error('Failed to load vehicle fuel levels:', err);
+      }
+    };
+    loadFuelLevels();
+  }, [user?.company_id]);
+
+  // `fuel_pct` is returned by GET /api/v1/vehicles; read it when the store
+  // carries it, otherwise show '—'.
+  type VehicleWithFuel = VehiclePosition & { fuel_pct?: number | null };
+  const vehicleList = Array.from(vehiclesMap.values()) as VehicleWithFuel[];
+
+  const fuelPctOf = (v: VehicleWithFuel): number | null => {
+    if (v.fuel_pct !== undefined && v.fuel_pct !== null) return Number(v.fuel_pct);
+    const fromApi = fuelByReg.get(v.reg_number);
+    return fromApi !== undefined ? fromApi : null;
+  };
 
   // Status counts matching legacy header pills
   const counts = useMemo(() => {
@@ -56,10 +92,10 @@ export const ListViewPage: React.FC = () => {
     });
 
     return {
-      total: vehicleList.length || 312,
+      total: vehicleList.length,
       active: active,
       inactive,
-      freezer: freezer || 48,
+      freezer,
       moving,
       stopped,
       idle,
@@ -116,13 +152,15 @@ export const ListViewPage: React.FC = () => {
   };
 
   const handleExportExcel = () => {
-    const header = 'Vehicle,Driver,Status,Speed (km/h),Date Time,Fuel (L),Temp (°C),Location\n';
+    const header = 'Vehicle,Driver,Status,Speed (km/h),Date Time,Fuel (%),Temp (°C),Location\n';
     const rows = filteredVehicles
       .map(
         (v) =>
-          `"${v.reg_number}","${v.driver_name || ''}","${v.status}",${Math.round(v.speed)},"${v.timestamp}","${(v.speed * 0.4).toFixed(1)}","${
-            v.temperature !== undefined ? `${v.temperature}°C` : 'N/A'
-          }","${v.location_name || ''}"`
+          `"${v.reg_number}","${v.driver_name || '—'}","${v.status || '—'}",${
+            v.speed !== undefined && v.speed !== null ? Math.round(v.speed) : '—'
+          },"${v.timestamp || '—'}","${fuelPctOf(v) ?? '—'}","${
+            v.temperature !== undefined && v.temperature !== null ? `${v.temperature}°C` : '—'
+          }","${v.location_name || '—'}"`
       )
       .join('\n');
 
@@ -180,7 +218,7 @@ export const ListViewPage: React.FC = () => {
             List View
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '2px' }}>
-            Comprehensive fleet status ledger · {user?.company_name || 'Allied Transport UAE'}
+            Comprehensive fleet status ledger{user?.company_name ? ` · ${user.company_name}` : ''}
           </p>
         </div>
 
@@ -337,8 +375,12 @@ export const ListViewPage: React.FC = () => {
               ) : (
                 filteredVehicles.map((v) => {
                   const isSelected = selectedIds.includes(v.device_id);
-                  const dt = new Date(v.timestamp);
-                  const formattedDate = `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()} ${dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+                  const fuelPct = fuelPctOf(v);
+                  const parsed = v.timestamp ? new Date(v.timestamp) : null;
+                  const hasValidDate = parsed !== null && !isNaN(parsed.getTime());
+                  const formattedDate = hasValidDate
+                    ? `${String(parsed.getDate()).padStart(2, '0')}/${String(parsed.getMonth() + 1).padStart(2, '0')}/${parsed.getFullYear()} ${parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
+                    : '—';
 
                   const statusDotColor =
                     v.status === 'moving'
@@ -384,7 +426,7 @@ export const ListViewPage: React.FC = () => {
                               {v.reg_number}
                             </div>
                             <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                              {v.name || 'Truck'} {v.driver_name ? `· ${v.driver_name}` : ''}
+                              {v.name || '—'} {v.driver_name ? `· ${v.driver_name}` : ''}
                             </div>
                           </div>
                         </div>
@@ -398,7 +440,7 @@ export const ListViewPage: React.FC = () => {
                       {/* FUEL */}
                       <td style={{ padding: '12px 16px' }}>
                         <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                          {(v.speed * 0.45).toFixed(1)} L
+                          {fuelPct !== null ? `${fuelPct.toFixed(1)} %` : '—'}
                         </span>
                       </td>
 
@@ -430,10 +472,13 @@ export const ListViewPage: React.FC = () => {
                           className="tabular-num"
                           style={{
                             fontWeight: 700,
-                            color: v.speed > 0 ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                            color:
+                              v.speed !== undefined && v.speed > 0
+                                ? 'var(--text-primary)'
+                                : 'var(--text-tertiary)',
                           }}
                         >
-                          {Math.round(v.speed)} km/h
+                          {v.speed !== undefined && v.speed !== null ? `${Math.round(v.speed)} km/h` : '—'}
                         </span>
                       </td>
 
@@ -449,9 +494,9 @@ export const ListViewPage: React.FC = () => {
                               textOverflow: 'ellipsis',
                               whiteSpace: 'nowrap',
                             }}
-                            title={v.location_name || 'Dubai, UAE'}
+                            title={v.location_name || '—'}
                           >
-                            {v.location_name || 'Dubai, UAE'}
+                            {v.location_name || '—'}
                           </span>
                         </div>
                       </td>

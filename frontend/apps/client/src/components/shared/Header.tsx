@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, Bell, LogOut, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useAuthStore } from '../../store/authStore';
 import { useVehicleStore } from '../../store/vehicleStore';
+import { fetchWithAuth } from '../../utils/api';
 
 export interface UserNotification {
   id: number;
@@ -13,29 +14,35 @@ export interface UserNotification {
   read: boolean;
 }
 
-const defaultNotifications: UserNotification[] = [
-  {
-    id: 1,
-    title: 'Vehicle on route',
-    message: '95321 left the yard and is heading along the DWC Logistics Corridor.',
-    time: '12:42 pm',
-    read: false,
-  },
-  {
-    id: 2,
-    title: 'Zone departure',
-    message: '84707 departed the Jebel Ali Free Zone Port area.',
-    time: '12:35 pm',
-    read: false,
-  },
-  {
-    id: 3,
-    title: 'Engine idle reminder',
-    message: '82561 has been waiting with engine running for 25 minutes at New Batha Corridor.',
-    time: '12:15 pm',
-    read: true,
-  },
-];
+interface ApiAlert {
+  id: number;
+  type?: string;
+  severity?: string;
+  vehicle?: string;
+  message?: string;
+  time?: string;
+  timestamp?: string;
+  acknowledged?: boolean;
+}
+
+const formatAlertTime = (alert: ApiAlert): string => {
+  if (typeof alert.time === 'string' && alert.time.trim()) return alert.time;
+  if (alert.timestamp) {
+    const dt = new Date(alert.timestamp);
+    if (!isNaN(dt.getTime())) {
+      return dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+  }
+  return '—';
+};
+
+const toUserNotification = (alert: ApiAlert): UserNotification => ({
+  id: alert.id,
+  title: alert.type ? String(alert.type) : '—',
+  message: alert.message ?? '—',
+  time: formatAlertTime(alert),
+  read: false,
+});
 
 export const Header: React.FC = () => {
   const { isConnected } = useWebSocket();
@@ -44,16 +51,16 @@ export const Header: React.FC = () => {
   const logout = useAuthStore((state) => state.logout);
   const clearVehicles = useVehicleStore((state) => state.clearVehicles);
 
-  const companyName = user?.company_name || (user?.company_id === 2 ? 'EKSC Logistics Dubai' : 'Allied Transport UAE');
-  const userDisplayName = user?.full_name || user?.username || 'Fleet Operator';
-  const userRole = user?.role ? (user.role.charAt(0).toUpperCase() + user.role.slice(1)) : 'Admin';
+  const companyName = user?.company_name || '—';
+  const userDisplayName = user?.full_name || user?.username || '—';
+  const userRole = user?.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : '—';
   const userInitials = userDisplayName
     .split(' ')
     .filter(Boolean)
     .map((n) => n[0])
     .join('')
     .substring(0, 2)
-    .toUpperCase() || 'OP';
+    .toUpperCase() || '—';
 
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
@@ -75,33 +82,80 @@ export const Header: React.FC = () => {
   };
 
   const [showNotifications, setShowNotifications] = useState(false);
-  const [notifications, setNotifications] = useState<UserNotification[]>(() => {
-    const saved = localStorage.getItem('rudra_user_notifications');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch (err) {
-        console.warn('Failed to parse saved notifications from localStorage', err);
-      }
-    }
-    return defaultNotifications;
-  });
+  const [notifications, setNotifications] = useState<UserNotification[]>([]);
+  const notifRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    localStorage.setItem('rudra_user_notifications', JSON.stringify(notifications));
-  }, [notifications]);
+    const handleClickOutside = (event: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
+        setShowNotifications(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const loadAlerts = useCallback(async () => {
+    try {
+      const res = await fetchWithAuth('/api/v1/alerts');
+      if (!res.ok) return;
+      const json = await res.json();
+      const rows: ApiAlert[] = Array.isArray(json.data) ? json.data : [];
+      setNotifications(
+        rows
+          .filter((alert) => !alert.acknowledged)
+          .slice(0, 5)
+          .map(toUserNotification)
+      );
+    } catch (err) {
+      console.warn('Failed to load alerts', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAlerts();
+  }, [loadAlerts]);
+
+  const toggleNotifications = () => {
+    const next = !showNotifications;
+    setShowNotifications(next);
+    if (next) {
+      loadAlerts();
+    }
+  };
+
+  const acknowledgeAlert = useCallback(async (id: number): Promise<boolean> => {
+    try {
+      const res = await fetchWithAuth(`/api/v1/alerts/${id}/acknowledge`, {
+        method: 'PUT',
+      });
+      return res.ok;
+    } catch (err) {
+      console.warn('Failed to acknowledge alert', err);
+      return false;
+    }
+  }, []);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  const markAllRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  const markAllRead = async () => {
+    try {
+      const res = await fetchWithAuth('/api/v1/alerts/acknowledge-all', {
+        method: 'POST',
+      });
+      if (res.ok) {
+        setNotifications([]);
+      }
+    } catch (err) {
+      console.warn('Failed to acknowledge alerts', err);
+    }
   };
 
-  const markItemRead = (id: number) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-    );
+  const markItemRead = async (id: number) => {
+    const acknowledged = await acknowledgeAlert(id);
+    if (acknowledged) {
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+    }
   };
 
   return (
@@ -169,9 +223,9 @@ export const Header: React.FC = () => {
         )}
 
         {/* Notifications Icon with Flyout */}
-        <div style={{ position: 'relative' }}>
+        <div style={{ position: 'relative' }} ref={notifRef}>
           <button
-            onClick={() => setShowNotifications(!showNotifications)}
+            onClick={toggleNotifications}
             aria-label="View notifications"
             style={{
               width: '40px',
@@ -248,7 +302,19 @@ export const Header: React.FC = () => {
               </div>
 
               <div style={{ maxHeight: '360px', overflowY: 'auto' }}>
-                {notifications.map((item) => (
+                {notifications.length === 0 ? (
+                  <div
+                    style={{
+                      padding: '20px 18px',
+                      textAlign: 'center',
+                      fontSize: '0.82rem',
+                      color: 'var(--text-secondary)',
+                    }}
+                  >
+                    No unacknowledged alerts
+                  </div>
+                ) : (
+                  notifications.map((item) => (
                   <div
                     key={item.id}
                     onClick={() => markItemRead(item.id)}
@@ -283,7 +349,8 @@ export const Header: React.FC = () => {
                       {item.message}
                     </p>
                   </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
           )}
@@ -351,7 +418,7 @@ export const Header: React.FC = () => {
             >
               <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border-subtle)', marginBottom: '6px' }}>
                 <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{userDisplayName}</div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{user?.email || 'admin@alliedtransport.ae'}</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{user?.email || '—'}</div>
                 <div style={{ fontSize: '0.72rem', color: 'var(--accent)', fontWeight: 600, marginTop: '2px' }}>Role: {userRole}</div>
               </div>
 

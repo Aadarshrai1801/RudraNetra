@@ -1,6 +1,6 @@
 // rudra-ingest is the TCP server that accepts connections from GPS devices
-// (Teltonika FMB920), decodes their binary protocol, and publishes parsed
-// positions to NATS for downstream processing.
+// (Teltonika FMB920), decodes their binary protocol, persists decoded AVL
+// records to PostgreSQL/TimescaleDB and keeps live device state in the DB.
 package main
 
 import (
@@ -12,11 +12,14 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
 
 	"github.com/rudra-netra/backend/internal/codec"
 	"github.com/rudra-netra/backend/internal/config"
+	"github.com/rudra-netra/backend/internal/repository/postgres"
 )
 
 func main() {
@@ -30,11 +33,21 @@ func main() {
 		logger.Fatal("failed to load config", zap.Error(err))
 	}
 
-	// TODO: Initialize NATS connection for publishing parsed positions
-	// nc, err := nats.Connect(cfg.NATS.URL)
+	// Database is the source of truth: device registry and position storage.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	// TODO: Initialize database connection for IMEI → device_id lookups
-	// db, err := pgxpool.New(context.Background(), cfg.Database.DSN())
+	pool, err := pgxpool.New(ctx, cfg.Database.DSN())
+	if err != nil {
+		logger.Fatal("failed to create database pool", zap.Error(err))
+	}
+	defer pool.Close()
+	if err := pool.Ping(ctx); err != nil {
+		logger.Fatal("database is unreachable", zap.Error(err))
+	}
+
+	deviceRepo := postgres.NewDeviceRepository(pool)
+	positionRepo := postgres.NewPositionRepository(pool)
 
 	// Create TCP listener
 	addr := fmt.Sprintf("%s:%d", cfg.Ingest.Host, cfg.Ingest.Port)
@@ -46,16 +59,10 @@ func main() {
 
 	logger.Info("rudra-ingest listening for GPS devices", zap.String("addr", addr))
 
-	// Create Teltonika codec
 	teltonikaCodec := codec.NewTeltonikaCodec()
-
-	// Context for graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	var wg sync.WaitGroup
 
-	// Accept connections in a goroutine
 	go func() {
 		for {
 			conn, err := listener.Accept()
@@ -68,16 +75,14 @@ func main() {
 					continue
 				}
 			}
-
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				handleDeviceConnection(ctx, conn, teltonikaCodec, logger)
+				handleDeviceConnection(ctx, conn, teltonikaCodec, deviceRepo, positionRepo, pool, logger)
 			}()
 		}
 	}()
 
-	// Wait for shutdown signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
@@ -89,13 +94,17 @@ func main() {
 	logger.Info("ingest server stopped")
 }
 
-// handleDeviceConnection manages the lifecycle of a single GPS device TCP connection.
-// Protocol flow:
-//  1. Device sends IMEI packet
-//  2. Server responds with accept/reject
-//  3. Device sends AVL data packets in a loop
-//  4. Server responds with acknowledgment (record count)
-func handleDeviceConnection(ctx context.Context, conn net.Conn, c *codec.TeltonikaCodec, logger *zap.Logger) {
+// handleDeviceConnection manages the lifecycle of a single GPS device TCP
+// connection: IMEI handshake, AVL decode, database persistence, ACK.
+func handleDeviceConnection(
+	ctx context.Context,
+	conn net.Conn,
+	c *codec.TeltonikaCodec,
+	deviceRepo *postgres.DeviceRepository,
+	positionRepo *postgres.PositionRepository,
+	pool *pgxpool.Pool,
+	logger *zap.Logger,
+) {
 	defer conn.Close()
 	remoteAddr := conn.RemoteAddr().String()
 	logger.Info("device connected", zap.String("remote", remoteAddr))
@@ -111,18 +120,27 @@ func handleDeviceConnection(ctx context.Context, conn net.Conn, c *codec.Teltoni
 	imei, err := c.ParseIMEI(imeiBuf[:n])
 	if err != nil {
 		logger.Error("failed to parse IMEI", zap.Error(err), zap.String("remote", remoteAddr))
-		conn.Write(codec.IMEIReject())
+		_, _ = conn.Write(codec.IMEIReject())
 		return
 	}
 
-	logger.Info("device identified", zap.String("imei", imei), zap.String("remote", remoteAddr))
+	// Step 2: Resolve the device in the database. Unknown hardware is rejected;
+	// the registry is authoritative.
+	device, err := deviceRepo.GetByIMEI(ctx, imei)
+	if err != nil || device == nil {
+		logger.Warn("unknown device IMEI rejected", zap.String("imei", imei), zap.String("remote", remoteAddr))
+		_, _ = conn.Write(codec.IMEIReject())
+		return
+	}
 
-	// TODO: Look up device_id from database using IMEI
-	// deviceID, err := deviceRepo.GetIDByIMEI(ctx, imei)
-	var deviceID int64 = 0 // placeholder
+	deviceID := device.ID
+	logger.Info("device identified", zap.String("imei", imei), zap.Int64("device_id", deviceID), zap.String("remote", remoteAddr))
 
-	// Step 2: Accept IMEI
-	conn.Write(codec.IMEIAccept())
+	if _, err := conn.Write(codec.IMEIAccept()); err != nil {
+		logger.Error("failed to send IMEI accept", zap.Error(err))
+		return
+	}
+	_, _ = pool.Exec(ctx, "UPDATE devices SET last_heartbeat = NOW() WHERE id = $1", deviceID)
 
 	// Step 3: Read data packets in a loop
 	dataBuf := make([]byte, 4096)
@@ -141,36 +159,44 @@ func handleDeviceConnection(ctx context.Context, conn net.Conn, c *codec.Teltoni
 			logger.Info("device disconnected", zap.String("imei", imei))
 			return
 		}
-
 		if n == 0 {
 			continue
 		}
 
-		// Parse the data packet
 		positions, err := c.ParseData(dataBuf[:n], deviceID)
 		if err != nil {
 			logger.Error("failed to parse data", zap.Error(err), zap.String("imei", imei))
 			continue
 		}
 
-		// Step 4: Acknowledge
-		conn.Write(c.Acknowledge(len(positions)))
+		// Step 4: Persist every decoded record and acknowledge the record count.
+		for i := range positions {
+			pos := positions[i]
+			if pos.Time.IsZero() {
+				pos.Time = time.Now().UTC()
+			}
+			if err := positionRepo.Insert(ctx, &pos); err != nil {
+				logger.Error("failed to store position", zap.Error(err), zap.Int64("device_id", deviceID))
+				continue
+			}
+			if pos.Odometer > 0 {
+				_, _ = pool.Exec(ctx, `
+					UPDATE vehicles SET odometer = GREATEST(COALESCE(odometer, 0), $1), updated_at = NOW()
+					WHERE device_id = $2
+				`, pos.Odometer, deviceID)
+			}
+		}
+		_, _ = pool.Exec(ctx, "UPDATE devices SET last_heartbeat = NOW() WHERE id = $1", deviceID)
 
-		logger.Debug("parsed positions",
+		if _, err := conn.Write(c.Acknowledge(len(positions))); err != nil {
+			logger.Error("failed to send acknowledgement", zap.Error(err), zap.String("imei", imei))
+			return
+		}
+
+		logger.Debug("stored positions",
 			zap.String("imei", imei),
+			zap.Int64("device_id", deviceID),
 			zap.Int("count", len(positions)),
 		)
-
-		// TODO: Publish each position to NATS
-		// for _, pos := range positions {
-		//     data, _ := json.Marshal(pos)
-		//     nc.Publish("positions.raw", data)
-		// }
-
-		// TODO: Store positions in PostgreSQL
-		// TODO: Update Redis live position cache
-		// TODO: Check geofence violations
-		// TODO: Check alert rules (overspeed, ignition, etc.)
-		_ = positions // suppress unused warning until TODOs are implemented
 	}
 }

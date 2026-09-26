@@ -16,7 +16,6 @@ import {
   ToggleRight,
   Shield,
   MapPin,
-  Mail,
   Cpu,
   Radio,
   MessageSquare,
@@ -34,7 +33,7 @@ export const Sidebar: React.FC = () => {
   const isTripActive = ['/trip-manager', '/party-routes', '/playback', '/fleet'].some((p) =>
     location.pathname.startsWith(p)
   );
-  const isConfigActive = ['/control-panel', '/geofence-manager', '/location-manager', '/enable-feature', '/sms-email-config'].some((p) =>
+  const isConfigActive = ['/control-panel', '/geofence-manager', '/location-manager', '/enable-feature'].some((p) =>
     location.pathname.startsWith(p)
   );
   const isManagerActive = ['/asset-manager', '/complaint-manager', '/driver-manager', '/party-manager', '/trailor-master', '/truck-master', '/document-master', '/find-nearest-vehicle', '/show-nearest-places'].some((p) =>
@@ -220,14 +219,6 @@ export const Sidebar: React.FC = () => {
               >
                 <MapPin size={15} />
                 <span>Location Manager</span>
-              </NavLink>
-              <NavLink
-                to="/sms-email-config"
-                className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-                style={{ fontSize: '0.84rem', padding: '7px 12px', display: 'flex', alignItems: 'center', gap: '8px' }}
-              >
-                <Mail size={15} />
-                <span>Sms & Email Configuration</span>
               </NavLink>
               <NavLink
                 to="/control-panel"

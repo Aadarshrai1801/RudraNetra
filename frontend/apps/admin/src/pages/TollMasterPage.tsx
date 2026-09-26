@@ -23,11 +23,11 @@ export const TollMasterPage: React.FC = () => {
 
   const [form, setForm] = useState({
     tollName: '',
-    systemType: 'RTA Salik',
-    rateStandard: 4.0,
-    latitude: 25.2048,
-    longitude: 55.2708,
-    city: 'Dubai',
+    systemType: '',
+    rateStandard: '' as string,
+    latitude: '' as string,
+    longitude: '' as string,
+    city: '',
   });
 
   const showToast = (msg: string) => {
@@ -58,17 +58,47 @@ export const TollMasterPage: React.FC = () => {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    const rateStandard = Number(form.rateStandard);
+    const latitude = Number(form.latitude);
+    const longitude = Number(form.longitude);
+    if (!form.tollName.trim()) {
+      showToast('Toll plaza name is required.');
+      return;
+    }
+    if (!form.systemType) {
+      showToast('Please select a toll system type.');
+      return;
+    }
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || form.latitude === '' || form.longitude === '') {
+      showToast('Valid latitude and longitude are required.');
+      return;
+    }
+    if (!Number.isFinite(rateStandard) || form.rateStandard === '' || rateStandard < 0) {
+      showToast('Please enter a valid toll rate.');
+      return;
+    }
     try {
       const res = await fetchWithAdminAuth('/api/v1/admin/toll-data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          tollName: form.tollName,
+          systemType: form.systemType,
+          rateStandard,
+          latitude,
+          longitude,
+          city: form.city,
+        }),
       });
 
       if (res.ok) {
-        showToast('Toll plaza checkpoint mapped in geofence engine');
+        showToast('Toll plaza checkpoint saved.');
         setIsModalOpen(false);
+        setForm({ tollName: '', systemType: '', rateStandard: '', latitude: '', longitude: '', city: '' });
         loadTolls();
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        showToast(errJson.error || 'Failed to save toll plaza');
       }
     } catch (err) {
       showToast('Failed to save toll plaza');
@@ -158,20 +188,20 @@ export const TollMasterPage: React.FC = () => {
                   </td>
                   <td style={{ padding: '12px 16px' }}>
                     <span style={{ padding: '2px 8px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-subtle)', fontSize: '0.78rem', fontWeight: 600 }}>
-                      {t.systemType}
+                      {t.systemType || '—'}
                     </span>
                   </td>
                   <td style={{ padding: '12px 16px', fontWeight: 700 }}>
-                    AED {t.rateStandard.toFixed(2)}
+                    {t.rateStandard > 0 ? `AED ${t.rateStandard.toFixed(2)}` : '—'}
                   </td>
                   <td style={{ padding: '12px 16px', fontFamily: 'monospace', fontSize: '0.82rem' }}>
-                    {t.latitude}
+                    {t.latitude ? t.latitude : '—'}
                   </td>
                   <td style={{ padding: '12px 16px', fontFamily: 'monospace', fontSize: '0.82rem' }}>
-                    {t.longitude}
+                    {t.longitude ? t.longitude : '—'}
                   </td>
                   <td style={{ padding: '12px 16px', color: 'var(--text-secondary)' }}>
-                    {t.city}
+                    {t.city || '—'}
                   </td>
                   <td style={{ padding: '12px 16px' }}>
                     <span style={{ padding: '3px 10px', borderRadius: 'var(--radius-full)', background: 'var(--good-bg)', color: 'var(--good)', fontSize: '0.76rem', fontWeight: 700 }}>
@@ -200,7 +230,8 @@ export const TollMasterPage: React.FC = () => {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>System</label>
-                  <select value={form.systemType} onChange={(e) => setForm({ ...form, systemType: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                  <select value={form.systemType} onChange={(e) => setForm({ ...form, systemType: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} required>
+                    <option value="">Select system type</option>
                     <option value="RTA Salik">RTA Salik</option>
                     <option value="Abu Dhabi Darb">Abu Dhabi Darb</option>
                     <option value="NHAI FASTag">NHAI FASTag</option>
@@ -208,22 +239,22 @@ export const TollMasterPage: React.FC = () => {
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Rate (AED)</label>
-                  <input type="number" step="0.5" value={form.rateStandard} onChange={(e) => setForm({ ...form, rateStandard: Number(e.target.value) })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
+                  <input type="number" min={0} step="0.01" placeholder="0.00" value={form.rateStandard} onChange={(e) => setForm({ ...form, rateStandard: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} required />
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Latitude</label>
-                  <input type="number" step="0.0001" value={form.latitude} onChange={(e) => setForm({ ...form, latitude: Number(e.target.value) })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
+                  <input type="number" step="0.0001" placeholder="e.g. 25.2048" value={form.latitude} onChange={(e) => setForm({ ...form, latitude: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} required />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Longitude</label>
-                  <input type="number" step="0.0001" value={form.longitude} onChange={(e) => setForm({ ...form, longitude: Number(e.target.value) })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
+                  <input type="number" step="0.0001" placeholder="e.g. 55.2708" value={form.longitude} onChange={(e) => setForm({ ...form, longitude: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} required />
                 </div>
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>City / Emirate</label>
-                <input type="text" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
+                <input type="text" placeholder="Enter city or emirate" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
                 <button type="button" onClick={() => setIsModalOpen(false)} className="btn btn-secondary">Cancel</button>

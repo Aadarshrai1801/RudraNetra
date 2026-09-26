@@ -50,7 +50,12 @@ export const RawDataPage: React.FC = () => {
   }, [autoRefresh]);
 
   const filteredPackets = packets.filter(
-    (p) => p.imei.includes(search) || p.hexPacket.toLowerCase().includes(search.toLowerCase())
+    (p) => (p.imei || '').includes(search) || (p.hexPacket || '').toLowerCase().includes(search.toLowerCase())
+  );
+
+  const latestDecodedAt = packets.reduce<string | null>(
+    (latest, p) => (p.decodedAt && (!latest || p.decodedAt > latest) ? p.decodedAt : latest),
+    null
   );
 
   return (
@@ -64,7 +69,7 @@ export const RawDataPage: React.FC = () => {
             </h1>
           </div>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.92rem', marginTop: '4px' }}>
-            Live hardware socket telemetry sniffer (TCP/5040 Teltonika Codec 8 / 8 Extended & TCP/5023 Concox).
+            Stored hardware socket telemetry packets (TCP/5040 Teltonika Codec 8 / 8 Extended &amp; TCP/5023 Concox).
           </p>
         </div>
 
@@ -95,9 +100,11 @@ export const RawDataPage: React.FC = () => {
             style={{ width: '100%', padding: '8px 12px 8px 36px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', fontSize: '0.88rem' }}
           />
         </div>
-        <div style={{ fontSize: '0.82rem', color: 'var(--text-tertiary)' }}>
-          Active Socket Daemon: <strong>0.0.0.0:5040</strong> • Ingestion Engine: Online
-        </div>
+        {latestDecodedAt && (
+          <div style={{ fontSize: '0.82rem', color: 'var(--text-tertiary)' }}>
+            Latest packet decoded: <strong className="mono-num">{latestDecodedAt}</strong>
+          </div>
+        )}
       </div>
 
       <div className="card" style={{ overflow: 'hidden' }}>
@@ -118,13 +125,13 @@ export const RawDataPage: React.FC = () => {
             {loading ? (
               <tr>
                 <td colSpan={8} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)' }}>
-                  Listening on raw ingestion telemetry sockets...
+                  Loading raw packet records...
                 </td>
               </tr>
             ) : filteredPackets.length === 0 ? (
               <tr>
                 <td colSpan={8} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)' }}>
-                  No packet frames intercepted matching criteria.
+                  No packet records match the current criteria.
                 </td>
               </tr>
             ) : (
@@ -134,28 +141,37 @@ export const RawDataPage: React.FC = () => {
                     #{pkt.id}
                   </td>
                   <td style={{ padding: '12px 16px', fontWeight: 700, fontFamily: 'monospace', color: 'var(--accent)' }}>
-                    {pkt.imei}
+                    {pkt.imei || '—'}
                   </td>
                   <td style={{ padding: '12px 16px', fontSize: '0.82rem' }}>
                     <span style={{ padding: '2px 8px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-subtle)', fontWeight: 600 }}>
-                      {pkt.protocol}
+                      {pkt.protocol || '—'}
                     </span>
                   </td>
                   <td style={{ padding: '12px 16px', fontWeight: 600 }}>
-                    {pkt.length} B
+                    {pkt.length ?? '—'} B
                   </td>
                   <td style={{ padding: '12px 16px', fontFamily: 'monospace', fontSize: '0.78rem', color: 'var(--text-secondary)', maxWidth: '340px', wordBreak: 'break-all' }}>
-                    {pkt.hexPacket}
+                    {pkt.hexPacket || '—'}
                   </td>
                   <td style={{ padding: '12px 16px', fontFamily: 'monospace', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>
-                    {pkt.sourceIp}
+                    {pkt.sourceIp || '—'}
                   </td>
                   <td style={{ padding: '12px 16px', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                    {pkt.decodedAt}
+                    {pkt.decodedAt || '—'}
                   </td>
                   <td style={{ padding: '12px 16px' }}>
-                    <span style={{ padding: '3px 8px', borderRadius: 'var(--radius-full)', background: 'var(--good-bg)', color: 'var(--good)', fontSize: '0.74rem', fontWeight: 700 }}>
-                      {pkt.status}
+                    <span
+                      style={{
+                        padding: '3px 8px',
+                        borderRadius: 'var(--radius-full)',
+                        background: (pkt.status || '').toLowerCase().includes('error') ? 'var(--alert-bg)' : 'var(--good-bg)',
+                        color: (pkt.status || '').toLowerCase().includes('error') ? 'var(--alert)' : 'var(--good)',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                      }}
+                    >
+                      {pkt.status || '—'}
                     </span>
                   </td>
                 </tr>

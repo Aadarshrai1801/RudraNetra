@@ -25,13 +25,12 @@ func NewReportService(reportRepo *postgres.ReportRepository) *ReportService {
 func (s *ReportService) GenerateDistanceReport(ctx context.Context, companyID int64, startStr, endStr string) ([]domain.DistanceReportRow, error) {
 	start, err := time.Parse(time.RFC3339, startStr)
 	if err != nil {
-		start = time.Now().Add(-24 * time.Hour)
+		return nil, fmt.Errorf("start time must be RFC3339: %w", err)
 	}
 	end, err := time.Parse(time.RFC3339, endStr)
 	if err != nil {
-		end = time.Now()
+		return nil, fmt.Errorf("end time must be RFC3339: %w", err)
 	}
-
 	return s.reportRepo.GetDistanceReport(ctx, companyID, start, end)
 }
 

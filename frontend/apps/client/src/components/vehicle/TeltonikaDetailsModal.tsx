@@ -20,7 +20,7 @@ import {
   Database,
   RefreshCw,
 } from 'lucide-react';
-import { useAuthStore } from '../../store/authStore';
+import { fetchWithAuth } from '../../utils/api';
 import { useVehicleStore } from '../../store/vehicleStore';
 
 interface TeltonikaDetailsModalProps {
@@ -29,25 +29,21 @@ interface TeltonikaDetailsModalProps {
   initialTab?: 'logs' | 'parameters';
 }
 
-interface TelemetryLogRecord {
-  id: number;
-  timeStr: string;
-  dateStr: string;
-  intervalStr: string;
-  deltaSeconds: number;
-  speed: number;
-  temp: number;
-  fuelPct: number;
-  fuelLiters: number;
-  extBattery: number;
-  backupBattery: number;
-  ignition: 'ON' | 'OFF';
-  door: 'Closed' | 'Open';
-  lat: number;
-  lng: number;
-  trigger: string;
-  status: 'normal' | 'warning' | 'alert';
-}
+const DASH = '—';
+const LOGS_POLL_MS = 60_000;
+// The poll always requests at least the last 60 records, matching the API contract.
+const MIN_LOGS_LIMIT = 60;
+
+const numOrNull = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value))) {
+    return Number(value);
+  }
+  return null;
+};
+
+const textOrNull = (value: unknown): string | null =>
+  typeof value === 'string' && value.trim() !== '' ? value : null;
 
 const formatIntervalDuration = (sec: number): string => {
   if (sec <= 0) return '0s';
@@ -62,6 +58,156 @@ const formatIntervalDuration = (sec: number): string => {
   return `+${h}h ${String(m).padStart(2, '0')}m`;
 };
 
+const formatDateTime = (value: string | null | undefined): string => {
+  if (!value) return DASH;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
+};
+
+const formatOdometer = (value: number | null): string =>
+  value === null ? DASH : `${value.toLocaleString()} km`;
+
+const formatTemperature = (value: number | null): string =>
+  value === null ? DASH : `${value}°C`;
+
+const formatVoltage = (value: number | null): string =>
+  value === null ? DASH : `${value} V`;
+
+interface TelemetryLogRecord {
+  id: number;
+  timeStr: string | null;
+  dateStr: string | null;
+  intervalStr: string | null;
+  deltaSeconds: number | null;
+  speed: number | null;
+  temp: number | null;
+  fuelPct: number | null;
+  fuelLiters: number | null;
+  extBattery: number | null;
+  backupBattery: number | null;
+  ignition: 'ON' | 'OFF' | null;
+  door: string | null;
+  lat: number | null;
+  lng: number | null;
+  altitude: number | null;
+  satellites: number | null;
+  heading: number | null;
+  odometer: number | null;
+  trigger: string | null;
+}
+
+interface LogsVehicleMeta {
+  reg_number: string | null;
+  make: string | null;
+  model: string | null;
+  fuel_capacity: number | null;
+  max_speed: number | null;
+}
+
+interface LogsDeviceMeta {
+  id: number | null;
+  imei: string | null;
+  device_type: string | null;
+  sim_no: string | null;
+  sim_operator: string | null;
+  port: number | string | null;
+  firmware: string | null;
+  status: string | null;
+  last_heartbeat: string | null;
+}
+
+interface Thresholds {
+  speedThresholdKmh: number | null;
+  idleThresholdMinutes: number | null;
+}
+
+// Map a single API telemetry row. Missing/NULL fields stay null so the UI can
+// render '—' instead of inventing a value.
+const mapApiLog = (item: any, idx: number): TelemetryLogRecord => {
+  const deltaSeconds = numOrNull(item?.delta_seconds);
+  let timeStr = textOrNull(item?.time_str);
+  let dateStr = textOrNull(item?.date_str);
+
+  const rawTime = textOrNull(item?.time);
+  if (rawTime) {
+    const parsed = new Date(rawTime);
+    if (!Number.isNaN(parsed.getTime())) {
+      if (!timeStr) timeStr = parsed.toISOString().slice(11, 19);
+      if (!dateStr) dateStr = parsed.toISOString().slice(0, 10);
+    }
+  }
+
+  let ignition: 'ON' | 'OFF' | null = null;
+  if (item?.ignition === 'ON' || item?.ignition === true) ignition = 'ON';
+  else if (item?.ignition === 'OFF' || item?.ignition === false) ignition = 'OFF';
+
+  return {
+    id: numOrNull(item?.id) ?? idx,
+    timeStr,
+    dateStr,
+    intervalStr:
+      textOrNull(item?.interval_str) ??
+      (deltaSeconds !== null ? formatIntervalDuration(deltaSeconds) : null),
+    deltaSeconds,
+    speed: numOrNull(item?.speed),
+    temp: numOrNull(item?.temp),
+    fuelPct: numOrNull(item?.fuel_pct),
+    fuelLiters: numOrNull(item?.fuel_liters),
+    extBattery: numOrNull(item?.ext_battery),
+    backupBattery: numOrNull(item?.backup_battery),
+    ignition,
+    door: textOrNull(item?.door),
+    lat: numOrNull(item?.lat),
+    lng: numOrNull(item?.lng),
+    altitude: numOrNull(item?.altitude),
+    satellites: numOrNull(item?.satellites),
+    heading: numOrNull(item?.heading),
+    odometer: numOrNull(item?.odometer),
+    trigger: textOrNull(item?.trigger),
+  };
+};
+
+const mapLogsVehicle = (raw: any): LogsVehicleMeta => ({
+  reg_number: textOrNull(raw?.reg_number),
+  make: textOrNull(raw?.make),
+  model: textOrNull(raw?.model),
+  fuel_capacity: numOrNull(raw?.fuel_capacity),
+  max_speed: numOrNull(raw?.max_speed),
+});
+
+const mapLogsDevice = (raw: any): LogsDeviceMeta => ({
+  id: numOrNull(raw?.id),
+  imei: textOrNull(raw?.imei),
+  device_type: textOrNull(raw?.device_type),
+  sim_no: textOrNull(raw?.sim_no),
+  sim_operator: textOrNull(raw?.sim_operator),
+  port: raw?.port ?? null,
+  firmware: textOrNull(raw?.firmware),
+  status: textOrNull(raw?.status),
+  last_heartbeat: textOrNull(raw?.last_heartbeat),
+});
+
+interface ParamRowProps {
+  label: string;
+  value: React.ReactNode;
+  valueColor?: string;
+  last?: boolean;
+}
+
+const ParamRow: React.FC<ParamRowProps> = ({ label, value, valueColor, last = false }) => (
+  <div
+    style={{
+      display: 'flex',
+      justifyContent: 'space-between',
+      paddingBottom: last ? 0 : '6px',
+      borderBottom: last ? 'none' : '1px solid var(--border-subtle)',
+    }}
+  >
+    <span style={{ color: 'var(--text-secondary)' }}>{label}</span>
+    <strong style={{ color: valueColor || 'var(--text-primary)' }}>{value}</strong>
+  </div>
+);
+
 export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
   vehicle,
   onClose,
@@ -70,235 +216,226 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
   const [activeTab, setActiveTab] = useState<'logs' | 'parameters'>(initialTab);
   const [logFilterQuery, setLogFilterQuery] = useState('');
   const [selectedIntervalRange, setSelectedIntervalRange] = useState<number>(60);
-  const liveStreamActive = true;
 
   const [dbLogs, setDbLogs] = useState<TelemetryLogRecord[]>([]);
   const [isLoadingLogs, setIsLoadingLogs] = useState(true);
+  const [logsError, setLogsError] = useState<string | null>(null);
   const [logDataSource, setLogDataSource] = useState<'database' | 'device'>('database');
-  const token = useAuthStore((state) => state.token);
+  const [vehicleMeta, setVehicleMeta] = useState<LogsVehicleMeta | null>(null);
+  const [deviceMeta, setDeviceMeta] = useState<LogsDeviceMeta | null>(null);
+  const [thresholds, setThresholds] = useState<Thresholds>({
+    speedThresholdKmh: null,
+    idleThresholdMinutes: null,
+  });
   const storeVehicles = useVehicleStore((state) => state.vehicles);
 
-  // Helper to build realistic fallback records anchored strictly to vehicle database timestamp
-  const generateFallbackLogsFromDbTime = useCallback((v: any, count: number): TelemetryLogRecord[] => {
-    if (!v) return [];
-    const anchorDate = v.timestamp ? new Date(v.timestamp) : new Date('2026-09-24T12:42:51Z');
-    const anchorMs = isNaN(anchorDate.getTime()) ? new Date('2026-09-24T12:42:51Z').getTime() : anchorDate.getTime();
-    const isMoving = v.status === 'moving';
-    const isIdle = v.status === 'idle';
-    const baseSpeed = typeof v.speed === 'number' ? v.speed : isMoving ? 55 : 0;
-    const baseTemp = v.temperature !== undefined && v.temperature !== null ? v.temperature : -18.2;
-    const baseLat = v.lat || 25.2048;
-    const baseLng = v.lng || 55.2708;
-
-    // Realistic dynamic device deltas matching real Teltonika AVL behavior
-    const realisticDeltas = [0, 6, 15, 21, 54, 80, 103, 130, 259, 420];
-    const records: TelemetryLogRecord[] = [];
-    let currentElapsedMs = 0;
-
-    for (let i = 0; i < count; i++) {
-      const deltaSec = i === 0 ? 0 : realisticDeltas[i % realisticDeltas.length];
-      currentElapsedMs += deltaSec * 1000;
-      const recTime = new Date(anchorMs - currentElapsedMs);
-      const hours = String(recTime.getUTCHours()).padStart(2, '0');
-      const minutes = String(recTime.getUTCMinutes()).padStart(2, '0');
-      const seconds = String(recTime.getUTCSeconds()).padStart(2, '0');
-      const timeStr = `${hours}:${minutes}:${seconds}`;
-      const dateStr = recTime.toISOString().slice(0, 10);
-
-      let currentSpeed = 0;
-      if (isMoving) {
-        currentSpeed = Math.max(0, Math.round(baseSpeed + Math.sin(i * 0.35) * 8));
-      }
-
-      let trigger = 'Periodic AVL Record (ID 240)';
-      let status: 'normal' | 'warning' | 'alert' = 'normal';
-      if (currentSpeed > 80) {
-        trigger = 'Overspeed Alert (> 80 km/h)';
-        status = 'alert';
-      } else if (deltaSec > 0 && deltaSec <= 15) {
-        trigger = `Course / Heading Change (+${deltaSec}s)`;
-      } else if (deltaSec > 15 && deltaSec <= 75) {
-        trigger = `Periodic AVL Record (+${deltaSec}s)`;
-      } else if (deltaSec > 75) {
-        trigger = `Stationary / Periodic Ping (+${formatIntervalDuration(deltaSec)})`;
-      }
-
-      records.push({
-        id: i,
-        timeStr,
-        dateStr,
-        intervalStr: i === 0 ? 'Latest' : `+${formatIntervalDuration(deltaSec)}`,
-        deltaSeconds: deltaSec,
-        speed: currentSpeed,
-        temp: Number((baseTemp + Math.sin(i * 0.18) * 0.2).toFixed(1)),
-        fuelPct: Number(Math.max(10, 74.5 - i * 0.03).toFixed(1)),
-        fuelLiters: Math.round((Math.max(10, 74.5 - i * 0.03) / 100) * 500),
-        extBattery: isMoving || isIdle ? 24.5 : 23.8,
-        backupBattery: 4.14,
-        ignition: isMoving || isIdle ? 'ON' : 'OFF',
-        door: 'Closed',
-        lat: baseLat - (isMoving ? i * 0.0003 : 0),
-        lng: baseLng - (isMoving ? i * 0.0003 : 0),
-        trigger,
-        status,
-      });
-    }
-    return records;
-  }, []);
-
-  // Fetch real telemetry logs from backend database
+  // Fetch real telemetry logs from the backend (PostgreSQL-backed).
   const loadLogsFromDb = useCallback(async () => {
     if (!vehicle) return;
     setIsLoadingLogs(true);
+    setLogsError(null);
     const targetId = vehicle.id || vehicle.device_id || vehicle.reg_number;
-    const activeToken = token || localStorage.getItem('rudra_auth_token') || '';
+    const fetchLimit = Math.max(selectedIntervalRange, MIN_LOGS_LIMIT);
 
     try {
-      const res = await fetch(`/api/v1/vehicles/${targetId}/logs?limit=${selectedIntervalRange}`, {
-        headers: {
-          ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {}),
-          'Content-Type': 'application/json',
-        },
-      });
-
+      const res = await fetchWithAuth(`/api/v1/vehicles/${targetId}/logs?limit=${fetchLimit}`);
       if (!res.ok) {
         throw new Error(`Failed to fetch logs: ${res.statusText}`);
       }
 
       const json = await res.json();
-      if (json.success && Array.isArray(json.data) && json.data.length > 0) {
-        const mapped: TelemetryLogRecord[] = json.data.map((item: any, idx: number) => {
-          let intervalStr = item.interval_str;
-          const deltaSec = typeof item.delta_seconds === 'number' ? item.delta_seconds : 0;
-          if (!intervalStr) {
-            if (idx === 0) {
-              intervalStr = 'Latest';
-            } else if (deltaSec > 0) {
-              intervalStr = formatIntervalDuration(deltaSec);
-            } else {
-              intervalStr = 'Base Record';
-            }
-          }
-          return {
-            id: idx,
-            timeStr: item.time_str || (item.time ? new Date(item.time).toISOString().slice(11, 19) : '12:00:00'),
-            dateStr: item.date_str || (item.time ? new Date(item.time).toISOString().slice(0, 10) : '2026-09-24'),
-            intervalStr,
-            deltaSeconds: deltaSec,
-            speed: Math.round(item.speed || 0),
-            temp: Number(Number(item.temp || 0).toFixed(1)),
-            fuelPct: Number(Number(item.fuel_pct || 74.5).toFixed(1)),
-            fuelLiters: item.fuel_liters || 372,
-            extBattery: Number(Number(item.ext_battery || 24.0).toFixed(2)),
-            backupBattery: Number(Number(item.backup_battery || 4.14).toFixed(2)),
-            ignition: item.ignition === 'ON' || item.ignition === true ? 'ON' : 'OFF',
-            door: item.door || 'Closed',
-            lat: item.lat,
-            lng: item.lng,
-            trigger: item.trigger || 'Periodic AVL Record (ID 240)',
-            status: item.status || 'normal',
-          };
-        });
-        setDbLogs(mapped);
-        setLogDataSource('database');
-      } else {
-        setDbLogs(generateFallbackLogsFromDbTime(vehicle, selectedIntervalRange));
+      if (!json?.success || !Array.isArray(json.data)) {
+        throw new Error(json?.error || 'Invalid telemetry payload');
       }
-    } catch (err) {
-      console.warn('Error loading logs from DB, falling back to database timestamp:', err);
-      setDbLogs(generateFallbackLogsFromDbTime(vehicle, selectedIntervalRange));
+
+      setDbLogs(json.data.map((item: any, idx: number) => mapApiLog(item, idx)));
+      setLogDataSource('database');
+      setVehicleMeta(json.vehicle ? mapLogsVehicle(json.vehicle) : null);
+      setDeviceMeta(json.device ? mapLogsDevice(json.device) : null);
+    } catch (err: any) {
+      console.error('Failed to load telemetry logs', err);
+      setLogsError(err?.message || 'Failed to load telemetry records');
     } finally {
       setIsLoadingLogs(false);
     }
-  }, [vehicle, selectedIntervalRange, token, generateFallbackLogsFromDbTime]);
+  }, [vehicle, selectedIntervalRange]);
 
+  // Load fleet thresholds once (speed / idle) from the API.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetchWithAuth('/api/v1/settings');
+        if (!res.ok) return;
+        const json = await res.json();
+        const settings = json?.data?.settings;
+        if (cancelled || !settings) return;
+        setThresholds({
+          speedThresholdKmh: numOrNull(settings.speedThresholdKmh),
+          idleThresholdMinutes: numOrNull(settings.idleThresholdMinutes),
+        });
+      } catch (err) {
+        console.warn('Failed to load fleet settings thresholds', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Poll while the modal is open: WebSocket pushes are not guaranteed.
   useEffect(() => {
     loadLogsFromDb();
+    const timer = window.setInterval(() => {
+      loadLogsFromDb();
+    }, LOGS_POLL_MS);
+    return () => window.clearInterval(timer);
   }, [loadLogsFromDb]);
 
-  // Listen for real-time live device telemetry arriving via WebSocket
+  // Append live WebSocket telemetry when the store has a real payload.
   useEffect(() => {
-    if (!liveStreamActive || !vehicle?.device_id) return;
-    const liveVeh = storeVehicles.get(vehicle.device_id);
-    if (!liveVeh || !liveVeh.timestamp) return;
+    const deviceId = vehicle?.device_id;
+    if (!deviceId) return;
+    const liveVeh = storeVehicles.get(deviceId);
+    if (!liveVeh?.timestamp) return;
+    const liveDt = new Date(liveVeh.timestamp);
+    if (Number.isNaN(liveDt.getTime())) return;
 
     setDbLogs((prev) => {
-      if (prev.length === 0) return prev;
-      const latest = prev[0];
-      const liveDt = new Date(liveVeh.timestamp);
-      if (isNaN(liveDt.getTime())) return prev;
       const hours = String(liveDt.getUTCHours()).padStart(2, '0');
       const minutes = String(liveDt.getUTCMinutes()).padStart(2, '0');
       const seconds = String(liveDt.getUTCSeconds()).padStart(2, '0');
       const liveTimeStr = `${hours}:${minutes}:${seconds}`;
       const liveDateStr = liveDt.toISOString().slice(0, 10);
 
-      if (latest.timeStr === liveTimeStr && latest.dateStr === liveDateStr) {
+      const latest = prev[0];
+      if (latest && latest.timeStr === liveTimeStr && latest.dateStr === liveDateStr) {
         return prev;
       }
 
-      const prevTime = prev[0] ? new Date(`${prev[0].dateStr}T${prev[0].timeStr}Z`).getTime() : 0;
-      const liveTime = liveDt.getTime();
-      const deltaSec = prevTime > 0 ? Math.max(0, Math.round((liveTime - prevTime) / 1000)) : 0;
+      let deltaSeconds: number | null = null;
+      if (latest?.timeStr && latest?.dateStr) {
+        const prevMs = new Date(`${latest.dateStr}T${latest.timeStr}Z`).getTime();
+        if (Number.isFinite(prevMs)) {
+          deltaSeconds = Math.max(0, Math.round((liveDt.getTime() - prevMs) / 1000));
+        }
+      }
+
+      const liveSpeed = numOrNull(liveVeh.speed);
+      const liveIgnition =
+        typeof liveVeh.ignition === 'boolean' ? (liveVeh.ignition ? 'ON' : 'OFF') : null;
 
       const newRec: TelemetryLogRecord = {
-        id: 0,
+        id: Date.now(),
         timeStr: liveTimeStr,
         dateStr: liveDateStr,
-        intervalStr: deltaSec > 0 ? `Live (+${formatIntervalDuration(deltaSec)})` : 'Live Ping',
-        deltaSeconds: deltaSec,
-        speed: Math.round(liveVeh.speed || 0),
-        temp: liveVeh.temperature !== undefined ? Number(liveVeh.temperature.toFixed(1)) : 24.5,
-        fuelPct: 74.5,
-        fuelLiters: 372,
-        extBattery: liveVeh.ignition ? 24.6 : 24.0,
-        backupBattery: 4.14,
-        ignition: liveVeh.ignition ? 'ON' : 'OFF',
-        door: 'Closed',
-        lat: liveVeh.lat,
-        lng: liveVeh.lng,
-        trigger: 'Live Device AVL Packet (Stream)',
-        status: (liveVeh.speed || 0) > 80 ? 'alert' : 'normal',
+        intervalStr: deltaSeconds !== null ? formatIntervalDuration(deltaSeconds) : null,
+        deltaSeconds,
+        speed: liveSpeed,
+        temp: numOrNull(liveVeh.temperature),
+        fuelPct: null,
+        fuelLiters: null,
+        extBattery: null,
+        backupBattery: null,
+        ignition: liveIgnition,
+        door: null,
+        lat: numOrNull(liveVeh.lat),
+        lng: numOrNull(liveVeh.lng),
+        altitude: null,
+        satellites: null,
+        heading: numOrNull(liveVeh.heading),
+        odometer: numOrNull(liveVeh.odometer),
+        trigger: null,
       };
-      setLogDataSource('device');
-      return [newRec, ...prev.slice(0, selectedIntervalRange - 1)];
+      return [newRec, ...prev].slice(0, 200);
     });
-  }, [storeVehicles, vehicle?.device_id, liveStreamActive, selectedIntervalRange]);
-
-  const logs = dbLogs;
+    setLogDataSource('device');
+  }, [storeVehicles, vehicle?.device_id]);
 
   if (!vehicle) return null;
 
-  // Sliced logs
-  const slicedLogs = logs.slice(0, selectedIntervalRange);
+  const speedThreshold = thresholds.speedThresholdKmh;
+  const slicedLogs = dbLogs.slice(0, selectedIntervalRange);
+  const latestRecord = slicedLogs[0] ?? null;
+
+  // Live ribbon values come from the latest fetched record; the tracking store
+  // only fills the live speed/temperature/ignition when no record exists yet.
+  const latestSpeed = latestRecord?.speed ?? numOrNull(vehicle.speed);
+  const latestTemp = latestRecord?.temp ?? numOrNull(vehicle.temperature);
+  const latestIgnition =
+    latestRecord?.ignition ??
+    (typeof vehicle.ignition === 'boolean' ? (vehicle.ignition ? 'ON' : 'OFF') : null);
+  const latestFuelPct = latestRecord?.fuelPct ?? null;
+  const latestFuelLiters = latestRecord?.fuelLiters ?? null;
+  const latestExtBattery = latestRecord?.extBattery ?? null;
+  const latestBackupBattery = latestRecord?.backupBattery ?? null;
+  const latestSatellites = latestRecord?.satellites ?? null;
+  const latestOdometer = latestRecord?.odometer ?? null;
+
+  const isOverspeed = (speed: number | null): boolean =>
+    speed !== null && speedThreshold !== null && speed > speedThreshold;
 
   // Search filter
   const filteredLogs = slicedLogs.filter((rec) => {
     if (!logFilterQuery.trim()) return true;
     const q = logFilterQuery.toLowerCase();
-    return (
-      rec.timeStr.toLowerCase().includes(q) ||
-      rec.intervalStr.toLowerCase().includes(q) ||
-      rec.trigger.toLowerCase().includes(q) ||
-      rec.ignition.toLowerCase().includes(q) ||
-      rec.door.toLowerCase().includes(q) ||
-      String(rec.speed).includes(q) ||
-      String(rec.temp).includes(q)
-    );
+    const haystack: (string | null)[] = [
+      rec.timeStr,
+      rec.dateStr,
+      rec.intervalStr,
+      rec.trigger,
+      rec.ignition,
+      rec.door,
+      rec.speed !== null ? String(rec.speed) : null,
+      rec.temp !== null ? String(rec.temp) : null,
+    ];
+    return haystack.some((field) => field !== null && field.toLowerCase().includes(q));
   });
 
-  // Calculate statistics across the batch
-  const avgSpeed = Math.round(
-    slicedLogs.reduce((acc, r) => acc + r.speed, 0) / (slicedLogs.length || 1)
-  );
-  const maxSpeed = Math.max(...slicedLogs.map((r) => r.speed), 0);
-  const minTemp = Math.min(...slicedLogs.map((r) => r.temp));
-  const maxTemp = Math.max(...slicedLogs.map((r) => r.temp));
-  const totalDeltaSec = slicedLogs.reduce((acc, r) => acc + (r.deltaSeconds || 0), 0);
-  const avgDeltaSec = slicedLogs.length > 1 ? Math.round(totalDeltaSec / (slicedLogs.length - 1)) : 0;
+  // Calculate statistics across the fetched rows only.
+  const speeds = slicedLogs
+    .map((r) => r.speed)
+    .filter((value): value is number => value !== null);
+  const avgSpeed = speeds.length
+    ? Math.round(speeds.reduce((acc, value) => acc + value, 0) / speeds.length)
+    : null;
+  const maxSpeed = speeds.length ? Math.max(...speeds) : null;
 
-  // CSV Export handler
+  const temps = slicedLogs.map((r) => r.temp).filter((value): value is number => value !== null);
+  const minTemp = temps.length ? Math.min(...temps) : null;
+  const maxTemp = temps.length ? Math.max(...temps) : null;
+
+  const deltas = slicedLogs
+    .map((r) => r.deltaSeconds)
+    .filter((value): value is number => value !== null && value > 0);
+  const avgDeltaSec = deltas.length
+    ? Math.round(deltas.reduce((acc, value) => acc + value, 0) / deltas.length)
+    : null;
+
+  const extBatteries = slicedLogs
+    .map((r) => r.extBattery)
+    .filter((value): value is number => value !== null);
+  const minExtBattery = extBatteries.length ? Math.min(...extBatteries) : null;
+  const maxExtBattery = extBatteries.length ? Math.max(...extBatteries) : null;
+
+  const ignitionOnCount = slicedLogs.filter((r) => r.ignition === 'ON').length;
+
+  const vehicleName =
+    [vehicleMeta?.make, vehicleMeta?.model].filter(Boolean).join(' ') || vehicle.name || DASH;
+  const deviceType = deviceMeta?.device_type ?? DASH;
+  const devicePort =
+    deviceMeta && deviceMeta.port !== null && deviceMeta.port !== undefined
+      ? String(deviceMeta.port)
+      : DASH;
+
+  // CSV Export handler — exports only the fetched API rows currently displayed.
   const handleExportCSV = () => {
+    const csvCell = (value: string | number | null): string => {
+      if (value === null) return DASH;
+      const text = String(value);
+      return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    };
+
     const headers = [
       'Interval',
       'Time_HHmmss',
@@ -317,20 +454,20 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
     ];
 
     const rows = slicedLogs.map((r) => [
-      `"${r.intervalStr || ''}"`,
-      r.timeStr,
-      r.dateStr,
-      r.speed,
-      r.temp,
-      r.fuelPct,
-      r.fuelLiters,
-      r.extBattery,
-      r.backupBattery,
-      r.ignition,
-      r.door,
-      r.lat.toFixed(6),
-      r.lng.toFixed(6),
-      `"${r.trigger.replace(/"/g, '""')}"`,
+      csvCell(r.intervalStr),
+      csvCell(r.timeStr),
+      csvCell(r.dateStr),
+      csvCell(r.speed),
+      csvCell(r.temp),
+      csvCell(r.fuelPct),
+      csvCell(r.fuelLiters),
+      csvCell(r.extBattery),
+      csvCell(r.backupBattery),
+      csvCell(r.ignition),
+      csvCell(r.door),
+      csvCell(r.lat !== null ? r.lat.toFixed(6) : null),
+      csvCell(r.lng !== null ? r.lng.toFixed(6) : null),
+      csvCell(r.trigger),
     ]);
 
     const csvContent =
@@ -341,7 +478,9 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
     link.setAttribute('href', encodedUri);
     link.setAttribute(
       'download',
-      `Teltonika_Telemetry_Logs_${vehicle.reg_number}_${slicedLogs[0]?.dateStr || 'database'}.csv`
+      `Teltonika_Telemetry_Logs_${vehicle.reg_number || 'vehicle'}_${
+        slicedLogs[0]?.dateStr ?? 'export'
+      }.csv`
     );
     document.body.appendChild(link);
     link.click();
@@ -455,7 +594,7 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
                       background: statusColor,
                     }}
                   />
-                  {vehicle.status ? vehicle.status.toUpperCase() : 'ONLINE'}
+                  {vehicle.status ? vehicle.status.toUpperCase() : DASH}
                 </span>
                 <span
                   style={{
@@ -468,7 +607,7 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
                     fontFamily: 'monospace',
                   }}
                 >
-                  Teltonika FMC130 (Codec 8 Ext)
+                  {deviceType}
                 </span>
               </div>
               <div
@@ -479,15 +618,16 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
                   display: 'flex',
                   alignItems: 'center',
                   gap: '12px',
+                  flexWrap: 'wrap',
                 }}
               >
-                <span>{vehicle.name || 'Commercial Fleet Truck'}</span>
+                <span>{vehicleName}</span>
                 <span>•</span>
-                <span>Driver: {vehicle.driver_name || 'Assigned Driver'}</span>
+                <span>Driver: {vehicle.driver_name || DASH}</span>
                 <span>•</span>
-                <span>IMEI: 868204051839210</span>
+                <span>IMEI: {deviceMeta?.imei ?? DASH}</span>
                 <span>•</span>
-                <span>Firmware: 03.28.02.Rev.00</span>
+                <span>Firmware: {deviceMeta?.firmware ?? DASH}</span>
               </div>
             </div>
           </div>
@@ -547,7 +687,7 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
                 marginTop: '2px',
               }}
             >
-              {Math.round(vehicle.speed || 0)}{' '}
+              {latestSpeed !== null ? Math.round(latestSpeed) : DASH}{' '}
               <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-secondary)' }}>
                 km/h
               </span>
@@ -567,7 +707,7 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
               }}
             >
               <Thermometer size={12} color="#0284C7" />
-              <span>Reefer Temp (1-Wire)</span>
+              <span>Reefer Temp</span>
             </div>
             <div
               style={{
@@ -577,9 +717,7 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
                 marginTop: '2px',
               }}
             >
-              {vehicle.temperature !== undefined && vehicle.temperature !== null
-                ? `${vehicle.temperature.toFixed(1)}°C`
-                : '-18.4°C'}
+              {formatTemperature(latestTemp)}
             </div>
           </div>
 
@@ -606,10 +744,24 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
                 marginTop: '2px',
               }}
             >
-              74%{' '}
-              <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-secondary)' }}>
-                (370 L)
-              </span>
+              {latestFuelPct !== null ? (
+                <>
+                  {latestFuelPct}%{' '}
+                  {latestFuelLiters !== null && (
+                    <span
+                      style={{
+                        fontSize: '0.75rem',
+                        fontWeight: 500,
+                        color: 'var(--text-secondary)',
+                      }}
+                    >
+                      ({latestFuelLiters} L)
+                    </span>
+                  )}
+                </>
+              ) : (
+                DASH
+              )}
             </div>
           </div>
 
@@ -636,10 +788,22 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
                 marginTop: '2px',
               }}
             >
-              24.6V{' '}
-              <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-secondary)' }}>
-                / 4.14V
-              </span>
+              {latestExtBattery === null && latestBackupBattery === null ? (
+                DASH
+              ) : (
+                <>
+                  {formatVoltage(latestExtBattery)}{' '}
+                  <span
+                    style={{
+                      fontSize: '0.75rem',
+                      fontWeight: 500,
+                      color: 'var(--text-secondary)',
+                    }}
+                  >
+                    / {formatVoltage(latestBackupBattery)}
+                  </span>
+                </>
+              )}
             </div>
           </div>
 
@@ -662,11 +826,16 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
               style={{
                 fontSize: '1.15rem',
                 fontWeight: 800,
-                color: vehicle.status === 'stopped' ? '#DC2626' : '#16A34A',
+                color:
+                  latestIgnition === null
+                    ? 'var(--text-tertiary)'
+                    : latestIgnition === 'OFF'
+                    ? '#DC2626'
+                    : '#16A34A',
                 marginTop: '2px',
               }}
             >
-              {vehicle.status === 'stopped' ? 'OFF' : 'ON'}
+              {latestIgnition ?? DASH}
             </div>
           </div>
 
@@ -683,7 +852,7 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
               }}
             >
               <Satellite size={12} color="#0EA5E9" />
-              <span>GNSS Fix & Sats</span>
+              <span>GNSS Sats</span>
             </div>
             <div
               style={{
@@ -693,10 +862,7 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
                 marginTop: '2px',
               }}
             >
-              18 Sats{' '}
-              <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-secondary)' }}>
-                (HDOP 0.8)
-              </span>
+              {latestSatellites !== null ? `${latestSatellites} Sats` : DASH}
             </div>
           </div>
         </div>
@@ -755,7 +921,7 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
                   color: activeTab === 'logs' ? '#FFFFFF' : 'var(--text-primary)',
                 }}
               >
-                {logs.length} records
+                {slicedLogs.length} records
               </span>
             </button>
 
@@ -789,7 +955,7 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
                   color: activeTab === 'parameters' ? '#FFFFFF' : 'var(--text-primary)',
                 }}
               >
-                Configurator
+                Telemetry
               </span>
             </button>
           </div>
@@ -826,7 +992,7 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
                 ].map((item) => (
                   <button
                     key={item.val}
-                    onClick={() => setSelectedIntervalRange(item.val as any)}
+                    onClick={() => setSelectedIntervalRange(item.val)}
                     style={{
                       padding: '4px 10px',
                       borderRadius: '4px',
@@ -869,6 +1035,24 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
         <div style={{ flex: 1, overflowY: 'auto', padding: '18px 22px' }}>
           {activeTab === 'logs' ? (
             <div>
+              {/* Error banner (kept visible while previously fetched rows remain) */}
+              {logsError && slicedLogs.length > 0 && (
+                <div
+                  style={{
+                    marginBottom: '12px',
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(239, 68, 68, 0.35)',
+                    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+                    color: '#DC2626',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  {logsError}
+                </div>
+              )}
+
               {/* Filter and stats row */}
               <div
                 style={{
@@ -947,7 +1131,7 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
                       Last {slicedLogs.length} Records
                     </strong>
                   </div>
-                  {avgDeltaSec > 0 && (
+                  {avgDeltaSec !== null && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                       <span style={{ color: 'var(--text-tertiary)' }}>Avg Interval:</span>
                       <strong style={{ color: 'var(--accent)' }}>
@@ -958,13 +1142,14 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
                   <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                     <span style={{ color: 'var(--text-tertiary)' }}>Avg / Max Speed:</span>
                     <strong style={{ color: 'var(--text-primary)' }}>
-                      {avgSpeed} km/h / {maxSpeed} km/h
+                      {avgSpeed !== null ? `${avgSpeed} km/h` : DASH} /{' '}
+                      {maxSpeed !== null ? `${maxSpeed} km/h` : DASH}
                     </strong>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                    <span style={{ color: 'var(--text-tertiary)' }}>Reefer Temp Range:</span>
+                    <span style={{ color: 'var(--text-tertiary)' }}>Temp Range:</span>
                     <strong style={{ color: '#0284C7' }}>
-                      {minTemp}°C to {maxTemp}°C
+                      {formatTemperature(minTemp)} to {formatTemperature(maxTemp)}
                     </strong>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -984,10 +1169,14 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
                         <Database size={13} color="var(--accent)" />
                       )}
                       <span>
-                        {logDataSource === 'device' ? 'Live Teltonika Device' : 'PostgreSQL TimescaleDB'}
+                        {logDataSource === 'device' ? 'Live Teltonika Device' : 'PostgreSQL'}
                       </span>
                       <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>
-                        ({logs.length} records {logs[0] ? `· ${logs[0].dateStr} ${logs[0].timeStr}` : ''})
+                        ({slicedLogs.length} records
+                        {latestRecord
+                          ? ` · ${latestRecord.dateStr ?? DASH} ${latestRecord.timeStr ?? DASH}`
+                          : ''}
+                        )
                       </span>
                     </div>
 
@@ -996,7 +1185,7 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
                       disabled={isLoadingLogs}
                       className="btn btn-secondary btn-sm"
                       style={{ padding: '2px 8px', fontSize: '0.74rem', display: 'flex', alignItems: 'center', gap: '4px' }}
-                      title="Reload authentic logs from database"
+                      title="Reload telemetry logs from database"
                     >
                       <RefreshCw size={11} className={isLoadingLogs ? 'animate-spin' : ''} />
                       <span>{isLoadingLogs ? 'Loading...' : 'Refresh'}</span>
@@ -1063,7 +1252,47 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredLogs.length === 0 ? (
+                      {isLoadingLogs && slicedLogs.length === 0 ? (
+                        <tr>
+                          <td
+                            colSpan={9}
+                            style={{
+                              padding: '36px',
+                              textAlign: 'center',
+                              color: 'var(--text-secondary)',
+                            }}
+                          >
+                            Loading telemetry records...
+                          </td>
+                        </tr>
+                      ) : logsError && slicedLogs.length === 0 ? (
+                        <tr>
+                          <td
+                            colSpan={9}
+                            style={{
+                              padding: '36px',
+                              textAlign: 'center',
+                              color: '#DC2626',
+                              fontWeight: 600,
+                            }}
+                          >
+                            {logsError}
+                          </td>
+                        </tr>
+                      ) : slicedLogs.length === 0 ? (
+                        <tr>
+                          <td
+                            colSpan={9}
+                            style={{
+                              padding: '36px',
+                              textAlign: 'center',
+                              color: 'var(--text-secondary)',
+                            }}
+                          >
+                            No telemetry records for this vehicle
+                          </td>
+                        </tr>
+                      ) : filteredLogs.length === 0 ? (
                         <tr>
                           <td
                             colSpan={9}
@@ -1077,192 +1306,212 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
                           </td>
                         </tr>
                       ) : (
-                        filteredLogs.map((row, idx) => (
-                          <tr
-                            key={row.id}
-                            style={{
-                              borderBottom: '1px solid var(--border-subtle, #f1f5f9)',
-                              backgroundColor:
-                                row.status === 'alert'
+                        filteredLogs.map((row, idx) => {
+                          const rowAlert = isOverspeed(row.speed);
+                          const isFirstRow = idx === 0;
+                          const isShortInterval =
+                            row.deltaSeconds !== null && row.deltaSeconds <= 15;
+                          return (
+                            <tr
+                              key={row.id}
+                              style={{
+                                borderBottom: '1px solid var(--border-subtle, #f1f5f9)',
+                                backgroundColor: rowAlert
                                   ? 'rgba(239, 68, 68, 0.05)'
-                                  : row.status === 'warning'
-                                  ? 'rgba(234, 179, 8, 0.05)'
                                   : idx % 2 === 0
                                   ? 'var(--bg-card)'
                                   : 'var(--bg-subtle)',
-                              transition: 'background-color 0.1s ease',
-                            }}
-                          >
-                            {/* Time & Actual Interval Delta */}
-                            <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <Clock size={13} color="var(--text-tertiary)" />
-                                <div>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <strong style={{ color: 'var(--text-primary)', fontFamily: 'monospace', fontSize: '0.84rem' }}>
-                                      {row.timeStr}
-                                    </strong>
-                                    <span
-                                      style={{
-                                        fontSize: '0.72rem',
-                                        padding: '1px 6px',
-                                        borderRadius: '4px',
-                                        fontFamily: 'monospace',
-                                        fontWeight: 700,
-                                        backgroundColor:
-                                          row.id === 0
+                                transition: 'background-color 0.1s ease',
+                              }}
+                            >
+                              {/* Time & Actual Interval Delta */}
+                              <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <Clock size={13} color="var(--text-tertiary)" />
+                                  <div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      <strong style={{ color: 'var(--text-primary)', fontFamily: 'monospace', fontSize: '0.84rem' }}>
+                                        {row.timeStr ?? DASH}
+                                      </strong>
+                                      <span
+                                        style={{
+                                          fontSize: '0.72rem',
+                                          padding: '1px 6px',
+                                          borderRadius: '4px',
+                                          fontFamily: 'monospace',
+                                          fontWeight: 700,
+                                          backgroundColor: isFirstRow
                                             ? 'rgba(34, 197, 94, 0.15)'
-                                            : (row.deltaSeconds || 0) <= 15
+                                            : isShortInterval
                                             ? 'rgba(14, 165, 233, 0.15)'
                                             : 'rgba(100, 116, 139, 0.15)',
-                                        color:
-                                          row.id === 0
+                                          color: isFirstRow
                                             ? '#16A34A'
-                                            : (row.deltaSeconds || 0) <= 15
+                                            : isShortInterval
                                             ? '#0284C7'
                                             : 'var(--text-secondary)',
-                                      }}
-                                      title={
-                                        row.deltaSeconds
-                                          ? `Actual database interval: ${row.deltaSeconds}s`
-                                          : 'Latest recorded ping'
-                                      }
-                                    >
-                                      {row.intervalStr || (row.id === 0 ? 'Latest' : `+${row.deltaSeconds}s`)}
-                                    </span>
-                                  </div>
-                                  <div style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', fontFamily: 'monospace' }}>
-                                    {row.dateStr}
+                                        }}
+                                        title={
+                                          row.deltaSeconds !== null
+                                            ? `Actual database interval: ${row.deltaSeconds}s`
+                                            : isFirstRow
+                                            ? 'Latest recorded ping'
+                                            : 'Interval not reported'
+                                        }
+                                      >
+                                        {row.intervalStr ?? DASH}
+                                      </span>
+                                    </div>
+                                    <div style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', fontFamily: 'monospace' }}>
+                                      {row.dateStr ?? DASH}
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
-                            </td>
+                              </td>
 
-                            {/* Speed */}
-                            <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
-                              <span
-                                style={{
-                                  fontWeight: 700,
-                                  color: row.speed > 80 ? '#DC2626' : row.speed > 0 ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                                }}
-                              >
-                                {row.speed} km/h
-                              </span>
-                            </td>
-
-                            {/* Reefer Temp */}
-                            <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
-                              <span
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '4px',
-                                  padding: '1px 6px',
-                                  borderRadius: '4px',
-                                  fontSize: '0.75rem',
-                                  fontWeight: 700,
-                                  background: row.temp < -15 ? '#E0F2FE' : '#FEE2E2',
-                                  color: row.temp < -15 ? '#0284C7' : '#DC2626',
-                                }}
-                              >
-                                <Thermometer size={11} />
-                                {row.temp}°C
-                              </span>
-                            </td>
-
-                            {/* Fuel */}
-                            <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
-                              <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                                {row.fuelPct}%
-                              </span>
-                              <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginLeft: '4px' }}>
-                                ({row.fuelLiters}L)
-                              </span>
-                            </td>
-
-                            {/* Ext Battery */}
-                            <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
-                              <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>
-                                {row.extBattery}V
-                              </span>
-                            </td>
-
-                            {/* Ignition DIN1 */}
-                            <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
-                              <span
-                                style={{
-                                  display: 'inline-block',
-                                  padding: '1px 7px',
-                                  borderRadius: '3px',
-                                  fontSize: '0.72rem',
-                                  fontWeight: 700,
-                                  backgroundColor:
-                                    row.ignition === 'ON'
-                                      ? 'rgba(34, 197, 94, 0.12)'
-                                      : 'rgba(239, 68, 68, 0.12)',
-                                  color: row.ignition === 'ON' ? '#16A34A' : '#DC2626',
-                                }}
-                              >
-                                {row.ignition}
-                              </span>
-                            </td>
-
-                            {/* Cargo Door DIN2 */}
-                            <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
-                              <span
-                                style={{
-                                  display: 'inline-block',
-                                  padding: '1px 7px',
-                                  borderRadius: '3px',
-                                  fontSize: '0.72rem',
-                                  fontWeight: 600,
-                                  backgroundColor:
-                                    row.door === 'Closed'
-                                      ? 'var(--bg-subtle)'
-                                      : 'rgba(234, 179, 8, 0.15)',
-                                  color:
-                                    row.door === 'Closed'
-                                      ? 'var(--text-secondary)'
-                                      : '#B45309',
-                                }}
-                              >
-                                {row.door}
-                              </span>
-                            </td>
-
-                            {/* Coordinates */}
-                            <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                              {row.lat.toFixed(5)}, {row.lng.toFixed(5)}
-                            </td>
-
-                            {/* AVL Trigger */}
-                            <td style={{ padding: '8px 12px' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                {row.status === 'alert' ? (
-                                  <AlertTriangle size={13} color="#DC2626" />
-                                ) : row.status === 'warning' ? (
-                                  <AlertTriangle size={13} color="#D97706" />
-                                ) : (
-                                  <CheckCircle2 size={13} color="#16A34A" />
-                                )}
+                              {/* Speed */}
+                              <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
                                 <span
                                   style={{
-                                    fontWeight: row.status !== 'normal' ? 700 : 500,
-                                    color:
-                                      row.status === 'alert'
-                                        ? '#DC2626'
-                                        : row.status === 'warning'
-                                        ? '#B45309'
-                                        : 'var(--text-primary)',
-                                    fontSize: '0.78rem',
+                                    fontWeight: 700,
+                                    color: rowAlert
+                                      ? '#DC2626'
+                                      : row.speed !== null && row.speed > 0
+                                      ? 'var(--text-primary)'
+                                      : 'var(--text-tertiary)',
                                   }}
                                 >
-                                  {row.trigger}
+                                  {row.speed !== null ? `${Math.round(row.speed)} km/h` : DASH}
                                 </span>
-                              </div>
-                            </td>
-                          </tr>
-                        ))
+                              </td>
+
+                              {/* Reefer Temp */}
+                              <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
+                                {row.temp !== null ? (
+                                  <span
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      padding: '1px 6px',
+                                      borderRadius: '4px',
+                                      fontSize: '0.75rem',
+                                      fontWeight: 700,
+                                      background: row.temp < -15 ? '#E0F2FE' : '#FEE2E2',
+                                      color: row.temp < -15 ? '#0284C7' : '#DC2626',
+                                    }}
+                                  >
+                                    <Thermometer size={11} />
+                                    {formatTemperature(row.temp)}
+                                  </span>
+                                ) : (
+                                  <span style={{ color: 'var(--text-tertiary)' }}>{DASH}</span>
+                                )}
+                              </td>
+
+                              {/* Fuel */}
+                              <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
+                                {row.fuelPct !== null ? (
+                                  <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                                    {row.fuelPct}%
+                                  </span>
+                                ) : (
+                                  <span style={{ color: 'var(--text-tertiary)' }}>{DASH}</span>
+                                )}
+                                {row.fuelLiters !== null && (
+                                  <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginLeft: '4px' }}>
+                                    ({row.fuelLiters}L)
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* Ext Battery */}
+                              <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
+                                <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                                  {row.extBattery !== null ? `${row.extBattery}V` : DASH}
+                                </span>
+                              </td>
+
+                              {/* Ignition DIN1 */}
+                              <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
+                                {row.ignition !== null ? (
+                                  <span
+                                    style={{
+                                      display: 'inline-block',
+                                      padding: '1px 7px',
+                                      borderRadius: '3px',
+                                      fontSize: '0.72rem',
+                                      fontWeight: 700,
+                                      backgroundColor:
+                                        row.ignition === 'ON'
+                                          ? 'rgba(34, 197, 94, 0.12)'
+                                          : 'rgba(239, 68, 68, 0.12)',
+                                      color: row.ignition === 'ON' ? '#16A34A' : '#DC2626',
+                                    }}
+                                  >
+                                    {row.ignition}
+                                  </span>
+                                ) : (
+                                  <span style={{ color: 'var(--text-tertiary)' }}>{DASH}</span>
+                                )}
+                              </td>
+
+                              {/* Cargo Door DIN2 */}
+                              <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
+                                {row.door !== null ? (
+                                  <span
+                                    style={{
+                                      display: 'inline-block',
+                                      padding: '1px 7px',
+                                      borderRadius: '3px',
+                                      fontSize: '0.72rem',
+                                      fontWeight: 600,
+                                      backgroundColor:
+                                        row.door === 'Closed'
+                                          ? 'var(--bg-subtle)'
+                                          : 'rgba(234, 179, 8, 0.15)',
+                                      color:
+                                        row.door === 'Closed'
+                                          ? 'var(--text-secondary)'
+                                          : '#B45309',
+                                    }}
+                                  >
+                                    {row.door}
+                                  </span>
+                                ) : (
+                                  <span style={{ color: 'var(--text-tertiary)' }}>{DASH}</span>
+                                )}
+                              </td>
+
+                              {/* Coordinates */}
+                              <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                {row.lat !== null && row.lng !== null
+                                  ? `${row.lat.toFixed(5)}, ${row.lng.toFixed(5)}`
+                                  : DASH}
+                              </td>
+
+                              {/* AVL Trigger */}
+                              <td style={{ padding: '8px 12px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  {rowAlert ? (
+                                    <AlertTriangle size={13} color="#DC2626" />
+                                  ) : (
+                                    <CheckCircle2 size={13} color="#16A34A" />
+                                  )}
+                                  <span
+                                    style={{
+                                      fontWeight: rowAlert ? 700 : 500,
+                                      color: rowAlert ? '#DC2626' : 'var(--text-primary)',
+                                      fontSize: '0.78rem',
+                                    }}
+                                  >
+                                    {row.trigger ?? DASH}
+                                  </span>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
                       )}
                     </tbody>
                   </table>
@@ -1288,11 +1537,13 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <Cpu size={18} color="var(--accent)" />
                   <span style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                    Active Configuration: Profile 1 (FMC130 Standard Fleet & Reefer Cold Chain Profile)
+                    Device: {deviceType} • IMEI: {deviceMeta?.imei ?? DASH} • Status:{' '}
+                    {deviceMeta?.status ?? DASH}
                   </span>
                 </div>
                 <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
-                  Server Link: 159.89.xxx.xxx:5027 (RudraNetra TCP Ingestion Gateway)
+                  SIM: {deviceMeta?.sim_no ?? DASH} ({deviceMeta?.sim_operator ?? DASH}) • TCP Port:{' '}
+                  {devicePort} • Firmware: {deviceMeta?.firmware ?? DASH}
                 </div>
               </div>
 
@@ -1303,7 +1554,7 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
                   gap: '14px',
                 }}
               >
-                {/* Panel 1: Speed, Movement & Eco-Drive */}
+                {/* Panel 1: Speed, Movement & Thresholds */}
                 <div
                   style={{
                     backgroundColor: 'var(--bg-subtle)',
@@ -1324,44 +1575,44 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
                     }}
                   >
                     <Gauge size={16} />
-                    <span>Speed, Movement & Eco-Drive Configuration</span>
+                    <span>Speed & Movement</span>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.8rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Current GNSS Speed (AVL ID 24):</span>
-                      <strong style={{ color: 'var(--text-primary)' }}>{Math.round(vehicle.speed || 0)} km/h</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Overspeeding Threshold:</span>
-                      <strong style={{ color: '#D97706' }}>80 km/h (Audio Alert Enabled)</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Harsh Acceleration (AVL 253):</span>
-                      <strong style={{ color: '#16A34A' }}>0.35 G (Eco-Driving Profile)</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Harsh Braking (AVL 254):</span>
-                      <strong style={{ color: '#16A34A' }}>0.40 G (Threshold Active)</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Harsh Cornering (AVL 255):</span>
-                      <strong style={{ color: '#16A34A' }}>0.38 G (Threshold Active)</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Excessive Idling Scenario:</span>
-                      <strong style={{ color: 'var(--text-primary)' }}>5 minutes threshold</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Total Virtual Odometer (AVL 16):</span>
-                      <strong style={{ color: 'var(--text-primary)' }}>142,850.4 km</strong>
-                    </div>
+                    <ParamRow
+                      label="Current GNSS Speed (AVL ID 24):"
+                      value={latestSpeed !== null ? `${Math.round(latestSpeed)} km/h` : DASH}
+                    />
+                    <ParamRow
+                      label="Overspeeding Threshold:"
+                      value={speedThreshold !== null ? `${speedThreshold} km/h` : DASH}
+                      valueColor={speedThreshold !== null ? '#D97706' : undefined}
+                    />
+                    <ParamRow
+                      label="Average Speed (window):"
+                      value={avgSpeed !== null ? `${avgSpeed} km/h` : DASH}
+                    />
+                    <ParamRow
+                      label="Maximum Speed (window):"
+                      value={maxSpeed !== null ? `${maxSpeed} km/h` : DASH}
+                    />
+                    <ParamRow
+                      label="Configured Max Speed:"
+                      value={vehicleMeta?.max_speed !== null && vehicleMeta?.max_speed !== undefined ? `${vehicleMeta.max_speed} km/h` : DASH}
+                    />
+                    <ParamRow
+                      label="Excessive Idling Threshold:"
+                      value={
+                        thresholds.idleThresholdMinutes !== null
+                          ? `${thresholds.idleThresholdMinutes} minutes threshold`
+                          : DASH
+                      }
+                    />
+                    <ParamRow
+                      label="Total Virtual Odometer (AVL 16):"
+                      value={formatOdometer(latestOdometer)}
+                      last
+                    />
                   </div>
                 </div>
 
@@ -1386,52 +1637,34 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
                     }}
                   >
                     <Thermometer size={16} />
-                    <span>Cold-Chain & 1-Wire / BLE Temperature</span>
+                    <span>Cold-Chain & Temperature</span>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.8rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>1-Wire Dallas Sensor 1 (AVL 72):</span>
-                      <strong style={{ color: '#0284C7' }}>
-                        {vehicle.temperature !== undefined && vehicle.temperature !== null
-                          ? `${vehicle.temperature.toFixed(1)}°C`
-                          : '-18.4°C'}
-                      </strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>BLE EYE Sensor 2 (AVL 73):</span>
-                      <strong style={{ color: '#0284C7' }}>-18.1°C (Rear Chiller Compartment)</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Cabin Ambient Sensor (AVL 74):</span>
-                      <strong style={{ color: 'var(--text-primary)' }}>24.2°C</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Configured Safe Range:</span>
-                      <strong style={{ color: '#16A34A' }}>-22.0°C to -15.0°C (Pharma Grade)</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>High Temp Deviation Alarm:</span>
-                      <strong style={{ color: '#DC2626' }}>&gt; -14.0°C for 180s (SMS & DOUT2)</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>BLE EYE Battery Health:</span>
-                      <strong style={{ color: '#16A34A' }}>3.22V (98% capacity)</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>BLE RSSI Signal:</span>
-                      <strong style={{ color: 'var(--text-primary)' }}>-64 dBm (Excellent)</strong>
-                    </div>
+                    <ParamRow
+                      label="Latest Recorded Temperature:"
+                      value={formatTemperature(latestTemp)}
+                      valueColor="#0284C7"
+                    />
+                    <ParamRow
+                      label="Minimum Temperature (window):"
+                      value={formatTemperature(minTemp)}
+                      valueColor="#0284C7"
+                    />
+                    <ParamRow
+                      label="Maximum Temperature (window):"
+                      value={formatTemperature(maxTemp)}
+                      valueColor="#0284C7"
+                    />
+                    <ParamRow
+                      label="Temperature Readings (window):"
+                      value={String(temps.length)}
+                      last
+                    />
                   </div>
                 </div>
 
-                {/* Panel 3: Fuel Management & Liquid Level Sensors */}
+                {/* Panel 3: Fuel Management */}
                 <div
                   style={{
                     backgroundColor: 'var(--bg-subtle)',
@@ -1452,48 +1685,31 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
                     }}
                   >
                     <Fuel size={16} />
-                    <span>Fuel Level (LLS RS485 & CAN FMS)</span>
+                    <span>Fuel Level (LLS RS485)</span>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.8rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Fuel Level Percentage (AVL 84):</span>
-                      <strong style={{ color: 'var(--text-primary)' }}>74.5%</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Calibrated Fuel Volume:</span>
-                      <strong style={{ color: 'var(--text-primary)' }}>372.5 Liters (500L Tank)</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Fuel Sensor Interface:</span>
-                      <strong style={{ color: 'var(--text-primary)' }}>RS-485 Digital (LLS Frequency)</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Rapid Fuel Drain / Theft Alert:</span>
-                      <strong style={{ color: '#16A34A' }}>Enabled (&gt; 15L drop in 120s)</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Refueling Detection Event:</span>
-                      <strong style={{ color: '#16A34A' }}>Enabled (&gt; 25L increase in 180s)</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Instant Fuel Consumption (AVL 85):</span>
-                      <strong style={{ color: 'var(--text-primary)' }}>24.2 L / 100km</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Calibration Curve:</span>
-                      <strong style={{ color: 'var(--text-primary)' }}>5-Point Interpolated Applied</strong>
-                    </div>
+                    <ParamRow
+                      label="Fuel Level Percentage (latest record):"
+                      value={latestFuelPct !== null ? `${latestFuelPct}%` : DASH}
+                    />
+                    <ParamRow
+                      label="Fuel Volume (latest record):"
+                      value={latestFuelLiters !== null ? `${latestFuelLiters} L` : DASH}
+                    />
+                    <ParamRow
+                      label="Configured Tank Capacity:"
+                      value={
+                        vehicleMeta?.fuel_capacity !== null && vehicleMeta?.fuel_capacity !== undefined
+                          ? `${vehicleMeta.fuel_capacity} L`
+                          : DASH
+                      }
+                      last
+                    />
                   </div>
                 </div>
 
-                {/* Panel 4: Power, Voltage & Sleep Modes */}
+                {/* Panel 4: Power & Voltage */}
                 <div
                   style={{
                     backgroundColor: 'var(--bg-subtle)',
@@ -1514,44 +1730,28 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
                     }}
                   >
                     <BatteryCharging size={16} />
-                    <span>Power, Voltage & Sleep Modes</span>
+                    <span>Power & Voltage</span>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.8rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>External Vehicle Battery (AVL 67):</span>
-                      <strong style={{ color: 'var(--text-primary)' }}>24.62 V (Alternator Charging)</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Internal Li-ion Backup (AVL 66):</span>
-                      <strong style={{ color: '#16A34A' }}>4.14 V (100% Full Capacity)</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Power Cut / Wire Tamper Alarm:</span>
-                      <strong style={{ color: '#DC2626' }}>Configured (High Priority)</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Sleep Mode Configuration:</span>
-                      <strong style={{ color: 'var(--text-primary)' }}>Online Deep Sleep (Modem Active)</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Low Battery Protection Cutoff:</span>
-                      <strong style={{ color: 'var(--text-primary)' }}>21.6 V (Preserves Crank Power)</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Static Navigation Filter:</span>
-                      <strong style={{ color: '#16A34A' }}>Active (Eliminates Drift on Stop)</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Wake-up on Accelerometer:</span>
-                      <strong style={{ color: '#16A34A' }}>Enabled (0.15G Sensitivity)</strong>
-                    </div>
+                    <ParamRow
+                      label="External Vehicle Battery (latest record):"
+                      value={formatVoltage(latestExtBattery)}
+                    />
+                    <ParamRow
+                      label="Internal Backup Battery (latest record):"
+                      value={formatVoltage(latestBackupBattery)}
+                      valueColor="#16A34A"
+                    />
+                    <ParamRow
+                      label="External Battery Range (window):"
+                      value={
+                        minExtBattery !== null && maxExtBattery !== null
+                          ? `${formatVoltage(minExtBattery)} – ${formatVoltage(maxExtBattery)}`
+                          : DASH
+                      }
+                      last
+                    />
                   </div>
                 </div>
 
@@ -1576,52 +1776,43 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
                     }}
                   >
                     <Activity size={16} />
-                    <span>Digital I/O & Relay Configuration</span>
+                    <span>Digital I/O State</span>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.8rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>DIN1 - Ignition State (AVL 239):</span>
-                      <strong style={{ color: vehicle.status === 'stopped' ? '#DC2626' : '#16A34A' }}>
-                        {vehicle.status === 'stopped' ? 'Inactive (0V)' : 'Active (24V Ignition ON)'}
-                      </strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>DIN2 - Cargo Door Contact (AVL 1):</span>
-                      <strong style={{ color: '#16A34A' }}>Closed (Secured Magnetic Switch)</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>DIN3 - Driver SOS / Panic Button:</span>
-                      <strong style={{ color: 'var(--text-primary)' }}>Normal (Disarmed)</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>DOUT1 - Engine Immobilizer (AVL 179):</span>
-                      <strong style={{ color: '#16A34A' }}>Disarmed / Normal (Engine Allowed)</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>DOUT2 - Reefer Compressor Relay:</span>
-                      <strong style={{ color: '#0284C7' }}>Energized / Active Chilling</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>AIN1 - Analog 0-30V Sensor (AVL 9):</span>
-                      <strong style={{ color: 'var(--text-primary)' }}>12.4 V Connected</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>1-Wire Dallas ROM ID:</span>
-                      <strong style={{ color: 'var(--text-primary)', fontFamily: 'monospace' }}>
-                        28-000005C89F31
-                      </strong>
-                    </div>
+                    <ParamRow
+                      label="DIN1 - Ignition State (latest record):"
+                      value={latestRecord?.ignition ?? DASH}
+                      valueColor={
+                        latestRecord?.ignition === 'OFF'
+                          ? '#DC2626'
+                          : latestRecord?.ignition === 'ON'
+                          ? '#16A34A'
+                          : undefined
+                      }
+                    />
+                    <ParamRow
+                      label="DIN2 - Cargo Door Contact (latest record):"
+                      value={latestRecord?.door ?? DASH}
+                      valueColor={
+                        latestRecord?.door && latestRecord.door !== 'Closed'
+                          ? '#B45309'
+                          : undefined
+                      }
+                    />
+                    <ParamRow
+                      label="Records with Ignition ON (window):"
+                      value={
+                        slicedLogs.length > 0
+                          ? `${ignitionOnCount} of ${slicedLogs.length}`
+                          : DASH
+                      }
+                      last
+                    />
                   </div>
                 </div>
 
-                {/* Panel 6: GNSS & Data Transmission Timing */}
+                {/* Panel 6: GNSS & Uplink */}
                 <div
                   style={{
                     backgroundColor: 'var(--bg-subtle)',
@@ -1642,46 +1833,43 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
                     }}
                   >
                     <Radio size={16} />
-                    <span>GNSS & Transmission Frequencies</span>
+                    <span>GNSS & Uplink</span>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.8rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Record Frequency (On Moving):</span>
-                      <strong style={{ color: 'var(--text-primary)' }}>Every 60 Seconds (1 Minute)</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Record Frequency (On Stop):</span>
-                      <strong style={{ color: 'var(--text-primary)' }}>Every 300 Seconds (5 Min Heartbeat)</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Min Angle Heading Trigger:</span>
-                      <strong style={{ color: 'var(--text-primary)' }}>10 Degrees Turn</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Min Distance Trigger:</span>
-                      <strong style={{ color: 'var(--text-primary)' }}>100 Meters</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>GNSS Constellation:</span>
-                      <strong style={{ color: 'var(--text-primary)' }}>GPS + GLONASS + Galileo</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Cellular Network Provider:</span>
-                      <strong style={{ color: 'var(--text-primary)' }}>Du Telecom UAE 4G LTE</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Ingestion Protocol:</span>
-                      <strong style={{ color: 'var(--accent)', fontWeight: 700 }}>
-                        Teltonika Codec 8 Extended / TCP
-                      </strong>
-                    </div>
+                    <ParamRow
+                      label="Satellites (latest record):"
+                      value={latestSatellites !== null ? String(latestSatellites) : DASH}
+                    />
+                    <ParamRow
+                      label="GNSS Heading (latest record):"
+                      value={
+                        latestRecord?.heading !== null && latestRecord?.heading !== undefined
+                          ? `${latestRecord.heading}°`
+                          : DASH
+                      }
+                    />
+                    <ParamRow
+                      label="Altitude (latest record):"
+                      value={
+                        latestRecord?.altitude !== null && latestRecord?.altitude !== undefined
+                          ? `${latestRecord.altitude} m`
+                          : DASH
+                      }
+                    />
+                    <ParamRow
+                      label="Latest Transmission Interval:"
+                      value={latestRecord?.intervalStr ?? DASH}
+                    />
+                    <ParamRow
+                      label="Last Heartbeat:"
+                      value={formatDateTime(deviceMeta?.last_heartbeat)}
+                    />
+                    <ParamRow
+                      label="Records in Window:"
+                      value={String(slicedLogs.length)}
+                      last
+                    />
                   </div>
                 </div>
               </div>
@@ -1704,7 +1892,10 @@ export const TeltonikaDetailsModal: React.FC<TeltonikaDetailsModalProps> = ({
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>
             <Shield size={14} color="var(--accent)" />
-            <span>Teltonika AVL Ingestion Engine • Firmware 03.28.02 • Actual Dynamic Transmission Intervals</span>
+            <span>
+              Device Telemetry • Firmware {deviceMeta?.firmware ?? DASH} • Last Heartbeat{' '}
+              {formatDateTime(deviceMeta?.last_heartbeat)}
+            </span>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>

@@ -13,7 +13,9 @@ interface RoleItem {
 
 export const RoleRightsPage: React.FC = () => {
   const [roles, setRoles] = useState<RoleItem[]>([]);
+  const [draft, setDraft] = useState<Record<number, Record<string, number>>>({});
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const modules = [
@@ -39,6 +41,11 @@ export const RoleRightsPage: React.FC = () => {
         const json = await res.json();
         if (json.success && Array.isArray(json.data)) {
           setRoles(json.data);
+          const nextDraft: Record<number, Record<string, number>> = {};
+          json.data.forEach((role: RoleItem) => {
+            nextDraft[role.id] = { ...(role.permissions || {}) };
+          });
+          setDraft(nextDraft);
         }
       }
     } catch (err) {
@@ -52,8 +59,47 @@ export const RoleRightsPage: React.FC = () => {
     loadRoles();
   }, []);
 
-  const handleSave = () => {
-    showToast('Permission rights matrix applied across tenant roles');
+  const togglePermission = (roleId: number, moduleKey: string, bit: number) => {
+    setDraft((prev) => {
+      const rolePerms = { ...(prev[roleId] || {}) };
+      const current = rolePerms[moduleKey] || 0;
+      rolePerms[moduleKey] = (current & bit) > 0 ? current & ~bit : current | bit;
+      return { ...prev, [roleId]: rolePerms };
+    });
+  };
+
+  const changedRoles = roles.filter((role) => {
+    const original = role.permissions || {};
+    const current = draft[role.id] || {};
+    return modules.some((m) => (current[m.key] || 0) !== (original[m.key] || 0));
+  });
+
+  const handleSave = async () => {
+    if (changedRoles.length === 0) {
+      showToast('No permission changes to save.');
+      return;
+    }
+    setSaving(true);
+    let failed = 0;
+    for (const role of changedRoles) {
+      try {
+        const res = await fetchWithAdminAuth(`/api/v1/admin/roles/${role.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ permissions: draft[role.id] || {} }),
+        });
+        if (!res.ok) failed += 1;
+      } catch (err) {
+        failed += 1;
+      }
+    }
+    setSaving(false);
+    if (failed > 0) {
+      showToast(`Failed to update ${failed} role${failed === 1 ? '' : 's'}.`);
+    } else {
+      showToast(`Permission matrix updated for ${changedRoles.length} role${changedRoles.length === 1 ? '' : 's'}.`);
+    }
+    loadRoles();
   };
 
   return (
@@ -95,9 +141,14 @@ export const RoleRightsPage: React.FC = () => {
           </p>
         </div>
 
-        <button onClick={handleSave} className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <button
+          onClick={handleSave}
+          className="btn btn-primary"
+          disabled={saving || loading}
+          style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: saving || loading ? 0.65 : 1, cursor: saving || loading ? 'not-allowed' : 'pointer' }}
+        >
           <Save size={16} />
-          <span>Save Permissions Matrix</span>
+          <span>{saving ? 'Saving...' : 'Save Permissions Matrix'}</span>
         </button>
       </div>
 
@@ -120,27 +171,56 @@ export const RoleRightsPage: React.FC = () => {
                   Loading permission matrix...
                 </td>
               </tr>
+            ) : roles.length === 0 ? (
+              <tr>
+                <td colSpan={modules.length + 1} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)' }}>
+                  No roles defined in the database.
+                </td>
+              </tr>
             ) : (
               roles.map((r) => (
                 <tr key={r.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                   <td style={{ padding: '14px 18px' }}>
                     <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{r.roleName}</div>
-                    <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>{r.description}</div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>{r.description || '—'}</div>
                   </td>
                   {modules.map((m) => {
-                    const permVal = r.permissions?.[m.key] || 0;
-                    const canView = (permVal & 1) > 0;
-                    const canAdd = (permVal & 2) > 0;
-                    const canEdit = (permVal & 4) > 0;
-                    const canDelete = (permVal & 8) > 0;
+                    const permVal = draft[r.id]?.[m.key] ?? r.permissions?.[m.key] ?? 0;
+                    const bits = [
+                      { bit: 1, label: 'V', title: 'View', activeBg: 'var(--good-bg)', activeColor: 'var(--good)' },
+                      { bit: 2, label: 'A', title: 'Add', activeBg: 'var(--good-bg)', activeColor: 'var(--good)' },
+                      { bit: 4, label: 'E', title: 'Edit', activeBg: 'var(--good-bg)', activeColor: 'var(--good)' },
+                      { bit: 8, label: 'D', title: 'Delete', activeBg: 'var(--alert-bg)', activeColor: 'var(--alert)' },
+                    ];
 
                     return (
                       <td key={m.key} style={{ padding: '14px 18px', textAlign: 'center' }}>
                         <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', fontSize: '0.76rem' }}>
-                          <span title="View" style={{ padding: '2px 5px', borderRadius: '3px', background: canView ? 'var(--good-bg)' : 'var(--bg-subtle)', color: canView ? 'var(--good)' : 'var(--text-tertiary)', fontWeight: 700 }}>V</span>
-                          <span title="Add" style={{ padding: '2px 5px', borderRadius: '3px', background: canAdd ? 'var(--good-bg)' : 'var(--bg-subtle)', color: canAdd ? 'var(--good)' : 'var(--text-tertiary)', fontWeight: 700 }}>A</span>
-                          <span title="Edit" style={{ padding: '2px 5px', borderRadius: '3px', background: canEdit ? 'var(--good-bg)' : 'var(--bg-subtle)', color: canEdit ? 'var(--good)' : 'var(--text-tertiary)', fontWeight: 700 }}>E</span>
-                          <span title="Delete" style={{ padding: '2px 5px', borderRadius: '3px', background: canDelete ? 'var(--alert-bg)' : 'var(--bg-subtle)', color: canDelete ? 'var(--alert)' : 'var(--text-tertiary)', fontWeight: 700 }}>D</span>
+                          {bits.map(({ bit, label, title, activeBg, activeColor }) => {
+                            const isActive = (permVal & bit) > 0;
+                            return (
+                              <button
+                                key={bit}
+                                type="button"
+                                title={title}
+                                aria-pressed={isActive}
+                                onClick={() => togglePermission(r.id, m.key, bit)}
+                                style={{
+                                  padding: '2px 5px',
+                                  borderRadius: '3px',
+                                  border: '1px solid transparent',
+                                  background: isActive ? activeBg : 'var(--bg-subtle)',
+                                  color: isActive ? activeColor : 'var(--text-tertiary)',
+                                  fontWeight: 700,
+                                  fontFamily: 'inherit',
+                                  fontSize: '0.76rem',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
                         </div>
                       </td>
                     );

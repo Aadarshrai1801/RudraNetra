@@ -6,68 +6,48 @@ export const getApiHost = (): string => {
     : '';
 };
 
-export async function refreshClientToken(): Promise<string | null> {
-  const host = getApiHost();
-  const currentUser = useAuthStore.getState().user;
-  const username = currentUser?.username || 'admin';
-  try {
-    const res = await fetch(`${host}/api/v1/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password: 'password' }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && data.token) {
-        useAuthStore.getState().setAuth(data.token, data.user);
-        return data.token;
-      }
-    }
-  } catch (err) {
-    console.error('Failed to auto-refresh token:', err);
+function clearSessionAndRedirectToLogin(): void {
+  useAuthStore.getState().logout();
+  if (window.location.pathname !== '/login') {
+    window.location.assign('/login');
   }
-  return null;
 }
 
 export async function fetchWithAuth(endpoint: string, options: RequestInit = {}): Promise<Response> {
   const host = getApiHost();
   const base = host || window.location.origin;
-  let token = useAuthStore.getState().token || localStorage.getItem('rudra_auth_token');
-  const companyId = useAuthStore.getState().user?.company_id || 1;
+  const auth = useAuthStore.getState();
+  const token = auth.token || localStorage.getItem('rudra_auth_token');
+  const companyId = auth.user?.company_id;
 
-  if (!token) {
-    token = await refreshClientToken();
+  // There is no credential fallback: a session requires both a token and the
+  // tenant (company_id) that was returned by the login endpoint.
+  if (!token || companyId === undefined || companyId === null) {
+    clearSessionAndRedirectToLogin();
+    throw new Error('Unauthenticated: missing token or company. Redirecting to sign in.');
   }
 
   const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
   const url = new URL(path, base);
-  if (companyId && !url.searchParams.has('company_id')) {
-    url.searchParams.set('company_id', companyId.toString());
+  if (!url.searchParams.has('company_id')) {
+    url.searchParams.set('company_id', String(companyId));
   }
 
   const headers = new Headers(options.headers || {});
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
-  }
+  headers.set('Authorization', `Bearer ${token}`);
   if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
   }
 
-  let res = await fetch(url.toString(), {
+  const res = await fetch(url.toString(), {
     ...options,
     headers,
   });
 
-  // If 401 Unauthorized, automatically renew token and retry once
+  // Expired/invalid tokens are never silently renewed. Drop the stored session
+  // and send the user back to the login screen.
   if (res.status === 401) {
-    const freshToken = await refreshClientToken();
-    if (freshToken) {
-      headers.set('Authorization', `Bearer ${freshToken}`);
-      res = await fetch(url.toString(), {
-        ...options,
-        headers,
-      });
-    }
+    clearSessionAndRedirectToLogin();
   }
 
   return res;

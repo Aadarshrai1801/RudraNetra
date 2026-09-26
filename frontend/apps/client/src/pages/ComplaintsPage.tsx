@@ -9,16 +9,27 @@ import { useVehicleStore } from '../store/vehicleStore';
 
 interface Complaint {
   id: number;
-  ticketNo: string;
-  vehicleReg: string;
-  title: string;
-  category: string;
-  priority: 'Critical' | 'High' | 'Medium' | 'Low';
-  status: 'Open' | 'In Progress' | 'Resolved' | 'Closed';
-  technicianAssigned: string;
-  resolutionNotes: string;
-  createdAt: string;
+  ticketNo: string | null;
+  vehicleReg: string | null;
+  title: string | null;
+  category: string | null;
+  priority: string | null;
+  status: string | null;
+  technicianAssigned: string | null;
+  resolutionNotes: string | null;
+  createdAt: string | null;
 }
+
+interface MasterItem {
+  id: number;
+  type: string;
+  code: string;
+  name: string;
+  isDefault: boolean;
+}
+
+const dash = (value: unknown): string =>
+  value === null || value === undefined || value === '' ? '—' : String(value);
 
 export const ComplaintsPage: React.FC = () => {
   const user = useAuthStore((state) => state.user);
@@ -26,6 +37,7 @@ export const ComplaintsPage: React.FC = () => {
   const vehicleList = Array.from(vehiclesMap.values());
 
   const [complaints, setComplaints] = useState<Complaint[]>([]);
+  const [complaintCategories, setComplaintCategories] = useState<MasterItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterCategory, setFilterCategory] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -35,7 +47,7 @@ export const ComplaintsPage: React.FC = () => {
   const [newTicket, setNewTicket] = useState({
     vehicleId: '',
     title: '',
-    category: 'GPS Tracker Offline',
+    category: '',
     priority: 'Medium',
     description: '',
   });
@@ -48,11 +60,21 @@ export const ComplaintsPage: React.FC = () => {
   const loadComplaints = async () => {
     setLoading(true);
     try {
-      const res = await fetchWithAuth('/api/v1/complaints');
-      if (res.ok) {
-        const json = await res.json();
+      const [complaintsRes, categoriesRes] = await Promise.all([
+        fetchWithAuth('/api/v1/complaints'),
+        fetchWithAuth('/api/v1/masters/complaint-categories'),
+      ]);
+
+      if (complaintsRes.ok) {
+        const json = await complaintsRes.json();
         if (json.success && Array.isArray(json.data)) {
           setComplaints(json.data);
+        }
+      }
+      if (categoriesRes.ok) {
+        const json = await categoriesRes.json();
+        if (json.success && Array.isArray(json.data)) {
+          setComplaintCategories(json.data);
         }
       }
     } catch (err) {
@@ -68,34 +90,43 @@ export const ComplaintsPage: React.FC = () => {
 
   const handleCreateTicket = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTicket.title) {
+    if (!newTicket.title.trim()) {
       showToast('Please provide a ticket title');
+      return;
+    }
+    if (!newTicket.category) {
+      showToast('Please select an issue category');
       return;
     }
 
     try {
+      const body: Record<string, unknown> = {
+        title: newTicket.title.trim(),
+        category: newTicket.category,
+        priority: newTicket.priority,
+      };
+      if (newTicket.vehicleId) body.vehicleId = Number(newTicket.vehicleId);
+
       const res = await fetchWithAuth('/api/v1/complaints', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          vehicleId: Number(newTicket.vehicleId) || 0,
-          title: newTicket.title,
-          category: newTicket.category,
-          priority: newTicket.priority,
-        }),
+        body: JSON.stringify(body),
       });
+      const json = await res.json().catch(() => null);
 
-      if (res.ok) {
-        showToast('Support ticket registered. Technician assigned within 4 hours.');
+      if (res.ok && json?.success !== false) {
+        showToast('Support ticket registered.');
         setIsModalOpen(false);
         setNewTicket({
           vehicleId: '',
           title: '',
-          category: 'GPS Tracker Offline',
+          category: '',
           priority: 'Medium',
           description: '',
         });
         loadComplaints();
+      } else {
+        showToast(json?.error || 'Failed to submit ticket');
       }
     } catch (err) {
       showToast('Failed to submit ticket');
@@ -103,10 +134,10 @@ export const ComplaintsPage: React.FC = () => {
   };
 
   const filteredTickets = complaints.filter((t) => {
-    if (filterCategory !== 'all' && !t.category.toLowerCase().includes(filterCategory.toLowerCase())) {
+    if (filterCategory !== 'all' && !(t.category || '').toLowerCase().includes(filterCategory.toLowerCase())) {
       return false;
     }
-    if (filterStatus !== 'all' && t.status.toLowerCase() !== filterStatus.toLowerCase()) {
+    if (filterStatus !== 'all' && (t.status || '').toLowerCase() !== filterStatus.toLowerCase()) {
       return false;
     }
     return true;
@@ -174,11 +205,9 @@ export const ComplaintsPage: React.FC = () => {
             style={{ padding: '6px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', fontSize: '0.85rem' }}
           >
             <option value="all">All Issue Categories</option>
-            <option value="offline">GPS Tracker Offline</option>
-            <option value="relay">Relay / Immobilizer Issue</option>
-            <option value="fuel">Fuel Sensor</option>
-            <option value="temp">Temperature Probe</option>
-            <option value="sira">SIRA Certificate Renewal</option>
+            {complaintCategories.map((m) => (
+              <option key={m.id} value={m.name}>{m.name}</option>
+            ))}
           </select>
 
           <select
@@ -229,17 +258,17 @@ export const ComplaintsPage: React.FC = () => {
               filteredTickets.map((tck) => (
                 <tr key={tck.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                   <td style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--accent)' }}>
-                    {tck.ticketNo}
+                    {dash(tck.ticketNo)}
                   </td>
                   <td style={{ padding: '12px 16px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <Car size={15} color="var(--text-secondary)" />
-                      <span style={{ fontWeight: 600 }}>{tck.vehicleReg}</span>
+                      <span style={{ fontWeight: 600 }}>{dash(tck.vehicleReg)}</span>
                     </div>
                   </td>
                   <td style={{ padding: '12px 16px' }}>
-                    <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{tck.title}</div>
-                    <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>{tck.category} • {tck.createdAt}</div>
+                    <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{dash(tck.title)}</div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>{dash(tck.category)} • {dash(tck.createdAt)}</div>
                   </td>
                   <td style={{ padding: '12px 16px' }}>
                     <span
@@ -252,7 +281,7 @@ export const ComplaintsPage: React.FC = () => {
                         color: tck.priority === 'Critical' ? '#DC2626' : tck.priority === 'High' ? 'var(--attention)' : 'var(--text-secondary)',
                       }}
                     >
-                      {tck.priority}
+                      {dash(tck.priority)}
                     </span>
                   </td>
                   <td style={{ padding: '12px 16px' }}>
@@ -266,17 +295,17 @@ export const ComplaintsPage: React.FC = () => {
                         color: tck.status === 'Resolved' ? 'var(--good)' : tck.status === 'In Progress' ? 'var(--attention)' : '#DC2626',
                       }}
                     >
-                      {tck.status}
+                      {dash(tck.status)}
                     </span>
                   </td>
                   <td style={{ padding: '12px 16px', color: 'var(--text-secondary)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <User size={14} color="var(--text-tertiary)" />
-                      <span>{tck.technicianAssigned}</span>
+                      <span>{dash(tck.technicianAssigned)}</span>
                     </div>
                   </td>
                   <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.82rem', maxWidth: '240px' }}>
-                    {tck.resolutionNotes || 'Awaiting field inspection'}
+                    {dash(tck.resolutionNotes)}
                   </td>
                 </tr>
               ))
@@ -355,13 +384,14 @@ export const ComplaintsPage: React.FC = () => {
                     value={newTicket.category}
                     onChange={(e) => setNewTicket({ ...newTicket, category: e.target.value })}
                     style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', fontSize: '0.9rem' }}
+                    required
                   >
-                    <option value="GPS Tracker Offline">GPS Tracker Offline</option>
-                    <option value="Relay / Immobilizer Issue">Relay / Immobilizer Issue</option>
-                    <option value="Fuel Sensor Calibration">Fuel Sensor Calibration</option>
-                    <option value="Temperature Probe Error">Temperature Probe Error</option>
-                    <option value="SIRA Certificate Inspection">SIRA Certificate Inspection</option>
-                    <option value="SIM Card Deactivation">SIM Card Deactivation</option>
+                    <option value="">Select category...</option>
+                    {complaintCategories.length === 0 ? (
+                      <option value="" disabled>No issue categories configured</option>
+                    ) : (
+                      complaintCategories.map((m) => <option key={m.id} value={m.name}>{m.name}</option>)
+                    )}
                   </select>
                 </div>
 
@@ -371,7 +401,7 @@ export const ComplaintsPage: React.FC = () => {
                   </label>
                   <select
                     value={newTicket.priority}
-                    onChange={(e) => setNewTicket({ ...newTicket, priority: e.target.value as any })}
+                    onChange={(e) => setNewTicket({ ...newTicket, priority: e.target.value })}
                     style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', fontSize: '0.9rem' }}
                   >
                     <option value="Low">Low (General)</option>

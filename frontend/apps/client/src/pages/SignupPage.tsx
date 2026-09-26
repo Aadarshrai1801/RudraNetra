@@ -8,6 +8,7 @@ interface CompanyOption {
   id: number;
   name: string;
   code: string;
+  devices?: number | null;
 }
 
 export const SignupPage: React.FC = () => {
@@ -16,11 +17,10 @@ export const SignupPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [companyId, setCompanyId] = useState<number>(2); // Default to EKSC or 1
-  const [companies, setCompanies] = useState<CompanyOption[]>([
-    { id: 1, name: 'Allied Transport UAE (312 Vehicles)', code: 'COMP_1' },
-    { id: 2, name: 'EKSC Logistics Dubai (5 Vehicles)', code: 'EKSC' },
-  ]);
+  const [companyId, setCompanyId] = useState<number | ''>('');
+  const [companies, setCompanies] = useState<CompanyOption[]>([]);
+  const [loadingCompanies, setLoadingCompanies] = useState(true);
+  const [companiesError, setCompaniesError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,20 +29,30 @@ export const SignupPage: React.FC = () => {
   const clearVehicles = useVehicleStore((state) => state.clearVehicles);
 
   useEffect(() => {
-    // Fetch available companies from backend
-    const host =
-      window.location.port !== '8080' && window.location.hostname === 'localhost'
-        ? 'http://localhost:8080'
-        : '';
-    fetch(`${host}/api/v1/auth/companies`)
-      .then((res) => res.json())
-      .then((json) => {
-        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
-          setCompanies(json.data);
-          setCompanyId(json.data[0].id);
+    // Organizations come only from the backend; no fallback list is used.
+    const loadCompanies = async () => {
+      setLoadingCompanies(true);
+      setCompaniesError(null);
+      try {
+        const host =
+          window.location.port !== '8080' && window.location.hostname === 'localhost'
+            ? 'http://localhost:8080'
+            : '';
+        const res = await fetch(`${host}/api/v1/auth/companies`);
+        const json = await res.json().catch(() => null);
+        if (!res.ok || !json?.success || !Array.isArray(json.data)) {
+          throw new Error(json?.error || 'Could not load the organization list.');
         }
-      })
-      .catch((err) => console.warn('Could not load company list', err));
+        setCompanies(json.data);
+      } catch (err: any) {
+        setCompanies([]);
+        setCompaniesError(err?.message || 'Could not load the organization list.');
+      } finally {
+        setLoadingCompanies(false);
+      }
+    };
+
+    loadCompanies();
   }, []);
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -56,6 +66,11 @@ export const SignupPage: React.FC = () => {
 
     if (password.length < 6) {
       setError('Password must be at least 6 characters.');
+      return;
+    }
+
+    if (!companyId) {
+      setError('Please select an organization.');
       return;
     }
 
@@ -219,7 +234,7 @@ export const SignupPage: React.FC = () => {
               />
               <select
                 value={companyId}
-                onChange={(e) => setCompanyId(Number(e.target.value))}
+                onChange={(e) => setCompanyId(e.target.value ? Number(e.target.value) : '')}
                 required
                 style={{
                   width: '100%',
@@ -233,16 +248,29 @@ export const SignupPage: React.FC = () => {
                   cursor: 'pointer',
                 }}
               >
+                <option value="" disabled style={{ background: '#0f172a', color: '#fff' }}>
+                  {loadingCompanies ? 'Loading organizations…' : 'Select organization…'}
+                </option>
                 {companies.map((c) => (
                   <option key={c.id} value={c.id} style={{ background: '#0f172a', color: '#fff' }}>
-                    {c.name} {c.id === 1 ? '(312 Vehicles)' : c.id === 2 ? '(5 Vehicles)' : ''}
+                    {c.name}{typeof c.devices === 'number' ? ` (${c.devices} Vehicles)` : ''}
                   </option>
                 ))}
               </select>
             </div>
-            <span style={{ fontSize: '0.725rem', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
-              You will only view vehicles assigned to this organization.
-            </span>
+            {companiesError ? (
+              <span style={{ fontSize: '0.725rem', color: '#f87171', marginTop: '4px', display: 'block' }}>
+                {companiesError}
+              </span>
+            ) : !loadingCompanies && companies.length === 0 ? (
+              <span style={{ fontSize: '0.725rem', color: '#f87171', marginTop: '4px', display: 'block' }}>
+                No organizations are available for signup.
+              </span>
+            ) : (
+              <span style={{ fontSize: '0.725rem', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
+                You will only view vehicles assigned to this organization.
+              </span>
+            )}
           </div>
 
           {/* Full Name */}

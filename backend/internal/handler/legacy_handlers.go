@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -18,75 +17,79 @@ import (
 // ─────────────────────────────────────────────────────────────
 
 type ReminderResp struct {
-	ID               int64   `json:"id"`
-	VehicleID        int64   `json:"vehicleId"`
-	VehicleReg       string  `json:"vehicleReg"`
-	ReminderType     string  `json:"reminderType"` // Insurance, PUC, Fitness, Road Tax, Service/Oil, Permit, Driver License
-	DueDate          string  `json:"dueDate"`
-	DueKM            int64   `json:"dueKm"`
-	AlertBeforeDays  int     `json:"alertBeforeDays"`
-	AlertBeforeKM    int     `json:"alertBeforeKm"`
-	Notes            string  `json:"notes"`
-	IsAcknowledged   bool    `json:"isAcknowledged"`
-	Status           string  `json:"status"` // "Valid", "Due Soon", "Expired"
-	DaysRemaining    int     `json:"daysRemaining"`
+	ID              int64  `json:"id"`
+	VehicleID       int64  `json:"vehicleId"`
+	VehicleReg      string `json:"vehicleReg"`
+	ReminderType    string `json:"reminderType"`
+	DueDate         string `json:"dueDate"`
+	DueKM           int64  `json:"dueKm"`
+	AlertBeforeDays int    `json:"alertBeforeDays"`
+	AlertBeforeKM   int    `json:"alertBeforeKm"`
+	Notes           string `json:"notes"`
+	IsAcknowledged  bool   `json:"isAcknowledged"`
+	Status          string `json:"status"`
+	DaysRemaining   int    `json:"daysRemaining"`
 }
 
 func listRemindersHandler(c *gin.Context) {
-	companyID := getEffectiveCompanyID(c)
+	if dbUnavailable(c) {
+		return
+	}
+	companyID, ok := companyScope(c)
+	if !ok {
+		return
+	}
 
-	if deps != nil && deps.Pool != nil {
-		query := `
-			SELECT r.id, r.vehicle_id, COALESCE(v.reg_number, 'Vehicle #' || r.vehicle_id) as reg,
-			       r.reminder_type, r.due_date, r.due_km, r.alert_before_days, r.alert_before_km,
-			       COALESCE(r.notes, ''), r.is_acknowledged
-			FROM reminders r
-			LEFT JOIN vehicles v ON r.vehicle_id = v.id
-			WHERE r.company_id = $1
-			ORDER BY r.due_date ASC
-		`
-		rows, err := deps.Pool.Query(c.Request.Context(), query, companyID)
-		if err == nil {
-			defer rows.Close()
-			var list []ReminderResp
-			now := time.Now()
-			for rows.Next() {
-				var r ReminderResp
-				var dueDate time.Time
-				if scanErr := rows.Scan(&r.ID, &r.VehicleID, &r.VehicleReg, &r.ReminderType, &dueDate, &r.DueKM, &r.AlertBeforeDays, &r.AlertBeforeKM, &r.Notes, &r.IsAcknowledged); scanErr == nil {
-					r.DueDate = dueDate.Format("2006-01-02")
-					days := int(dueDate.Sub(now).Hours() / 24)
-					r.DaysRemaining = days
-					if days < 0 {
-						r.Status = "Expired"
-					} else if days <= r.AlertBeforeDays {
-						r.Status = "Due Soon"
-					} else {
-						r.Status = "Valid"
-					}
-					list = append(list, r)
-				}
-			}
-			if len(list) > 0 {
-				c.JSON(http.StatusOK, gin.H{"success": true, "data": list})
-				return
-			}
+	rows, err := deps.Pool.Query(c.Request.Context(), `
+		SELECT r.id, COALESCE(r.vehicle_id, 0), COALESCE(v.reg_number, ''),
+		       r.reminder_type, r.due_date, COALESCE(r.due_km, 0),
+		       COALESCE(r.alert_before_days, 0), COALESCE(r.alert_before_km, 0),
+		       COALESCE(r.notes, ''), COALESCE(r.is_acknowledged, FALSE)
+		FROM reminders r
+		LEFT JOIN vehicles v ON r.vehicle_id = v.id
+		WHERE r.company_id = $1
+		ORDER BY r.due_date ASC
+	`, companyID)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	defer rows.Close()
+
+	list := make([]ReminderResp, 0)
+	now := time.Now()
+	for rows.Next() {
+		var r ReminderResp
+		var dueDate time.Time
+		if err := rows.Scan(&r.ID, &r.VehicleID, &r.VehicleReg, &r.ReminderType, &dueDate,
+			&r.DueKM, &r.AlertBeforeDays, &r.AlertBeforeKM, &r.Notes, &r.IsAcknowledged); err != nil {
+			continue
 		}
+		r.DueDate = dueDate.Format("2006-01-02")
+		r.DaysRemaining = int(dueDate.Sub(now).Hours() / 24)
+		switch {
+		case r.IsAcknowledged:
+			r.Status = "Acknowledged"
+		case r.DaysRemaining < 0:
+			r.Status = "Expired"
+		case r.AlertBeforeDays > 0 && r.DaysRemaining <= r.AlertBeforeDays:
+			r.Status = "Due Soon"
+		default:
+			r.Status = "Valid"
+		}
+		list = append(list, r)
 	}
-
-	// Fallback enterprise seed data
-	fallback := []ReminderResp{
-		{ID: 1, VehicleID: 101, VehicleReg: "DXB-K-49201", ReminderType: "Insurance Policy Renewal", DueDate: time.Now().AddDate(0, 0, 8).Format("2006-01-02"), DueKM: 0, AlertBeforeDays: 15, Notes: "Oman Insurance Comprehensive", IsAcknowledged: false, Status: "Due Soon", DaysRemaining: 8},
-		{ID: 2, VehicleID: 102, VehicleReg: "DXB-M-11029", ReminderType: "RTA Vehicle Fitness Inspection", DueDate: time.Now().AddDate(0, 0, -2).Format("2006-01-02"), DueKM: 0, AlertBeforeDays: 7, Notes: "Tasjeel Al Barsha Test Center", IsAcknowledged: false, Status: "Expired", DaysRemaining: -2},
-		{ID: 3, VehicleID: 103, VehicleReg: "AUH-5-88392", ReminderType: "Engine Oil & Filter Service", DueDate: time.Now().AddDate(0, 1, 10).Format("2006-01-02"), DueKM: 85000, AlertBeforeDays: 10, AlertBeforeKM: 1000, Notes: "Mobil 1 Delvac 15W-40 Synthetic", IsAcknowledged: true, Status: "Valid", DaysRemaining: 40},
-		{ID: 4, VehicleID: 104, VehicleReg: "SHJ-2-34901", ReminderType: "PUC Emission Certificate", DueDate: time.Now().AddDate(0, 0, 5).Format("2006-01-02"), DueKM: 0, AlertBeforeDays: 14, Notes: "Diesel Euro-5 Compliance", IsAcknowledged: false, Status: "Due Soon", DaysRemaining: 5},
-		{ID: 5, VehicleID: 105, VehicleReg: "DXB-A-90124", ReminderType: "Civil Defence Hazmat Permit", DueDate: time.Now().AddDate(0, 3, 0).Format("2006-01-02"), DueKM: 0, AlertBeforeDays: 30, Notes: "Chemical Tanker Dangerous Goods Endorsement", IsAcknowledged: false, Status: "Valid", DaysRemaining: 90},
-	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": fallback})
+	c.JSON(http.StatusOK, gin.H{"success": true, "company_id": companyID, "data": list})
 }
 
 func createReminderHandler(c *gin.Context) {
-	companyID := getEffectiveCompanyID(c)
+	if dbUnavailable(c) {
+		return
+	}
+	companyID, ok := companyScope(c)
+	if !ok {
+		return
+	}
 	var req struct {
 		VehicleID       int64  `json:"vehicleId"`
 		ReminderType    string `json:"reminderType"`
@@ -97,56 +100,97 @@ func createReminderHandler(c *gin.Context) {
 		Notes           string `json:"notes"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+		badRequest(c, err.Error())
 		return
 	}
-	if req.AlertBeforeDays == 0 {
-		req.AlertBeforeDays = 15
+	if strings.TrimSpace(req.ReminderType) == "" || req.DueDate == "" {
+		badRequest(c, "reminderType and dueDate are required")
+		return
 	}
-	dueTime, _ := time.Parse("2006-01-02", req.DueDate)
-	if dueTime.IsZero() {
-		dueTime = time.Now().AddDate(0, 1, 0)
+	dueTime, err := time.Parse("2006-01-02", req.DueDate)
+	if err != nil {
+		badRequest(c, "dueDate must be formatted YYYY-MM-DD")
+		return
 	}
 
-	if deps != nil && deps.Pool != nil {
-		var newID int64
-		err := deps.Pool.QueryRow(c.Request.Context(), `
-			INSERT INTO reminders (company_id, vehicle_id, reminder_type, due_date, due_km, alert_before_days, alert_before_km, notes, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
-			RETURNING id
-		`, companyID, req.VehicleID, req.ReminderType, dueTime, req.DueKM, req.AlertBeforeDays, req.AlertBeforeKM, req.Notes).Scan(&newID)
-		if err == nil {
-			c.JSON(http.StatusCreated, gin.H{"success": true, "id": newID, "message": "Compliance reminder scheduled successfully"})
-			return
-		}
+	var newID int64
+	err = deps.Pool.QueryRow(c.Request.Context(), `
+		INSERT INTO reminders (company_id, vehicle_id, reminder_type, due_date, due_km, alert_before_days, alert_before_km, notes, created_at, updated_at)
+		VALUES ($1, NULLIF($2,0), $3, $4, $5, NULLIF($6,0), $7, NULLIF($8,''), NOW(), NOW())
+		RETURNING id
+	`, companyID, req.VehicleID, req.ReminderType, dueTime, req.DueKM, req.AlertBeforeDays, req.AlertBeforeKM, req.Notes).Scan(&newID)
+	if err != nil {
+		serverError(c, err)
+		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"success": true, "id": time.Now().Unix(), "message": "Compliance reminder scheduled successfully"})
+	c.JSON(http.StatusCreated, gin.H{"success": true, "id": newID, "message": "Compliance reminder scheduled successfully"})
 }
 
 func updateReminderHandler(c *gin.Context) {
-	idStr := c.Param("id")
-	id, _ := strconv.ParseInt(idStr, 10, 64)
-	var req struct {
-		IsAcknowledged bool   `json:"isAcknowledged"`
-		DueDate        string `json:"dueDate"`
-		Notes          string `json:"notes"`
+	if dbUnavailable(c) {
+		return
 	}
-	_ = c.ShouldBindJSON(&req)
-
-	if deps != nil && deps.Pool != nil {
-		_, _ = deps.Pool.Exec(c.Request.Context(), `
-			UPDATE reminders SET is_acknowledged = $1, notes = COALESCE(NULLIF($2, ''), notes), updated_at = NOW()
-			WHERE id = $3
-		`, req.IsAcknowledged, req.Notes, id)
+	companyID, ok := companyScope(c)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		badRequest(c, "invalid reminder id")
+		return
+	}
+	var req struct {
+		IsAcknowledged  *bool  `json:"isAcknowledged"`
+		DueDate         string `json:"dueDate"`
+		Notes           string `json:"notes"`
+		AlertBeforeDays int    `json:"alertBeforeDays"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err.Error())
+		return
+	}
+	var due *time.Time
+	if req.DueDate != "" {
+		if t, err := time.Parse("2006-01-02", req.DueDate); err == nil {
+			due = &t
+		}
+	}
+	tag, err := deps.Pool.Exec(c.Request.Context(), `
+		UPDATE reminders SET
+			is_acknowledged = COALESCE($1, is_acknowledged),
+			due_date = COALESCE($2, due_date),
+			notes = COALESCE(NULLIF($3,''), notes),
+			alert_before_days = CASE WHEN $4 > 0 THEN $4 ELSE alert_before_days END,
+			updated_at = NOW()
+		WHERE id = $5 AND company_id = $6
+	`, req.IsAcknowledged, due, req.Notes, req.AlertBeforeDays, id, companyID)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "reminder not found for this organization"})
+		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Reminder updated"})
 }
 
 func deleteReminderHandler(c *gin.Context) {
-	idStr := c.Param("id")
-	id, _ := strconv.ParseInt(idStr, 10, 64)
-	if deps != nil && deps.Pool != nil {
-		_, _ = deps.Pool.Exec(c.Request.Context(), "DELETE FROM reminders WHERE id = $1", id)
+	if dbUnavailable(c) {
+		return
+	}
+	companyID, ok := companyScope(c)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		badRequest(c, "invalid reminder id")
+		return
+	}
+	if _, err := deps.Pool.Exec(c.Request.Context(), "DELETE FROM reminders WHERE id = $1 AND company_id = $2", id, companyID); err != nil {
+		serverError(c, err)
+		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Reminder removed"})
 }
@@ -159,70 +203,103 @@ type CommandRecord struct {
 	ID          int64  `json:"id"`
 	DeviceID    int64  `json:"deviceId"`
 	VehicleReg  string `json:"vehicleReg"`
-	CommandType string `json:"commandType"` // IEngineOff, IEngineOn, IAcOff, IAcOn, IDoorOff, IDoorOn, SirenHooter, SetSpeedLimit, Reboot
+	CommandType string `json:"commandType"`
 	CommandStr  string `json:"commandStr"`
 	SentBy      string `json:"sentBy"`
-	Status      string `json:"status"` // Sent, Delivered, Acknowledged, Failed
+	Status      string `json:"status"`
 	SentAt      string `json:"sentAt"`
 	AckAt       string `json:"ackAt,omitempty"`
 }
 
-func sendDeviceCommandHandler(c *gin.Context) {
-	deviceIDStr := c.Param("id")
-	deviceID, _ := strconv.ParseInt(deviceIDStr, 10, 64)
-	companyID := getEffectiveCompanyID(c)
-
-	var req struct {
-		CommandType string `json:"commandType"` // "IEngineOff", "IEngineOn", "IAcOff", "IDoorOff", "SirenHooter", "Reboot"
-		Pin         string `json:"pin"`
-		Notes       string `json:"notes"`
+// commandPayload maps a logical command to its Teltonika/Concox protocol string.
+// This is a protocol constant, not stored data.
+func commandPayload(commandType string) string {
+	switch commandType {
+	case "IEngineOff":
+		return "setdigout 1"
+	case "IEngineOn":
+		return "setdigout 0"
+	case "IAcOff":
+		return "setdigout 01"
+	case "IDoorOff":
+		return "setdigout 001"
+	case "SirenHooter":
+		return "setdigout 0001 5"
+	case "Reboot":
+		return "cpureset"
+	default:
+		return commandType
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+}
+
+func sendDeviceCommandHandler(c *gin.Context) {
+	if dbUnavailable(c) {
+		return
+	}
+	companyID, ok := companyScope(c)
+	if !ok {
+		return
+	}
+	deviceID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		badRequest(c, "invalid device id")
 		return
 	}
 
-	// Legacy pin check (default PIN 1234 if not specified)
+	var req struct {
+		CommandType string `json:"commandType"`
+		Pin         string `json:"pin"`
+		Notes       string `json:"notes"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.CommandType) == "" {
+		badRequest(c, "commandType is required")
+		return
+	}
+
+	// The immobilizer PIN is tenant configuration stored in the database.
 	if req.CommandType == "IEngineOff" || req.CommandType == "IDoorOff" {
-		if req.Pin != "1234" && req.Pin != "9988" && req.Pin != "" {
+		var pin string
+		if err := deps.Pool.QueryRow(c.Request.Context(),
+			"SELECT COALESCE(immobilizer_pin, '') FROM company_settings WHERE company_id = $1",
+			companyID).Scan(&pin); err != nil || pin == "" || req.Pin != pin {
 			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Invalid authorization security PIN for immobilizer command"})
 			return
 		}
 	}
 
-	// Resolve hardware protocol command string (Teltonika / Concox)
-	var rawCmd string
-	switch req.CommandType {
-	case "IEngineOff":
-		rawCmd = "setdigout 1"
-	case "IEngineOn":
-		rawCmd = "setdigout 0"
-	case "IAcOff":
-		rawCmd = "setdigout 01"
-	case "IDoorOff":
-		rawCmd = "setdigout 001"
-	case "SirenHooter":
-		rawCmd = "setdigout 0001 5" // activate siren relay for 5 seconds
-	case "Reboot":
-		rawCmd = "cpureset"
-	default:
-		rawCmd = req.CommandType
+	var exists bool
+	if err := deps.Pool.QueryRow(c.Request.Context(),
+		"SELECT EXISTS(SELECT 1 FROM devices WHERE id = $1 AND company_id = $2)",
+		deviceID, companyID).Scan(&exists); err != nil {
+		serverError(c, err)
+		return
+	}
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "device not found for this organization"})
+		return
 	}
 
-	userEmail := "operator@fleet.com"
-	if emailVal, exists := c.Get("user_email"); exists {
-		if s, ok := emailVal.(string); ok && s != "" {
-			userEmail = s
+	sentBy, _ := c.Get("username")
+	sentByStr, _ := sentBy.(string)
+	if sentByStr == "" {
+		if emailVal, exists := c.Get("user_email"); exists {
+			if s, ok := emailVal.(string); ok {
+				sentByStr = s
+			}
 		}
 	}
 
-	var newID int64 = time.Now().Unix()
-	if deps != nil && deps.Pool != nil {
-		_ = deps.Pool.QueryRow(c.Request.Context(), `
-			INSERT INTO device_commands (company_id, device_id, command_type, command_payload, sent_by, status, sent_at)
-			VALUES ($1, $2, $3, $4, $5, 'Delivered', NOW())
-			RETURNING id
-		`, companyID, deviceID, req.CommandType, rawCmd, userEmail).Scan(&newID)
+	rawCmd := commandPayload(req.CommandType)
+	var newID int64
+	err = deps.Pool.QueryRow(c.Request.Context(), `
+		INSERT INTO device_commands (company_id, device_id, vehicle_id, command_type, command_payload, sent_by, status, sent_at)
+		VALUES ($1, $2, (SELECT id FROM vehicles WHERE device_id = $2 AND company_id = $1 LIMIT 1),
+		        $3, $4, NULLIF($5,''), 'Sent', NOW())
+		RETURNING id
+	`, companyID, deviceID, req.CommandType, rawCmd, sentByStr).Scan(&newID)
+	if err != nil {
+		serverError(c, err)
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -230,62 +307,91 @@ func sendDeviceCommandHandler(c *gin.Context) {
 		"commandId":   newID,
 		"commandType": req.CommandType,
 		"rawCommand":  rawCmd,
-		"status":      "Delivered",
-		"message":     fmt.Sprintf("Command '%s' successfully transmitted to hardware unit. Immobilizer relay activated.", req.CommandType),
+		"status":      "Sent",
+		"message":     fmt.Sprintf("Command '%s' queued for delivery to the hardware unit.", req.CommandType),
 	})
 }
 
 func listDeviceCommandsHandler(c *gin.Context) {
-	deviceIDStr := c.Param("id")
-	deviceID, _ := strconv.ParseInt(deviceIDStr, 10, 64)
+	if dbUnavailable(c) {
+		return
+	}
+	companyID, ok := companyScope(c)
+	if !ok {
+		return
+	}
+	deviceID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		badRequest(c, "invalid device id")
+		return
+	}
 
-	list := []CommandRecord{
-		{ID: 1, DeviceID: deviceID, VehicleReg: "DXB-K-49201", CommandType: "IEngineOff", CommandStr: "setdigout 1", SentBy: "admin@rudranetrais.com", Status: "Acknowledged", SentAt: time.Now().Add(-2 * time.Hour).Format("2006-01-02 15:04:05"), AckAt: time.Now().Add(-2*time.Hour + 3*time.Second).Format("2006-01-02 15:04:05")},
-		{ID: 2, DeviceID: deviceID, VehicleReg: "DXB-K-49201", CommandType: "IEngineOn", CommandStr: "setdigout 0", SentBy: "admin@rudranetrais.com", Status: "Acknowledged", SentAt: time.Now().Add(-1 * time.Hour).Format("2006-01-02 15:04:05"), AckAt: time.Now().Add(-1*time.Hour + 2*time.Second).Format("2006-01-02 15:04:05")},
+	rows, err := deps.Pool.Query(c.Request.Context(), `
+		SELECT c.id, c.device_id, COALESCE(v.reg_number, d.imei, ''), c.command_type,
+		       COALESCE(c.command_payload, ''), COALESCE(c.sent_by, ''), c.status, c.sent_at
+		FROM device_commands c
+		LEFT JOIN devices d ON c.device_id = d.id
+		LEFT JOIN vehicles v ON v.device_id = d.id
+		WHERE c.company_id = $1 AND c.device_id = $2
+		ORDER BY c.sent_at DESC
+		LIMIT 100
+	`, companyID, deviceID)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	defer rows.Close()
+
+	list := make([]CommandRecord, 0)
+	for rows.Next() {
+		var rec CommandRecord
+		var sentAt time.Time
+		if err := rows.Scan(&rec.ID, &rec.DeviceID, &rec.VehicleReg, &rec.CommandType,
+			&rec.CommandStr, &rec.SentBy, &rec.Status, &sentAt); err != nil {
+			continue
+		}
+		rec.SentAt = sentAt.Format("2006-01-02 15:04:05")
+		list = append(list, rec)
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": list})
 }
 
 func listAllCommandLogsHandler(c *gin.Context) {
-	companyID := getEffectiveCompanyID(c)
-	if deps != nil && deps.Pool != nil {
-		query := `
-			SELECT c.id, c.device_id, COALESCE(v.reg_number, d.imei) as reg,
-			       c.command_type, COALESCE(c.command_payload, ''), COALESCE(c.sent_by, 'System'),
-			       c.status, c.sent_at
-			FROM device_commands c
-			LEFT JOIN devices d ON c.device_id = d.id
-			LEFT JOIN vehicles v ON v.device_id = d.id
-			WHERE c.company_id = $1
-			ORDER BY c.sent_at DESC
-			LIMIT 100
-		`
-		rows, err := deps.Pool.Query(c.Request.Context(), query, companyID)
-		if err == nil {
-			defer rows.Close()
-			var list []CommandRecord
-			for rows.Next() {
-				var rec CommandRecord
-				var sentAt time.Time
-				if scanErr := rows.Scan(&rec.ID, &rec.DeviceID, &rec.VehicleReg, &rec.CommandType, &rec.CommandStr, &rec.SentBy, &rec.Status, &sentAt); scanErr == nil {
-					rec.SentAt = sentAt.Format("2006-01-02 15:04:05")
-					list = append(list, rec)
-				}
-			}
-			if len(list) > 0 {
-				c.JSON(http.StatusOK, gin.H{"success": true, "data": list})
-				return
-			}
-		}
+	if dbUnavailable(c) {
+		return
 	}
+	companyID, ok := companyScope(c)
+	if !ok {
+		return
+	}
+	rows, err := deps.Pool.Query(c.Request.Context(), `
+		SELECT c.id, c.device_id, COALESCE(v.reg_number, d.imei, ''), c.command_type,
+		       COALESCE(c.command_payload, ''), COALESCE(c.sent_by, ''), c.status, c.sent_at
+		FROM device_commands c
+		LEFT JOIN devices d ON c.device_id = d.id
+		LEFT JOIN vehicles v ON v.device_id = d.id
+		WHERE c.company_id = $1
+		ORDER BY c.sent_at DESC
+		LIMIT 200
+	`, companyID)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	defer rows.Close()
 
-	fallback := []CommandRecord{
-		{ID: 101, DeviceID: 1, VehicleReg: "DXB-K-49201", CommandType: "IEngineOff", CommandStr: "setdigout 1", SentBy: "control@rudranetrais.com", Status: "Acknowledged", SentAt: time.Now().Add(-30 * time.Minute).Format("2006-01-02 15:04:05")},
-		{ID: 102, DeviceID: 2, VehicleReg: "DXB-M-11029", CommandType: "SirenHooter", CommandStr: "setdigout 0001 5", SentBy: "security@rudranetrais.com", Status: "Acknowledged", SentAt: time.Now().Add(-3 * time.Hour).Format("2006-01-02 15:04:05")},
-		{ID: 103, DeviceID: 3, VehicleReg: "AUH-5-88392", CommandType: "IAcOff", CommandStr: "setdigout 01", SentBy: "dispatcher@rudranetrais.com", Status: "Acknowledged", SentAt: time.Now().Add(-12 * time.Hour).Format("2006-01-02 15:04:05")},
-		{ID: 104, DeviceID: 4, VehicleReg: "SHJ-2-34901", CommandType: "IEngineOn", CommandStr: "setdigout 0", SentBy: "admin@rudranetrais.com", Status: "Acknowledged", SentAt: time.Now().Add(-24 * time.Hour).Format("2006-01-02 15:04:05")},
+	list := make([]CommandRecord, 0)
+	for rows.Next() {
+		var rec CommandRecord
+		var sentAt time.Time
+		if err := rows.Scan(&rec.ID, &rec.DeviceID, &rec.VehicleReg, &rec.CommandType,
+			&rec.CommandStr, &rec.SentBy, &rec.Status, &sentAt); err != nil {
+			continue
+		}
+		rec.SentAt = sentAt.Format("2006-01-02 15:04:05")
+		list = append(list, rec)
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": fallback})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": list})
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -300,67 +406,91 @@ type TempUserResp struct {
 	VehicleIDs  []string `json:"vehicleIds"`
 	ExpiresAt   string   `json:"expiresAt"`
 	CreatedAt   string   `json:"createdAt"`
-	Status      string   `json:"status"` // Active, Expired
+	Status      string   `json:"status"`
 }
 
 func listTempUsersHandler(c *gin.Context) {
-	companyID := getEffectiveCompanyID(c)
-	if deps != nil && deps.Pool != nil {
-		query := `
-			SELECT id, guest_name, access_token, COALESCE(vehicle_ids, '[]'), expires_at, created_at
-			FROM temp_users
-			WHERE company_id = $1
-			ORDER BY created_at DESC
-		`
-		rows, err := deps.Pool.Query(c.Request.Context(), query, companyID)
-		if err == nil {
-			defer rows.Close()
-			var list []TempUserResp
-			now := time.Now()
-			for rows.Next() {
-				var u TempUserResp
-				var exp, cat time.Time
-				var vehIDs string
-				if scanErr := rows.Scan(&u.ID, &u.GuestName, &u.AccessToken, &vehIDs, &exp, &cat); scanErr == nil {
-					u.ExpiresAt = exp.Format("2006-01-02 15:04")
-					u.CreatedAt = cat.Format("2006-01-02 15:04")
-					u.ShareLink = fmt.Sprintf("/live?guest_token=%s", u.AccessToken)
-					u.VehicleIDs = strings.Split(strings.Trim(vehIDs, "[]\" "), ",")
-					if now.After(exp) {
-						u.Status = "Expired"
-					} else {
-						u.Status = "Active"
-					}
-					list = append(list, u)
-				}
-			}
-			if len(list) > 0 {
-				c.JSON(http.StatusOK, gin.H{"success": true, "data": list})
-				return
-			}
+	if dbUnavailable(c) {
+		return
+	}
+	companyID, ok := companyScope(c)
+	if !ok {
+		return
+	}
+	rows, err := deps.Pool.Query(c.Request.Context(), `
+		SELECT id, guest_name, access_token, COALESCE(vehicle_ids, '[]'), expires_at, created_at
+		FROM temp_users
+		WHERE company_id = $1
+		ORDER BY created_at DESC
+	`, companyID)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	defer rows.Close()
+
+	list := make([]TempUserResp, 0)
+	now := time.Now()
+	for rows.Next() {
+		var u TempUserResp
+		var exp, cat time.Time
+		var vehIDs string
+		if err := rows.Scan(&u.ID, &u.GuestName, &u.AccessToken, &vehIDs, &exp, &cat); err != nil {
+			continue
+		}
+		u.ExpiresAt = exp.Format("2006-01-02 15:04")
+		u.CreatedAt = cat.Format("2006-01-02 15:04")
+		u.ShareLink = fmt.Sprintf("/live?guest_token=%s", u.AccessToken)
+		u.VehicleIDs = parseVehicleIDs(vehIDs)
+		if now.After(exp) {
+			u.Status = "Expired"
+		} else {
+			u.Status = "Active"
+		}
+		list = append(list, u)
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "company_id": companyID, "data": list})
+}
+
+// parseVehicleIDs reads the JSON array stored in temp_users.vehicle_ids.
+func parseVehicleIDs(raw string) []string {
+	trimmed := strings.TrimSpace(raw)
+	trimmed = strings.TrimPrefix(trimmed, "[")
+	trimmed = strings.TrimSuffix(trimmed, "]")
+	out := make([]string, 0)
+	if strings.TrimSpace(trimmed) == "" {
+		return out
+	}
+	for _, part := range strings.Split(trimmed, ",") {
+		v := strings.TrimSpace(part)
+		v = strings.Trim(v, "\"")
+		if v != "" {
+			out = append(out, v)
 		}
 	}
-
-	fallback := []TempUserResp{
-		{ID: 1, GuestName: "Client Auditor (Emirates Logistics)", AccessToken: "tok_991823abce", ShareLink: "/live?guest_token=tok_991823abce", VehicleIDs: []string{"DXB-K-49201", "DXB-M-11029"}, ExpiresAt: time.Now().Add(48 * time.Hour).Format("2006-01-02 15:04"), CreatedAt: time.Now().Add(-2 * time.Hour).Format("2006-01-02 15:04"), Status: "Active"},
-		{ID: 2, GuestName: "Cold Chain Inspector (Pharma Cargo)", AccessToken: "tok_334901fcca", ShareLink: "/live?guest_token=tok_334901fcca", VehicleIDs: []string{"AUH-5-88392"}, ExpiresAt: time.Now().Add(-5 * time.Hour).Format("2006-01-02 15:04"), CreatedAt: time.Now().Add(-29 * time.Hour).Format("2006-01-02 15:04"), Status: "Expired"},
-	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": fallback})
+	return out
 }
 
 func createTempUserHandler(c *gin.Context) {
-	companyID := getEffectiveCompanyID(c)
+	if dbUnavailable(c) {
+		return
+	}
+	companyID, ok := companyScope(c)
+	if !ok {
+		return
+	}
 	var req struct {
 		GuestName     string   `json:"guestName"`
 		DurationHours int      `json:"durationHours"`
 		VehicleIDs    []string `json:"vehicleIds"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.GuestName) == "" {
+		badRequest(c, "guestName is required")
 		return
 	}
 	if req.DurationHours <= 0 {
-		req.DurationHours = 24
+		badRequest(c, "durationHours must be a positive number of hours")
+		return
 	}
 
 	tokenBytes := make([]byte, 8)
@@ -368,32 +498,52 @@ func createTempUserHandler(c *gin.Context) {
 	token := "gst_" + hex.EncodeToString(tokenBytes)
 	expiresAt := time.Now().Add(time.Duration(req.DurationHours) * time.Hour)
 
-	var newID int64 = time.Now().Unix()
-	if deps != nil && deps.Pool != nil {
-		vehJSON := fmt.Sprintf("[%s]", strings.Join(req.VehicleIDs, ","))
-		_ = deps.Pool.QueryRow(c.Request.Context(), `
-			INSERT INTO temp_users (company_id, guest_name, access_token, vehicle_ids, expires_at, created_at)
-			VALUES ($1, $2, $3, $4, $5, NOW())
-			RETURNING id
-		`, companyID, req.GuestName, token, vehJSON, expiresAt).Scan(&newID)
+	vehJSON := "[]"
+	if len(req.VehicleIDs) > 0 {
+		quoted := make([]string, len(req.VehicleIDs))
+		for i, v := range req.VehicleIDs {
+			quoted[i] = "\"" + strings.ReplaceAll(v, "\"", "") + "\""
+		}
+		vehJSON = "[" + strings.Join(quoted, ",") + "]"
 	}
 
-	shareURL := fmt.Sprintf("/live?guest_token=%s", token)
+	var newID int64
+	err := deps.Pool.QueryRow(c.Request.Context(), `
+		INSERT INTO temp_users (company_id, guest_name, access_token, vehicle_ids, expires_at, created_at)
+		VALUES ($1, $2, $3, $4, $5, NOW())
+		RETURNING id
+	`, companyID, req.GuestName, token, vehJSON, expiresAt).Scan(&newID)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+
 	c.JSON(http.StatusCreated, gin.H{
 		"success":     true,
 		"id":          newID,
 		"accessToken": token,
-		"shareLink":   shareURL,
+		"shareLink":   fmt.Sprintf("/live?guest_token=%s", token),
 		"expiresAt":   expiresAt.Format("2006-01-02 15:04:05"),
 		"message":     "Temporary guest tracking link created successfully",
 	})
 }
 
 func deleteTempUserHandler(c *gin.Context) {
-	idStr := c.Param("id")
-	id, _ := strconv.ParseInt(idStr, 10, 64)
-	if deps != nil && deps.Pool != nil {
-		_, _ = deps.Pool.Exec(c.Request.Context(), "DELETE FROM temp_users WHERE id = $1", id)
+	if dbUnavailable(c) {
+		return
+	}
+	companyID, ok := companyScope(c)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		badRequest(c, "invalid guest id")
+		return
+	}
+	if _, err := deps.Pool.Exec(c.Request.Context(), "DELETE FROM temp_users WHERE id = $1 AND company_id = $2", id, companyID); err != nil {
+		serverError(c, err)
+		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Guest access revoked"})
 }
@@ -418,57 +568,60 @@ type FleetTripResp struct {
 	AdvanceAmount  float64 `json:"advanceAmount"`
 	ExpenseAmount  float64 `json:"expenseAmount"`
 	BalanceAmount  float64 `json:"balanceAmount"`
-	Status         string  `json:"status"` // Planned, In Transit, Delivered, Settled
+	Status         string  `json:"status"`
 }
 
 func listFleetTripsHandler(c *gin.Context) {
-	companyID := getEffectiveCompanyID(c)
-	if deps != nil && deps.Pool != nil {
-		query := `
-			SELECT ft.id, ft.trip_no, ft.vehicle_id, COALESCE(v.reg_number, 'Vehicle') as reg,
-			       COALESCE(ft.driver1_name, 'Driver 1'), COALESCE(ft.driver2_name, ''),
-			       COALESCE(ft.party_name, 'Party'), COALESCE(ft.source, 'Source'), COALESCE(ft.destination, 'Dest'),
-			       ft.planned_start, ft.planned_arrival, ft.freight_amount, ft.advance_amount,
-			       ft.expense_amount, ft.balance_amount, ft.status
-			FROM fleet_trips ft
-			LEFT JOIN vehicles v ON ft.vehicle_id = v.id
-			WHERE ft.company_id = $1
-			ORDER BY ft.id DESC
-		`
-		rows, err := deps.Pool.Query(c.Request.Context(), query, companyID)
-		if err == nil {
-			defer rows.Close()
-			var list []FleetTripResp
-			for rows.Next() {
-				var t FleetTripResp
-				var pStart, pArr *time.Time
-				if scanErr := rows.Scan(&t.ID, &t.TripNo, &t.VehicleID, &t.VehicleReg, &t.Driver1, &t.Driver2, &t.PartyName, &t.Source, &t.Destination, &pStart, &pArr, &t.FreightAmount, &t.AdvanceAmount, &t.ExpenseAmount, &t.BalanceAmount, &t.Status); scanErr == nil {
-					if pStart != nil {
-						t.PlannedStart = pStart.Format("2006-01-02 15:04")
-					}
-					if pArr != nil {
-						t.PlannedArrival = pArr.Format("2006-01-02 15:04")
-					}
-					list = append(list, t)
-				}
-			}
-			if len(list) > 0 {
-				c.JSON(http.StatusOK, gin.H{"success": true, "data": list})
-				return
-			}
-		}
+	if dbUnavailable(c) {
+		return
 	}
+	companyID, ok := companyScope(c)
+	if !ok {
+		return
+	}
+	rows, err := deps.Pool.Query(c.Request.Context(), `
+		SELECT ft.id, ft.trip_no, COALESCE(ft.vehicle_id, 0), COALESCE(v.reg_number, ''),
+		       COALESCE(ft.driver1_name, ''), COALESCE(ft.driver2_name, ''),
+		       COALESCE(ft.party_name, ''), COALESCE(ft.source, ''), COALESCE(ft.destination, ''),
+		       ft.planned_start, ft.planned_arrival,
+		       COALESCE(ft.freight_amount, 0)::float8, COALESCE(ft.advance_amount, 0)::float8,
+		       COALESCE(ft.expense_amount, 0)::float8, COALESCE(ft.balance_amount, 0)::float8,
+		       COALESCE(ft.status, '')
+		FROM fleet_trips ft
+		LEFT JOIN vehicles v ON ft.vehicle_id = v.id
+		WHERE ft.company_id = $1
+		ORDER BY ft.id DESC
+	`, companyID)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	defer rows.Close()
 
-	fallback := []FleetTripResp{
-		{ID: 1, TripNo: "TRP-2026-0089", VehicleID: 1, VehicleReg: "DXB-K-49201", Driver1: "Ahmed Al-Mansoor", Driver2: "Bilal Khan", PartyName: "Al Futtaim Logistics", Source: "Jebel Ali Port (DP World)", Destination: "Mussafah ICAD Industrial 1", PlannedStart: time.Now().Add(-6 * time.Hour).Format("2006-01-02 15:04"), PlannedArrival: time.Now().Add(4 * time.Hour).Format("2006-01-02 15:04"), FreightAmount: 3400.0, AdvanceAmount: 1000.0, ExpenseAmount: 420.0, BalanceAmount: 1980.0, Status: "In Transit"},
-		{ID: 2, TripNo: "TRP-2026-0090", VehicleID: 2, VehicleReg: "DXB-M-11029", Driver1: "Saeed Qureshi", Driver2: "", PartyName: "Carrefour Distribution Center", Source: "Dubai South DWC", Destination: "Sharjah Industrial Area 13", PlannedStart: time.Now().Add(-2 * time.Hour).Format("2006-01-02 15:04"), PlannedArrival: time.Now().Add(2 * time.Hour).Format("2006-01-02 15:04"), FreightAmount: 1850.0, AdvanceAmount: 500.0, ExpenseAmount: 150.0, BalanceAmount: 1200.0, Status: "In Transit"},
-		{ID: 3, TripNo: "TRP-2026-0088", VehicleID: 3, VehicleReg: "AUH-5-88392", Driver1: "Zubair Hashmi", Driver2: "Tariq Aziz", PartyName: "ADNOC Distribution", Source: "Ruwais Refinery Complex", Destination: "Al Ain Main Depot", PlannedStart: time.Now().Add(-30 * time.Hour).Format("2006-01-02 15:04"), PlannedArrival: time.Now().Add(-4 * time.Hour).Format("2006-01-02 15:04"), FreightAmount: 5200.0, AdvanceAmount: 2000.0, ExpenseAmount: 950.0, BalanceAmount: 2250.0, Status: "Delivered"},
+	list := make([]FleetTripResp, 0)
+	for rows.Next() {
+		var t FleetTripResp
+		var pStart, pArr *time.Time
+		if err := rows.Scan(&t.ID, &t.TripNo, &t.VehicleID, &t.VehicleReg, &t.Driver1, &t.Driver2,
+			&t.PartyName, &t.Source, &t.Destination, &pStart, &pArr,
+			&t.FreightAmount, &t.AdvanceAmount, &t.ExpenseAmount, &t.BalanceAmount, &t.Status); err != nil {
+			continue
+		}
+		t.PlannedStart = fmtTime(pStart, "2006-01-02 15:04")
+		t.PlannedArrival = fmtTime(pArr, "2006-01-02 15:04")
+		list = append(list, t)
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": fallback})
+	c.JSON(http.StatusOK, gin.H{"success": true, "company_id": companyID, "data": list})
 }
 
 func createFleetTripHandler(c *gin.Context) {
-	companyID := getEffectiveCompanyID(c)
+	if dbUnavailable(c) {
+		return
+	}
+	companyID, ok := companyScope(c)
+	if !ok {
+		return
+	}
 	var req struct {
 		VehicleID      int64   `json:"vehicleId"`
 		Driver1Name    string  `json:"driver1Name"`
@@ -482,48 +635,78 @@ func createFleetTripHandler(c *gin.Context) {
 		AdvanceAmount  float64 `json:"advanceAmount"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+		badRequest(c, err.Error())
 		return
 	}
 
-	tripNum := fmt.Sprintf("TRP-%d-%04d", time.Now().Year(), time.Now().Unix()%10000)
-	bal := req.FreightAmount - req.AdvanceAmount
+	tripNum := fmt.Sprintf("TRP-%d-%04d", time.Now().Year(), time.Now().UnixNano()%10000)
+	balance := req.FreightAmount - req.AdvanceAmount
 
-	var newID int64 = time.Now().Unix()
-	if deps != nil && deps.Pool != nil {
-		pStart, _ := time.Parse("2006-01-02 15:04", req.PlannedStart)
-		pArr, _ := time.Parse("2006-01-02 15:04", req.PlannedArrival)
-		_ = deps.Pool.QueryRow(c.Request.Context(), `
-			INSERT INTO fleet_trips (company_id, trip_no, vehicle_id, driver1_name, driver2_name, party_name, source, destination, planned_start, planned_arrival, freight_amount, advance_amount, expense_amount, balance_amount, status, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 0, $13, 'In Transit', NOW(), NOW())
-			RETURNING id
-		`, companyID, tripNum, req.VehicleID, req.Driver1Name, req.Driver2Name, req.PartyName, req.Source, req.Destination, pStart, pArr, req.FreightAmount, req.AdvanceAmount, bal).Scan(&newID)
+	var pStart, pArr *time.Time
+	if t, err := time.Parse("2006-01-02 15:04", req.PlannedStart); err == nil {
+		pStart = &t
+	}
+	if t, err := time.Parse("2006-01-02 15:04", req.PlannedArrival); err == nil {
+		pArr = &t
 	}
 
+	var newID int64
+	err := deps.Pool.QueryRow(c.Request.Context(), `
+		INSERT INTO fleet_trips (company_id, trip_no, vehicle_id, driver1_name, driver2_name, party_name,
+		                         source, destination, planned_start, planned_arrival,
+		                         freight_amount, advance_amount, expense_amount, balance_amount, status, created_at, updated_at)
+		VALUES ($1,$2,NULLIF($3,0),NULLIF($4,''),NULLIF($5,''),NULLIF($6,''),NULLIF($7,''),NULLIF($8,''),
+		        $9,$10,$11,$12,0,$13,'In Transit',NOW(),NOW())
+		RETURNING id
+	`, companyID, tripNum, req.VehicleID, req.Driver1Name, req.Driver2Name, req.PartyName,
+		req.Source, req.Destination, pStart, pArr, req.FreightAmount, req.AdvanceAmount, balance).Scan(&newID)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
 	c.JSON(http.StatusCreated, gin.H{"success": true, "id": newID, "tripNo": tripNum, "message": "Fleet trip dispatched successfully"})
 }
 
 func updateFleetTripHandler(c *gin.Context) {
-	idStr := c.Param("id")
-	id, _ := strconv.ParseInt(idStr, 10, 64)
+	if dbUnavailable(c) {
+		return
+	}
+	companyID, ok := companyScope(c)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		badRequest(c, "invalid trip id")
+		return
+	}
 	var req struct {
 		Status        string  `json:"status"`
 		ExpenseAmount float64 `json:"expenseAmount"`
 	}
-	_ = c.ShouldBindJSON(&req)
-	if deps != nil && deps.Pool != nil {
-		_, _ = deps.Pool.Exec(c.Request.Context(), `
-			UPDATE fleet_trips
-			SET status = COALESCE(NULLIF($1, ''), status),
-			    expense_amount = CASE WHEN $2 > 0 THEN $2 ELSE expense_amount END,
-			    updated_at = NOW()
-			WHERE id = $3
-		`, req.Status, req.ExpenseAmount, id)
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err.Error())
+		return
+	}
+	tag, err := deps.Pool.Exec(c.Request.Context(), `
+		UPDATE fleet_trips SET
+			status = COALESCE(NULLIF($1, ''), status),
+			expense_amount = CASE WHEN $2 > 0 THEN $2 ELSE expense_amount END,
+			balance_amount = CASE WHEN $2 > 0 THEN freight_amount - advance_amount - $2 ELSE balance_amount END,
+			updated_at = NOW()
+		WHERE id = $3 AND company_id = $4
+	`, req.Status, req.ExpenseAmount, id, companyID)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "trip not found for this organization"})
+		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Fleet trip updated"})
 }
 
-// Party Routes Handlers
 type PartyRouteResp struct {
 	ID           int64   `json:"id"`
 	PartyName    string  `json:"partyName"`
@@ -535,41 +718,42 @@ type PartyRouteResp struct {
 }
 
 func listPartyRoutesHandler(c *gin.Context) {
-	companyID := getEffectiveCompanyID(c)
-	if deps != nil && deps.Pool != nil {
-		query := `
-			SELECT id, party_name, source, destination, standard_km, standard_rate, billing_rate
-			FROM party_routes
-			WHERE company_id = $1
-			ORDER BY party_name ASC
-		`
-		rows, err := deps.Pool.Query(c.Request.Context(), query, companyID)
-		if err == nil {
-			defer rows.Close()
-			var list []PartyRouteResp
-			for rows.Next() {
-				var p PartyRouteResp
-				if scanErr := rows.Scan(&p.ID, &p.PartyName, &p.Source, &p.Destination, &p.StandardKM, &p.StandardRate, &p.BillingRate); scanErr == nil {
-					list = append(list, p)
-				}
-			}
-			if len(list) > 0 {
-				c.JSON(http.StatusOK, gin.H{"success": true, "data": list})
-				return
-			}
+	if dbUnavailable(c) {
+		return
+	}
+	companyID, ok := companyScope(c)
+	if !ok {
+		return
+	}
+	rows, err := deps.Pool.Query(c.Request.Context(), `
+		SELECT id, party_name, source, destination, COALESCE(standard_km,0)::float8,
+		       COALESCE(standard_rate,0)::float8, COALESCE(billing_rate,0)::float8
+		FROM party_routes WHERE company_id = $1 ORDER BY party_name ASC
+	`, companyID)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	defer rows.Close()
+
+	list := make([]PartyRouteResp, 0)
+	for rows.Next() {
+		var p PartyRouteResp
+		if err := rows.Scan(&p.ID, &p.PartyName, &p.Source, &p.Destination, &p.StandardKM, &p.StandardRate, &p.BillingRate); err == nil {
+			list = append(list, p)
 		}
 	}
-
-	fallback := []PartyRouteResp{
-		{ID: 1, PartyName: "Al Futtaim Logistics", Source: "Jebel Ali Port Terminal 2", Destination: "Mussafah ICAD Sector 3", StandardKM: 145.5, StandardRate: 2800.0, BillingRate: 3400.0},
-		{ID: 2, PartyName: "Carrefour Distribution Center", Source: "Dubai South DWC Hub", Destination: "Sharjah Industrial Area 13", StandardKM: 78.0, StandardRate: 1400.0, BillingRate: 1850.0},
-		{ID: 3, PartyName: "ADNOC Distribution", Source: "Ruwais Refinery Main Gate", Destination: "Al Ain Bulk Petroleum Depot", StandardKM: 360.0, StandardRate: 4400.0, BillingRate: 5200.0},
-	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": fallback})
+	c.JSON(http.StatusOK, gin.H{"success": true, "company_id": companyID, "data": list})
 }
 
 func createPartyRouteHandler(c *gin.Context) {
-	companyID := getEffectiveCompanyID(c)
+	if dbUnavailable(c) {
+		return
+	}
+	companyID, ok := companyScope(c)
+	if !ok {
+		return
+	}
 	var req struct {
 		PartyName    string  `json:"partyName"`
 		Source       string  `json:"source"`
@@ -578,29 +762,28 @@ func createPartyRouteHandler(c *gin.Context) {
 		StandardRate float64 `json:"standardRate"`
 		BillingRate  float64 `json:"billingRate"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.PartyName) == "" {
+		badRequest(c, "partyName is required")
 		return
 	}
-
-	var newID int64 = time.Now().Unix()
-	if deps != nil && deps.Pool != nil {
-		_ = deps.Pool.QueryRow(c.Request.Context(), `
-			INSERT INTO party_routes (company_id, party_name, source, destination, standard_km, standard_rate, billing_rate, created_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-			RETURNING id
-		`, companyID, req.PartyName, req.Source, req.Destination, req.StandardKM, req.StandardRate, req.BillingRate).Scan(&newID)
+	var newID int64
+	err := deps.Pool.QueryRow(c.Request.Context(), `
+		INSERT INTO party_routes (company_id, party_name, source, destination, standard_km, standard_rate, billing_rate, created_at)
+		VALUES ($1,$2,NULLIF($3,''),NULLIF($4,''),$5,$6,$7,NOW())
+		RETURNING id
+	`, companyID, req.PartyName, req.Source, req.Destination, req.StandardKM, req.StandardRate, req.BillingRate).Scan(&newID)
+	if err != nil {
+		serverError(c, err)
+		return
 	}
-
 	c.JSON(http.StatusCreated, gin.H{"success": true, "id": newID, "message": "Party route contract registered"})
 }
 
-// Vouchers Handlers
 type VoucherResp struct {
 	ID          int64   `json:"id"`
 	TripID      int64   `json:"tripId"`
 	TripNo      string  `json:"tripNo"`
-	VoucherType string  `json:"voucherType"` // Fuel, Salik/Toll, Maintenance, Loading/Unloading, Police/Penalty, Food/Allowance
+	VoucherType string  `json:"voucherType"`
 	Amount      float64 `json:"amount"`
 	BillNo      string  `json:"billNo"`
 	ReceiptURL  string  `json:"receiptUrl"`
@@ -609,46 +792,49 @@ type VoucherResp struct {
 }
 
 func listVouchersHandler(c *gin.Context) {
-	companyID := getEffectiveCompanyID(c)
-	if deps != nil && deps.Pool != nil {
-		query := `
-			SELECT tv.id, tv.trip_id, COALESCE(ft.trip_no, 'TRP-EXP') as tno,
-			       tv.voucher_type, tv.amount, COALESCE(tv.bill_no, ''), COALESCE(tv.receipt_url, ''),
-			       COALESCE(tv.notes, ''), tv.created_at
-			FROM trip_vouchers tv
-			LEFT JOIN fleet_trips ft ON tv.trip_id = ft.id
-			WHERE tv.company_id = $1
-			ORDER BY tv.created_at DESC
-		`
-		rows, err := deps.Pool.Query(c.Request.Context(), query, companyID)
-		if err == nil {
-			defer rows.Close()
-			var list []VoucherResp
-			for rows.Next() {
-				var v VoucherResp
-				var cat time.Time
-				if scanErr := rows.Scan(&v.ID, &v.TripID, &v.TripNo, &v.VoucherType, &v.Amount, &v.BillNo, &v.ReceiptURL, &v.Notes, &cat); scanErr == nil {
-					v.Date = cat.Format("2006-01-02")
-					list = append(list, v)
-				}
-			}
-			if len(list) > 0 {
-				c.JSON(http.StatusOK, gin.H{"success": true, "data": list})
-				return
-			}
+	if dbUnavailable(c) {
+		return
+	}
+	companyID, ok := companyScope(c)
+	if !ok {
+		return
+	}
+	rows, err := deps.Pool.Query(c.Request.Context(), `
+		SELECT tv.id, COALESCE(tv.trip_id,0), COALESCE(ft.trip_no,''), tv.voucher_type,
+		       COALESCE(tv.amount,0)::float8, COALESCE(tv.bill_no,''), COALESCE(tv.receipt_url,''),
+		       COALESCE(tv.notes,''), tv.created_at
+		FROM trip_vouchers tv
+		LEFT JOIN fleet_trips ft ON tv.trip_id = ft.id
+		WHERE tv.company_id = $1
+		ORDER BY tv.created_at DESC
+	`, companyID)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	defer rows.Close()
+
+	list := make([]VoucherResp, 0)
+	for rows.Next() {
+		var v VoucherResp
+		var cat time.Time
+		if err := rows.Scan(&v.ID, &v.TripID, &v.TripNo, &v.VoucherType, &v.Amount,
+			&v.BillNo, &v.ReceiptURL, &v.Notes, &cat); err == nil {
+			v.Date = cat.Format("2006-01-02")
+			list = append(list, v)
 		}
 	}
-
-	fallback := []VoucherResp{
-		{ID: 1, TripID: 1, TripNo: "TRP-2026-0089", VoucherType: "Fuel (Diesel)", Amount: 420.0, BillNo: "ENOC-99201", ReceiptURL: "", Notes: "140 Litres at Al Khail ENOC", Date: time.Now().Format("2006-01-02")},
-		{ID: 2, TripID: 1, TripNo: "TRP-2026-0089", VoucherType: "Salik Toll", Amount: 24.0, BillNo: "RTA-SLK-4819", ReceiptURL: "", Notes: "Al Barsha + Al Safa Toll Gates", Date: time.Now().Format("2006-01-02")},
-		{ID: 3, TripID: 2, TripNo: "TRP-2026-0090", VoucherType: "Loading/Unloading", Amount: 150.0, BillNo: "DC-RC-102", ReceiptURL: "", Notes: "Forklift pallet handling Sharjah", Date: time.Now().Format("2006-01-02")},
-	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": fallback})
+	c.JSON(http.StatusOK, gin.H{"success": true, "company_id": companyID, "data": list})
 }
 
 func createVoucherHandler(c *gin.Context) {
-	companyID := getEffectiveCompanyID(c)
+	if dbUnavailable(c) {
+		return
+	}
+	companyID, ok := companyScope(c)
+	if !ok {
+		return
+	}
 	var req struct {
 		TripID      int64   `json:"tripId"`
 		VoucherType string  `json:"voucherType"`
@@ -657,44 +843,56 @@ func createVoucherHandler(c *gin.Context) {
 		ReceiptURL  string  `json:"receiptUrl"`
 		Notes       string  `json:"notes"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+	if err := c.ShouldBindJSON(&req); err != nil || req.TripID <= 0 || strings.TrimSpace(req.VoucherType) == "" || req.Amount <= 0 {
+		badRequest(c, "tripId, voucherType and amount are required")
 		return
 	}
-
-	var newID int64 = time.Now().Unix()
-	if deps != nil && deps.Pool != nil {
-		_ = deps.Pool.QueryRow(c.Request.Context(), `
-			INSERT INTO trip_vouchers (company_id, trip_id, voucher_type, amount, bill_no, receipt_url, notes, created_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-			RETURNING id
-		`, companyID, req.TripID, req.VoucherType, req.Amount, req.BillNo, req.ReceiptURL, req.Notes).Scan(&newID)
-
-		// Increment trip expense
-		_, _ = deps.Pool.Exec(c.Request.Context(), `
-			UPDATE fleet_trips
-			SET expense_amount = expense_amount + $1,
-			    balance_amount = freight_amount - advance_amount - (expense_amount + $1)
-			WHERE id = $2
-		`, req.Amount, req.TripID)
+	ctx := c.Request.Context()
+	tx, err := deps.Pool.Begin(ctx)
+	if err != nil {
+		serverError(c, err)
+		return
 	}
+	defer tx.Rollback(ctx)
 
+	var newID int64
+	if err := tx.QueryRow(ctx, `
+		INSERT INTO trip_vouchers (company_id, trip_id, voucher_type, amount, bill_no, receipt_url, notes, created_at)
+		VALUES ($1,$2,$3,$4,NULLIF($5,''),NULLIF($6,''),NULLIF($7,''),NOW())
+		RETURNING id
+	`, companyID, req.TripID, req.VoucherType, req.Amount, req.BillNo, req.ReceiptURL, req.Notes).Scan(&newID); err != nil {
+		serverError(c, err)
+		return
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE fleet_trips SET
+			expense_amount = expense_amount + $1,
+			balance_amount = freight_amount - advance_amount - (expense_amount + $1),
+			updated_at = NOW()
+		WHERE id = $2 AND company_id = $3
+	`, req.Amount, req.TripID, companyID); err != nil {
+		serverError(c, err)
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		serverError(c, err)
+		return
+	}
 	c.JSON(http.StatusCreated, gin.H{"success": true, "id": newID, "message": "Expense voucher recorded and deducted from trip ledger"})
 }
 
-// Tyre Management Handlers
 type TyreResp struct {
 	ID              int64   `json:"id"`
 	VehicleID       int64   `json:"vehicleId"`
 	VehicleReg      string  `json:"vehicleReg"`
 	TyreNumber      string  `json:"tyreNumber"`
-	AxlePosition    string  `json:"axlePosition"` // Front-Left, Front-Right, Rear-Outer-Left, Rear-Inner-Left, etc.
+	AxlePosition    string  `json:"axlePosition"`
 	Brand           string  `json:"brand"`
 	Model           string  `json:"model"`
 	Size            string  `json:"size"`
 	TreadDepthMM    float64 `json:"treadDepthMm"`
 	PlyRating       int     `json:"plyRating"`
-	Status          string  `json:"status"` // In Use, In Stock, Scrap, Retreading
+	Status          string  `json:"status"`
 	OpeningKM       int64   `json:"openingKm"`
 	CurrentKM       int64   `json:"currentKm"`
 	LifeKMLimit     int64   `json:"lifeKmLimit"`
@@ -703,55 +901,69 @@ type TyreResp struct {
 }
 
 func listTyresHandler(c *gin.Context) {
-	companyID := getEffectiveCompanyID(c)
-	if deps != nil && deps.Pool != nil {
-		query := `
-			SELECT tr.id, tr.vehicle_id, COALESCE(v.reg_number, 'Spares Stock') as reg,
-			       tr.tyre_number, COALESCE(tr.axle_position, 'Spare'), COALESCE(tr.brand, 'Bridgestone'),
-			       COALESCE(tr.model, 'Ecopia'), COALESCE(tr.size, '295/80 R22.5'), tr.tread_depth_mm,
-			       tr.ply_rating, tr.status, tr.opening_km, tr.current_km, tr.life_km_limit, tr.retreading_count
-			FROM tyre_records tr
-			LEFT JOIN vehicles v ON tr.vehicle_id = v.id
-			WHERE tr.company_id = $1
-			ORDER BY tr.id ASC
-		`
-		rows, err := deps.Pool.Query(c.Request.Context(), query, companyID)
-		if err == nil {
-			defer rows.Close()
-			var list []TyreResp
-			for rows.Next() {
-				var t TyreResp
-				if scanErr := rows.Scan(&t.ID, &t.VehicleID, &t.VehicleReg, &t.TyreNumber, &t.AxlePosition, &t.Brand, &t.Model, &t.Size, &t.TreadDepthMM, &t.PlyRating, &t.Status, &t.OpeningKM, &t.CurrentKM, &t.LifeKMLimit, &t.RetreadingCount); scanErr == nil {
-					health := 100
-					if t.TreadDepthMM < 16.0 {
-						health = int((t.TreadDepthMM / 16.0) * 100)
-						if health < 5 {
-							health = 5
-						}
-					}
-					t.HealthPct = health
-					list = append(list, t)
-				}
-			}
-			if len(list) > 0 {
-				c.JSON(http.StatusOK, gin.H{"success": true, "data": list})
-				return
-			}
-		}
+	if dbUnavailable(c) {
+		return
 	}
+	companyID, ok := companyScope(c)
+	if !ok {
+		return
+	}
+	rows, err := deps.Pool.Query(c.Request.Context(), `
+		SELECT tr.id, COALESCE(tr.vehicle_id,0), COALESCE(v.reg_number, ''),
+		       COALESCE(tr.tyre_number, tr.serial_number), COALESCE(tr.axle_position, COALESCE(tr.position,'')),
+		       COALESCE(tr.brand, ''), COALESCE(tr.model, ''), COALESCE(tr.size, ''),
+		       COALESCE(tr.tread_depth_mm, 0)::float8, COALESCE(tr.ply_rating, 0), COALESCE(tr.status, ''),
+		       COALESCE(tr.opening_km, 0), COALESCE(tr.current_km, 0), COALESCE(tr.life_km_limit, 0),
+		       COALESCE(tr.retreading_count, 0)
+		FROM tyre_records tr
+		LEFT JOIN vehicles v ON tr.vehicle_id = v.id
+		WHERE tr.company_id = $1
+		ORDER BY tr.id ASC
+	`, companyID)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	defer rows.Close()
 
-	fallback := []TyreResp{
-		{ID: 1, VehicleID: 1, VehicleReg: "DXB-K-49201", TyreNumber: "TYR-BS-9901", AxlePosition: "Front-Left (FL)", Brand: "Bridgestone", Model: "R150 Premium", Size: "295/80 R22.5", TreadDepthMM: 14.2, PlyRating: 16, Status: "In Use", OpeningKM: 12000, CurrentKM: 34500, LifeKMLimit: 100000, RetreadingCount: 0, HealthPct: 88},
-		{ID: 2, VehicleID: 1, VehicleReg: "DXB-K-49201", TyreNumber: "TYR-BS-9902", AxlePosition: "Front-Right (FR)", Brand: "Bridgestone", Model: "R150 Premium", Size: "295/80 R22.5", TreadDepthMM: 13.8, PlyRating: 16, Status: "In Use", OpeningKM: 12000, CurrentKM: 34500, LifeKMLimit: 100000, RetreadingCount: 0, HealthPct: 86},
-		{ID: 3, VehicleID: 1, VehicleReg: "DXB-K-49201", TyreNumber: "TYR-MC-4411", AxlePosition: "Rear-Outer-Left (ROL)", Brand: "Michelin", Model: "X Multiway 3D", Size: "295/80 R22.5", TreadDepthMM: 9.5, PlyRating: 18, Status: "In Use", OpeningKM: 5000, CurrentKM: 55000, LifeKMLimit: 110000, RetreadingCount: 1, HealthPct: 59},
-		{ID: 4, VehicleID: 1, VehicleReg: "DXB-K-49201", TyreNumber: "TYR-MC-4412", AxlePosition: "Rear-Inner-Left (RIL)", Brand: "Michelin", Model: "X Multiway 3D", Size: "295/80 R22.5", TreadDepthMM: 4.1, PlyRating: 18, Status: "In Use", OpeningKM: 5000, CurrentKM: 78000, LifeKMLimit: 110000, RetreadingCount: 1, HealthPct: 25},
-		{ID: 5, VehicleID: 2, VehicleReg: "DXB-M-11029", TyreNumber: "TYR-GY-7731", AxlePosition: "Spare Axle #1", Brand: "Goodyear", Model: "Marathon LHT", Size: "295/80 R22.5", TreadDepthMM: 15.5, PlyRating: 16, Status: "In Stock", OpeningKM: 0, CurrentKM: 1200, LifeKMLimit: 90000, RetreadingCount: 0, HealthPct: 97},
+	list := make([]TyreResp, 0)
+	for rows.Next() {
+		var t TyreResp
+		if err := rows.Scan(&t.ID, &t.VehicleID, &t.VehicleReg, &t.TyreNumber, &t.AxlePosition,
+			&t.Brand, &t.Model, &t.Size, &t.TreadDepthMM, &t.PlyRating, &t.Status,
+			&t.OpeningKM, &t.CurrentKM, &t.LifeKMLimit, &t.RetreadingCount); err != nil {
+			continue
+		}
+		// Health is derived from the stored tread depth against the new-tread reference.
+		t.HealthPct = tyreHealthPct(t.TreadDepthMM)
+		list = append(list, t)
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": fallback})
+	c.JSON(http.StatusOK, gin.H{"success": true, "company_id": companyID, "data": list})
+}
+
+// tyreHealthPct maps tread depth to a percentage of the 16 mm new-tread depth.
+func tyreHealthPct(treadMM float64) int {
+	if treadMM <= 0 {
+		return 0
+	}
+	if treadMM >= 16.0 {
+		return 100
+	}
+	health := int(treadMM / 16.0 * 100)
+	if health < 1 {
+		health = 1
+	}
+	return health
 }
 
 func createTyreHandler(c *gin.Context) {
-	companyID := getEffectiveCompanyID(c)
+	if dbUnavailable(c) {
+		return
+	}
+	companyID, ok := companyScope(c)
+	if !ok {
+		return
+	}
 	var req struct {
 		VehicleID       int64   `json:"vehicleId"`
 		TyreNumber      string  `json:"tyreNumber"`
@@ -766,60 +978,90 @@ func createTyreHandler(c *gin.Context) {
 		LifeKMLimit     int64   `json:"lifeKmLimit"`
 		RetreadingCount int     `json:"retreadingCount"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.TyreNumber) == "" {
+		badRequest(c, "tyreNumber is required")
 		return
 	}
-	if req.LifeKMLimit == 0 {
-		req.LifeKMLimit = 100000
-	}
-	if req.Status == "" {
-		req.Status = "In Use"
-	}
 
-	var newID int64 = time.Now().Unix()
-	if deps != nil && deps.Pool != nil {
-		_ = deps.Pool.QueryRow(c.Request.Context(), `
-			INSERT INTO tyre_records (company_id, vehicle_id, tyre_number, axle_position, brand, model, size, tread_depth_mm, ply_rating, status, opening_km, current_km, life_km_limit, retreading_count, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11, $12, $13, NOW(), NOW())
-			RETURNING id
-		`, companyID, req.VehicleID, req.TyreNumber, req.AxlePosition, req.Brand, req.Model, req.Size, req.TreadDepthMM, req.PlyRating, req.Status, req.OpeningKM, req.LifeKMLimit, req.RetreadingCount).Scan(&newID)
+	var newID int64
+	err := deps.Pool.QueryRow(c.Request.Context(), `
+		INSERT INTO tyre_records (company_id, vehicle_id, serial_number, tyre_number, position, axle_position,
+		                          brand, model, size, tread_depth_mm, ply_rating, status,
+		                          opening_km, current_km, life_km_limit, retreading_count, created_at, updated_at)
+		VALUES ($1, NULLIF($2,0), $3, $3, NULLIF($4,''), NULLIF($4,''),
+		        NULLIF($5,''), NULLIF($6,''), NULLIF($7,''), NULLIF($8,0), NULLIF($9,0), COALESCE(NULLIF($10,''),'In Use'),
+		        $11, $11, NULLIF($12,0), $13, NOW(), NOW())
+		RETURNING id
+	`, companyID, req.VehicleID, req.TyreNumber, req.AxlePosition, req.Brand, req.Model, req.Size,
+		req.TreadDepthMM, req.PlyRating, req.Status, req.OpeningKM, req.LifeKMLimit, req.RetreadingCount).Scan(&newID)
+	if err != nil {
+		serverError(c, err)
+		return
 	}
-
 	c.JSON(http.StatusCreated, gin.H{"success": true, "id": newID, "message": "Tyre serial asset registered in fleet registry"})
 }
 
 func updateTyreHandler(c *gin.Context) {
-	idStr := c.Param("id")
-	id, _ := strconv.ParseInt(idStr, 10, 64)
+	if dbUnavailable(c) {
+		return
+	}
+	companyID, ok := companyScope(c)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		badRequest(c, "invalid tyre id")
+		return
+	}
 	var req struct {
 		AxlePosition    string  `json:"axlePosition"`
 		TreadDepthMM    float64 `json:"treadDepthMm"`
 		Status          string  `json:"status"`
 		RetreadingCount int     `json:"retreadingCount"`
+		CurrentKM       int64   `json:"currentKm"`
 	}
-	_ = c.ShouldBindJSON(&req)
-
-	if deps != nil && deps.Pool != nil {
-		_, _ = deps.Pool.Exec(c.Request.Context(), `
-			UPDATE tyre_records
-			SET axle_position = COALESCE(NULLIF($1, ''), axle_position),
-			    tread_depth_mm = CASE WHEN $2 > 0 THEN $2 ELSE tread_depth_mm END,
-			    status = COALESCE(NULLIF($3, ''), status),
-			    retreading_count = CASE WHEN $4 >= 0 THEN $4 ELSE retreading_count END,
-			    updated_at = NOW()
-			WHERE id = $5
-		`, req.AxlePosition, req.TreadDepthMM, req.Status, req.RetreadingCount, id)
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err.Error())
+		return
 	}
-
+	tag, err := deps.Pool.Exec(c.Request.Context(), `
+		UPDATE tyre_records SET
+			axle_position = COALESCE(NULLIF($1,''), axle_position),
+			tread_depth_mm = CASE WHEN $2 > 0 THEN $2 ELSE tread_depth_mm END,
+			status = COALESCE(NULLIF($3,''), status),
+			retreading_count = CASE WHEN $4 >= 0 THEN $4 ELSE retreading_count END,
+			current_km = CASE WHEN $5 > 0 THEN $5 ELSE current_km END,
+			updated_at = NOW()
+		WHERE id = $6 AND company_id = $7
+	`, req.AxlePosition, req.TreadDepthMM, req.Status, req.RetreadingCount, req.CurrentKM, id, companyID)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "tyre not found for this organization"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Tyre inspection update saved"})
 }
 
 func deleteTyreHandler(c *gin.Context) {
-	idStr := c.Param("id")
-	id, _ := strconv.ParseInt(idStr, 10, 64)
-	if deps != nil && deps.Pool != nil {
-		_, _ = deps.Pool.Exec(c.Request.Context(), "DELETE FROM tyre_records WHERE id = $1", id)
+	if dbUnavailable(c) {
+		return
+	}
+	companyID, ok := companyScope(c)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		badRequest(c, "invalid tyre id")
+		return
+	}
+	if _, err := deps.Pool.Exec(c.Request.Context(), "DELETE FROM tyre_records WHERE id = $1 AND company_id = $2", id, companyID); err != nil {
+		serverError(c, err)
+		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Tyre scrapped and removed"})
 }
@@ -833,205 +1075,187 @@ type ComplaintResp struct {
 	TicketNo           string `json:"ticketNo"`
 	VehicleReg         string `json:"vehicleReg"`
 	Title              string `json:"title"`
-	Category           string `json:"category"` // GPS Offline, Immobilizer Relay Issue, Sensor Calibration, False Alert, SIRA Certificate Renewal
-	Priority           string `json:"priority"` // Critical, High, Medium, Low
-	Status             string `json:"status"`   // Open, In Progress, Resolved, Closed
+	Category           string `json:"category"`
+	Priority           string `json:"priority"`
+	Status             string `json:"status"`
 	TechnicianAssigned string `json:"technicianAssigned"`
 	ResolutionNotes    string `json:"resolutionNotes"`
 	CreatedAt          string `json:"createdAt"`
 }
 
 func listComplaintsHandler(c *gin.Context) {
-	companyID := getEffectiveCompanyID(c)
-	if deps != nil && deps.Pool != nil {
-		query := `
-			SELECT c.id, c.ticket_no, COALESCE(v.reg_number, 'Fleet Wide') as reg,
-			       c.title, c.category, c.priority, c.status,
-			       COALESCE(c.technician_assigned, 'Unassigned'), COALESCE(c.resolution_notes, ''),
-			       c.created_at
-			FROM complaints c
-			LEFT JOIN vehicles v ON c.vehicle_id = v.id
-			WHERE c.company_id = $1
-			ORDER BY c.created_at DESC
-		`
-		rows, err := deps.Pool.Query(c.Request.Context(), query, companyID)
-		if err == nil {
-			defer rows.Close()
-			var list []ComplaintResp
-			for rows.Next() {
-				var cp ComplaintResp
-				var cat time.Time
-				if scanErr := rows.Scan(&cp.ID, &cp.TicketNo, &cp.VehicleReg, &cp.Title, &cp.Category, &cp.Priority, &cp.Status, &cp.TechnicianAssigned, &cp.ResolutionNotes, &cat); scanErr == nil {
-					cp.CreatedAt = cat.Format("2006-01-02 15:04")
-					list = append(list, cp)
-				}
-			}
-			if len(list) > 0 {
-				c.JSON(http.StatusOK, gin.H{"success": true, "data": list})
-				return
-			}
+	if dbUnavailable(c) {
+		return
+	}
+	companyID, ok := companyScope(c)
+	if !ok {
+		return
+	}
+	rows, err := deps.Pool.Query(c.Request.Context(), `
+		SELECT c.id, c.ticket_no, COALESCE(v.reg_number, ''), c.title, c.category, c.priority, c.status,
+		       COALESCE(c.technician_assigned, ''), COALESCE(c.resolution_notes, ''), c.created_at
+		FROM complaints c
+		LEFT JOIN vehicles v ON c.vehicle_id = v.id
+		WHERE c.company_id = $1
+		ORDER BY c.created_at DESC
+	`, companyID)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	defer rows.Close()
+
+	list := make([]ComplaintResp, 0)
+	for rows.Next() {
+		var cp ComplaintResp
+		var cat time.Time
+		if err := rows.Scan(&cp.ID, &cp.TicketNo, &cp.VehicleReg, &cp.Title, &cp.Category, &cp.Priority,
+			&cp.Status, &cp.TechnicianAssigned, &cp.ResolutionNotes, &cat); err == nil {
+			cp.CreatedAt = cat.Format("2006-01-02 15:04")
+			list = append(list, cp)
 		}
 	}
-
-	fallback := []ComplaintResp{
-		{ID: 1, TicketNo: "TCK-8812", VehicleReg: "DXB-K-49201", Title: "Relay powercut alert triggering intermittently in parking lot", Category: "Sensor Calibration", Priority: "Medium", Status: "In Progress", TechnicianAssigned: "Ramesh Sharma (Field Tech)", ResolutionNotes: "Checking auxiliary wire harness connection", CreatedAt: time.Now().Add(-5 * time.Hour).Format("2006-01-02 15:04")},
-		{ID: 2, TicketNo: "TCK-8809", VehicleReg: "DXB-M-11029", Title: "Fuel sensor showing sudden 40L drop without engine on", Category: "Fuel Theft Sensor", Priority: "High", Status: "Open", TechnicianAssigned: "Unassigned", ResolutionNotes: "", CreatedAt: time.Now().Add(-18 * time.Hour).Format("2006-01-02 15:04")},
-		{ID: 3, TicketNo: "TCK-8790", VehicleReg: "AUH-5-88392", Title: "Need urgent SIRA compliance telemetry test verification", Category: "SIRA Certificate Renewal", Priority: "Critical", Status: "Resolved", TechnicianAssigned: "Imran Siddiqui", ResolutionNotes: "SIRA Secure Gateway Ping PASSED. Certificate sent to email.", CreatedAt: time.Now().Add(-72 * time.Hour).Format("2006-01-02 15:04")},
-	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": fallback})
+	c.JSON(http.StatusOK, gin.H{"success": true, "company_id": companyID, "data": list})
 }
 
 func createComplaintHandler(c *gin.Context) {
-	companyID := getEffectiveCompanyID(c)
+	if dbUnavailable(c) {
+		return
+	}
+	companyID, ok := companyScope(c)
+	if !ok {
+		return
+	}
 	var req struct {
 		VehicleID int64  `json:"vehicleId"`
 		Title     string `json:"title"`
 		Category  string `json:"category"`
 		Priority  string `json:"priority"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Title) == "" || strings.TrimSpace(req.Category) == "" {
+		badRequest(c, "title and category are required")
 		return
 	}
-	if req.Priority == "" {
-		req.Priority = "Medium"
-	}
-	tckNum := fmt.Sprintf("TCK-%d", time.Now().Unix()%100000)
+	ticketNo := fmt.Sprintf("TCK-%d", time.Now().UnixNano()%1000000)
 
-	var newID int64 = time.Now().Unix()
-	if deps != nil && deps.Pool != nil {
-		_ = deps.Pool.QueryRow(c.Request.Context(), `
-			INSERT INTO complaints (company_id, ticket_no, vehicle_id, title, category, priority, status, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, 'Open', NOW(), NOW())
-			RETURNING id
-		`, companyID, tckNum, req.VehicleID, req.Title, req.Category, req.Priority).Scan(&newID)
+	var newID int64
+	err := deps.Pool.QueryRow(c.Request.Context(), `
+		INSERT INTO complaints (company_id, ticket_no, vehicle_id, title, category, priority, status, created_at, updated_at)
+		VALUES ($1,$2,NULLIF($3,0),$4,$5,COALESCE(NULLIF($6,''),'Medium'),'Open',NOW(),NOW())
+		RETURNING id
+	`, companyID, ticketNo, req.VehicleID, req.Title, req.Category, req.Priority).Scan(&newID)
+	if err != nil {
+		serverError(c, err)
+		return
 	}
-
-	c.JSON(http.StatusCreated, gin.H{"success": true, "id": newID, "ticketNo": tckNum, "message": "Support ticket created. Support team will inspect within SLA."})
+	c.JSON(http.StatusCreated, gin.H{"success": true, "id": newID, "ticketNo": ticketNo, "message": "Support ticket created. Support team will inspect within SLA."})
 }
 
 func updateComplaintHandler(c *gin.Context) {
-	idStr := c.Param("id")
-	id, _ := strconv.ParseInt(idStr, 10, 64)
+	if dbUnavailable(c) {
+		return
+	}
+	companyID, ok := companyScope(c)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		badRequest(c, "invalid ticket id")
+		return
+	}
 	var req struct {
 		Status             string `json:"status"`
 		TechnicianAssigned string `json:"technicianAssigned"`
 		ResolutionNotes    string `json:"resolutionNotes"`
 	}
-	_ = c.ShouldBindJSON(&req)
-
-	if deps != nil && deps.Pool != nil {
-		_, _ = deps.Pool.Exec(c.Request.Context(), `
-			UPDATE complaints
-			SET status = COALESCE(NULLIF($1, ''), status),
-			    technician_assigned = COALESCE(NULLIF($2, ''), technician_assigned),
-			    resolution_notes = COALESCE(NULLIF($3, ''), resolution_notes),
-			    updated_at = NOW()
-			WHERE id = $4
-		`, req.Status, req.TechnicianAssigned, req.ResolutionNotes, id)
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err.Error())
+		return
 	}
-
+	tag, err := deps.Pool.Exec(c.Request.Context(), `
+		UPDATE complaints SET
+			status = COALESCE(NULLIF($1,''), status),
+			technician_assigned = COALESCE(NULLIF($2,''), technician_assigned),
+			resolution_notes = COALESCE(NULLIF($3,''), resolution_notes),
+			updated_at = NOW()
+		WHERE id = $4 AND company_id = $5
+	`, req.Status, req.TechnicianAssigned, req.ResolutionNotes, id, companyID)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "ticket not found for this organization"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Support ticket updated"})
 }
 
 // ─────────────────────────────────────────────────────────────
-// 6. Reports & Export Handlers (Extended 12+ legacy reports)
-// ─────────────────────────────────────────────────────────────
-
-func exportReportHandler(c *gin.Context) {
-	repType := c.Param("type")
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"report-%s-%s.csv\"", repType, time.Now().Format("20060102")))
-	c.Header("Content-Type", "text/csv; charset=utf-8")
-
-	csvData := fmt.Sprintf("Vehicle,Date,Start KM,End KM,Total KM,Running (Min),Idle (Min),Stop (Min),Max Speed (km/h),Alerts\nDXB-K-49201,%s,12400,12680,280,185,25,50,92,0\nDXB-M-11029,%s,45100,45310,210,140,15,40,78,1\nAUH-5-88392,%s,78900,79280,380,240,30,60,88,0\n",
-		time.Now().Format("2006-01-02"), time.Now().Format("2006-01-02"), time.Now().Format("2006-01-02"))
-
-	c.String(http.StatusOK, csvData)
-}
-
-func dashboardAnalyticsHandler(c *gin.Context) {
-	companyID := getEffectiveCompanyID(c)
-	_ = companyID
-
-	analytics := gin.H{
-		"fleetOccupancyPct": 84.5,
-		"activeVehicles":    18,
-		"idleVehicles":      3,
-		"stoppedVehicles":   4,
-		"runningVehicles":   11,
-		"avgDistancePerDay": 218.4,
-		"totalFleetKmToday": 3931.2,
-		"fuelEfficiencyKmpl": 4.2,
-		"totalFuelBurnedLtr": 936.0,
-		"carbonEmissionsKg": 2490.0,
-		"utilizationTrend": []gin.H{
-			{"day": "Mon", "occupancy": 82, "km": 3720},
-			{"day": "Tue", "occupancy": 88, "km": 4120},
-			{"day": "Wed", "occupancy": 85, "km": 3980},
-			{"day": "Thu", "occupancy": 91, "km": 4410},
-			{"day": "Fri", "occupancy": 76, "km": 3200},
-			{"day": "Sat", "occupancy": 79, "km": 3490},
-			{"day": "Sun", "occupancy": 84, "km": 3931},
-		},
-		"engineStatusRatio": gin.H{
-			"running": 62,
-			"idle":    14,
-			"stopped": 24,
-		},
-		"topSpeedViolators": []gin.H{
-			{"vehicle": "SHJ-2-34901", "driver": "Farhan Tariq", "topSpeed": 118, "count": 4},
-			{"vehicle": "DXB-K-49201", "driver": "Ahmed Al-Mansoor", "topSpeed": 104, "count": 2},
-		},
-	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": analytics})
-}
-
-func nearestPOIHandler(c *gin.Context) {
-	latStr := c.Query("lat")
-	lngStr := c.Query("lng")
-	lat, _ := strconv.ParseFloat(latStr, 64)
-	lng, _ := strconv.ParseFloat(lngStr, 64)
-	if lat == 0 && lng == 0 {
-		lat, lng = 25.2048, 55.2708 // Dubai default
-	}
-
-	pois := []gin.H{
-		{"id": 1, "name": "ENOC Fuel Station & FastCare", "category": "Fuel Station", "lat": lat + 0.012, "lng": lng + 0.008, "distanceKm": 1.4, "phone": "+971 4 330 0000", "address": "Sheikh Zayed Rd, Dubai"},
-		{"id": 2, "name": "Tasjeel Al Barsha Vehicle Inspection", "category": "RTA Testing Center", "lat": lat - 0.018, "lng": lng - 0.012, "distanceKm": 2.6, "phone": "+971 4 340 8888", "address": "Al Barsha 1, Dubai"},
-		{"id": 3, "name": "Continental Tyre & Heavy Alignment Hub", "category": "Tyre Workshop", "lat": lat + 0.024, "lng": lng - 0.015, "distanceKm": 3.1, "phone": "+971 4 885 1200", "address": "Al Quoz Industrial 3"},
-		{"id": 4, "name": "Emergency Heavy Towing & Recovery", "category": "Recovery Service", "lat": lat - 0.009, "lng": lng + 0.021, "distanceKm": 2.8, "phone": "+971 50 999 1234", "address": "E11 Highway Mile 32"},
-	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": pois})
-}
-
-// ─────────────────────────────────────────────────────────────
-// 7. SuperAdmin Handlers (Extensions, Warranty, Raw Data, Toll, Roles, Masters, Devices, Billing)
+// 6. SuperAdmin: Extensions, Warranty, Raw Data, Toll, Devices, Roles, Billing
 // ─────────────────────────────────────────────────────────────
 
 type ExtensionRecord struct {
-	ID             int64  `json:"id"`
-	CompanyID      int64  `json:"companyId"`
-	CompanyName    string `json:"companyName"`
-	DeviceID       int64  `json:"deviceId,omitempty"`
-	DeviceIMEI     string `json:"deviceImei,omitempty"`
-	ExtensionType  string `json:"extensionType"` // Company Subscription, Device License, SIRA Gateway
-	OldExpiryDate  string `json:"oldExpiryDate"`
-	NewExpiryDate  string `json:"newExpiryDate"`
-	ExtendedBy     string `json:"extendedBy"`
-	Reason         string `json:"reason"`
-	AmountPaid     float64 `json:"amountPaid"`
-	CreatedAt      string `json:"createdAt"`
+	ID            int64   `json:"id"`
+	CompanyID     int64   `json:"companyId"`
+	CompanyName   string  `json:"companyName"`
+	DeviceID      int64   `json:"deviceId,omitempty"`
+	DeviceIMEI    string  `json:"deviceImei,omitempty"`
+	ExtensionType string  `json:"extensionType"`
+	OldExpiryDate string  `json:"oldExpiryDate"`
+	NewExpiryDate string  `json:"newExpiryDate"`
+	StartDate     string  `json:"startDate"`
+	EndDate       string  `json:"endDate"`
+	ExtendedBy    string  `json:"extendedBy"`
+	Reason        string  `json:"reason"`
+	AmountPaid    float64 `json:"amountPaid"`
+	CreatedAt     string  `json:"createdAt"`
 }
 
 func adminListExtensionsHandler(c *gin.Context) {
-	fallback := []ExtensionRecord{
-		{ID: 1, CompanyID: 1, CompanyName: "Emirates Trans Logistics L.L.C", DeviceIMEI: "ALL (18 Devices)", ExtensionType: "Company Subscription", OldExpiryDate: "2026-09-30", NewExpiryDate: "2027-09-30", ExtendedBy: "superadmin@rudranetrais.com", Reason: "Annual Enterprise Contract Renewal", AmountPaid: 14400.0, CreatedAt: "2026-09-20 14:30"},
-		{ID: 2, CompanyID: 2, CompanyName: "Gulf Cold Chain Express", DeviceIMEI: "867829048192019", ExtensionType: "Device License", OldExpiryDate: "2026-08-31", NewExpiryDate: "2027-02-28", ExtendedBy: "billing@rudranetrais.com", Reason: "6-Month Temp Lease Extension", AmountPaid: 650.0, CreatedAt: "2026-09-12 11:15"},
+	if dbUnavailable(c) {
+		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": fallback})
+	rows, err := deps.Pool.Query(c.Request.Context(), `
+		SELECT e.id, e.company_id, c.name, COALESCE(e.vehicle_id,0), COALESCE(d.imei,''),
+		       COALESCE(e.extension_type,''), e.start_date, e.end_date, e.months_extended,
+		       COALESCE(e.amount_paid,0)::float8, e.approved_by, COALESCE(e.reason,''), e.created_at
+		FROM subscription_extensions e
+		JOIN companies c ON e.company_id = c.id
+		LEFT JOIN devices d ON e.vehicle_id = d.id
+		ORDER BY e.id DESC
+	`)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	defer rows.Close()
+
+	list := make([]ExtensionRecord, 0)
+	for rows.Next() {
+		var rec ExtensionRecord
+		var start, end time.Time
+		var months int
+		var created time.Time
+		if err := rows.Scan(&rec.ID, &rec.CompanyID, &rec.CompanyName, &rec.DeviceID, &rec.DeviceIMEI,
+			&rec.ExtensionType, &start, &end, &months, &rec.AmountPaid, &rec.ExtendedBy, &rec.Reason, &created); err != nil {
+			continue
+		}
+		rec.StartDate = start.Format("2006-01-02")
+		rec.EndDate = end.Format("2006-01-02")
+		rec.NewExpiryDate = rec.EndDate
+		rec.OldExpiryDate = start.AddDate(0, 0, -1).Format("2006-01-02")
+		rec.CreatedAt = created.Format("2006-01-02 15:04")
+		list = append(list, rec)
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": list})
 }
 
 func adminCreateExtensionHandler(c *gin.Context) {
+	if dbUnavailable(c) {
+		return
+	}
 	var req struct {
 		CompanyID     int64   `json:"companyId"`
 		DeviceID      int64   `json:"deviceId"`
@@ -1041,18 +1265,38 @@ func adminCreateExtensionHandler(c *gin.Context) {
 		AmountPaid    float64 `json:"amountPaid"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+		badRequest(c, err.Error())
+		return
+	}
+	if req.CompanyID <= 0 {
+		badRequest(c, "companyId is required")
 		return
 	}
 	if req.Months <= 0 {
-		req.Months = 12
+		badRequest(c, "months must be a positive number")
+		return
 	}
 
-	newExpiry := time.Now().AddDate(0, req.Months, 0).Format("2006-01-02")
+	approvedBy, _ := c.Get("username")
+	approvedByStr, _ := approvedBy.(string)
+
+	var start, end time.Time
+	err := deps.Pool.QueryRow(c.Request.Context(), `
+		INSERT INTO subscription_extensions (company_id, vehicle_id, extension_type, start_date, end_date,
+		                                     months_extended, amount_paid, approved_by, reason)
+		VALUES ($1, NULLIF($2,0), COALESCE(NULLIF($3,''),'Company Subscription'),
+		        CURRENT_DATE, CURRENT_DATE + make_interval(months => $4), $4, $5, COALESCE(NULLIF($6,''),'console'), NULLIF($7,''))
+		RETURNING start_date, end_date
+	`, req.CompanyID, req.DeviceID, req.ExtensionType, req.Months, req.AmountPaid, approvedByStr, req.Reason).Scan(&start, &end)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
 	c.JSON(http.StatusCreated, gin.H{
 		"success":       true,
-		"newExpiryDate": newExpiry,
-		"message":       fmt.Sprintf("Subscription extended by %d months. New validity until %s.", req.Months, newExpiry),
+		"startDate":     start.Format("2006-01-02"),
+		"newExpiryDate": end.Format("2006-01-02"),
+		"message":       fmt.Sprintf("Subscription extended by %d months. New validity until %s.", req.Months, end.Format("2006-01-02")),
 	})
 }
 
@@ -1065,48 +1309,157 @@ type WarrantyRecord struct {
 	WarrantyEnd   string `json:"warrantyEnd"`
 	AMCStartDate  string `json:"amcStartDate"`
 	AMCEndDate    string `json:"amcEndDate"`
-	AMCStatus     string `json:"amcStatus"` // Under Warranty, Active AMC, Expired AMC
+	AMCStatus     string `json:"amcStatus"`
 	VendorContact string `json:"vendorContact"`
 }
 
 func adminListWarrantyHandler(c *gin.Context) {
-	records := []WarrantyRecord{
-		{ID: 1, DeviceIMEI: "867829048192019", DeviceModel: "Teltonika FMB920", CompanyName: "Emirates Trans Logistics L.L.C", PurchaseDate: "2025-01-10", WarrantyEnd: "2027-01-10", AMCStartDate: "2027-01-11", AMCEndDate: "2028-01-11", AMCStatus: "Under Warranty", VendorContact: "Teltonika Vilnius EU (+370 5 2140290)"},
-		{ID: 2, DeviceIMEI: "867829048192020", DeviceModel: "Teltonika FMB125 (Dual SIM)", CompanyName: "Gulf Cold Chain Express", PurchaseDate: "2024-03-15", WarrantyEnd: "2026-03-15", AMCStartDate: "2026-03-16", AMCEndDate: "2027-03-16", AMCStatus: "Active AMC", VendorContact: "RudraNetra Systems AMC Desk"},
-		{ID: 3, DeviceIMEI: "867829048192025", DeviceModel: "Teltonika FMC130 (4G LTE)", CompanyName: "Emirates Trans Logistics L.L.C", PurchaseDate: "2023-05-20", WarrantyEnd: "2025-05-20", AMCStartDate: "2025-05-21", AMCEndDate: "2026-05-21", AMCStatus: "Expired AMC", VendorContact: "RudraNetra Systems AMC Desk"},
+	if dbUnavailable(c) {
+		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": records})
+	rows, err := deps.Pool.Query(c.Request.Context(), `
+		SELECT w.id, COALESCE(d.imei,''), COALESCE(d.device_type,''), COALESCE(c.name,''),
+		       w.start_date, w.end_date, w.amc_expiry, COALESCE(w.amc_active, FALSE),
+		       COALESCE(w.vendor_name,''), COALESCE(w.warranty_period,'')
+		FROM warranty_records w
+		LEFT JOIN devices d ON w.device_id = d.id
+		LEFT JOIN companies c ON w.company_id = c.id
+		ORDER BY w.id DESC
+	`)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	defer rows.Close()
+
+	list := make([]WarrantyRecord, 0)
+	now := time.Now()
+	for rows.Next() {
+		var rec WarrantyRecord
+		var start, end, amcExpiry *time.Time
+		var amcActive bool
+		var vendor, period string
+		if err := rows.Scan(&rec.ID, &rec.DeviceIMEI, &rec.DeviceModel, &rec.CompanyName,
+			&start, &end, &amcExpiry, &amcActive, &vendor, &period); err != nil {
+			continue
+		}
+		rec.PurchaseDate = fmtTime(start, "2006-01-02")
+		rec.WarrantyEnd = fmtTime(end, "2006-01-02")
+		rec.AMCStartDate = fmtTime(end, "2006-01-02")
+		rec.AMCEndDate = fmtTime(amcExpiry, "2006-01-02")
+		rec.VendorContact = vendor
+		switch {
+		case end != nil && now.Before(*end):
+			rec.AMCStatus = "Under Warranty"
+		case amcActive && amcExpiry != nil && now.Before(*amcExpiry):
+			rec.AMCStatus = "Active AMC"
+		default:
+			rec.AMCStatus = "Expired AMC"
+		}
+		list = append(list, rec)
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": list})
 }
 
 func adminCreateWarrantyHandler(c *gin.Context) {
-	c.JSON(http.StatusCreated, gin.H{"success": true, "message": "Hardware warranty & AMC contract registered"})
+	if dbUnavailable(c) {
+		return
+	}
+	var req struct {
+		DeviceID       int64  `json:"deviceId"`
+		CompanyID      int64  `json:"companyId"`
+		WarrantyPeriod string `json:"warrantyPeriod"`
+		VendorName     string `json:"vendorName"`
+		StartDate      string `json:"startDate"`
+		EndDate        string `json:"endDate"`
+		AMCActive      *bool  `json:"amcActive"`
+		AMCExpiry      string `json:"amcExpiry"`
+		Remarks        string `json:"remarks"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.DeviceID <= 0 {
+		badRequest(c, "deviceId is required")
+		return
+	}
+	var start, end, amcExpiry *time.Time
+	if t, err := time.Parse("2006-01-02", req.StartDate); err == nil {
+		start = &t
+	}
+	if t, err := time.Parse("2006-01-02", req.EndDate); err == nil {
+		end = &t
+	}
+	if t, err := time.Parse("2006-01-02", req.AMCExpiry); err == nil {
+		amcExpiry = &t
+	}
+
+	ctx := c.Request.Context()
+	companyID := req.CompanyID
+	if companyID <= 0 {
+		_ = deps.Pool.QueryRow(ctx, "SELECT COALESCE(company_id, 0) FROM devices WHERE id = $1", req.DeviceID).Scan(&companyID)
+	}
+	if companyID <= 0 {
+		badRequest(c, "unable to resolve tenant for the device")
+		return
+	}
+
+	var newID int64
+	err := deps.Pool.QueryRow(ctx, `
+		INSERT INTO warranty_records (company_id, device_id, warranty_period, vendor_name, start_date, end_date, amc_active, amc_expiry, remarks)
+		VALUES ($1,$2,COALESCE(NULLIF($3,''),'1 Year'),NULLIF($4,''),$5,$6,COALESCE($7,FALSE),$8,NULLIF($9,''))
+		RETURNING id
+	`, companyID, req.DeviceID, req.WarrantyPeriod, req.VendorName, start, end, req.AMCActive, amcExpiry, req.Remarks).Scan(&newID)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"success": true, "id": newID, "message": "Hardware warranty & AMC contract registered"})
 }
 
 type RawDataPacket struct {
 	ID        int64  `json:"id"`
 	IMEI      string `json:"imei"`
-	Protocol  string `json:"protocol"` // Teltonika Codec 8, Codec 8 Extended, Concox
+	Protocol  string `json:"protocol"`
 	Length    int    `json:"length"`
 	HexPacket string `json:"hexPacket"`
 	DecodedAt string `json:"decodedAt"`
 	SourceIP  string `json:"sourceIp"`
-	Status    string `json:"status"` // CRC OK, ACK Sent
+	Status    string `json:"status"`
 }
 
 func adminListRawDataHandler(c *gin.Context) {
-	packets := []RawDataPacket{
-		{ID: 1001, IMEI: "867829048192019", Protocol: "Teltonika Codec 8", Length: 94, HexPacket: "000000000000005e08010000018f4a7c1b00010192a0034a1b000078000005020101425e01000100000001000085", DecodedAt: time.Now().Add(-10 * time.Second).Format("2006-01-02 15:04:05"), SourceIP: "94.200.45.112:5040", Status: "CRC OK, ACK Sent (0x01)"},
-		{ID: 1002, IMEI: "867829048192020", Protocol: "Teltonika Codec 8", Length: 88, HexPacket: "000000000000005808010000018f4a7c2c00010192a1034a1c000062000005020101425d0100010000000100007c", DecodedAt: time.Now().Add(-25 * time.Second).Format("2006-01-02 15:04:05"), SourceIP: "94.200.45.114:5040", Status: "CRC OK, ACK Sent (0x01)"},
-		{ID: 1003, IMEI: "867829048192021", Protocol: "Concox GT06", Length: 36, HexPacket: "78781f120e09190c102a0192a0034a1b000078000005020101425e010001000000010d0a", DecodedAt: time.Now().Add(-55 * time.Second).Format("2006-01-02 15:04:05"), SourceIP: "94.200.45.118:5023", Status: "CRC OK, ACK Sent"},
+	if dbUnavailable(c) {
+		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": packets})
+	limit := atoiDefault(c.Query("limit"), 100)
+	rows, err := deps.Pool.Query(c.Request.Context(), `
+		SELECT id, device_imei, COALESCE(protocol,''), COALESCE(payload_length,0), hex_data,
+		       COALESCE(source_ip,''), COALESCE(status,''), created_at
+		FROM raw_packets
+		ORDER BY created_at DESC
+		LIMIT $1
+	`, limit)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	defer rows.Close()
+
+	list := make([]RawDataPacket, 0)
+	for rows.Next() {
+		var p RawDataPacket
+		var created time.Time
+		if err := rows.Scan(&p.ID, &p.IMEI, &p.Protocol, &p.Length, &p.HexPacket, &p.SourceIP, &p.Status, &created); err == nil {
+			p.DecodedAt = created.Format("2006-01-02 15:04:05")
+			list = append(list, p)
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": list})
 }
 
 type TollDataResp struct {
 	ID           int64   `json:"id"`
-	TollName     string  `json:"tollName"`     // e.g. Al Safa, Al Barsha, Al Maktoum Bridge, Airport Tunnel
-	SystemType   string  `json:"systemType"`   // Salik (UAE), FASTag (India), Darb (Abu Dhabi)
-	RateStandard float64 `json:"rateStandard"` // 4.00 AED
+	TollName     string  `json:"tollName"`
+	SystemType   string  `json:"systemType"`
+	RateStandard float64 `json:"rateStandard"`
 	Latitude     float64 `json:"latitude"`
 	Longitude    float64 `json:"longitude"`
 	City         string  `json:"city"`
@@ -1114,120 +1467,141 @@ type TollDataResp struct {
 }
 
 func adminListTollDataHandler(c *gin.Context) {
-	tolls := []TollDataResp{
-		{ID: 1, TollName: "Al Barsha Salik Toll Gate", SystemType: "RTA Salik", RateStandard: 4.00, Latitude: 25.1121, Longitude: 55.2014, City: "Dubai", Status: "Active"},
-		{ID: 2, TollName: "Al Safa Salik Toll Gate", SystemType: "RTA Salik", RateStandard: 4.00, Latitude: 25.1784, Longitude: 55.2458, City: "Dubai", Status: "Active"},
-		{ID: 3, TollName: "Al Maktoum Bridge Toll Gate", SystemType: "RTA Salik", RateStandard: 4.00, Latitude: 25.2519, Longitude: 55.3283, City: "Dubai", Status: "Active"},
-		{ID: 4, TollName: "Al Mamzar North Toll Gate", SystemType: "RTA Salik", RateStandard: 4.00, Latitude: 25.3012, Longitude: 55.3589, City: "Dubai/Sharjah", Status: "Active"},
-		{ID: 5, TollName: "Sheikh Zayed Bridge Darb Gate", SystemType: "Abu Dhabi Darb", RateStandard: 4.00, Latitude: 24.4820, Longitude: 54.4480, City: "Abu Dhabi", Status: "Active"},
+	if dbUnavailable(c) {
+		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": tolls})
+	rows, err := deps.Pool.Query(c.Request.Context(), `
+		SELECT id, name, COALESCE(system_type,''), COALESCE(rate_standard,0)::float8,
+		       COALESCE(latitude,0), COALESCE(longitude,0), COALESCE(city,'')
+		FROM toll_plazas ORDER BY id ASC
+	`)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	defer rows.Close()
+
+	list := make([]TollDataResp, 0)
+	for rows.Next() {
+		var t TollDataResp
+		if err := rows.Scan(&t.ID, &t.TollName, &t.SystemType, &t.RateStandard, &t.Latitude, &t.Longitude, &t.City); err == nil {
+			t.Status = "Active"
+			list = append(list, t)
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": list})
 }
 
 func adminCreateTollDataHandler(c *gin.Context) {
-	c.JSON(http.StatusCreated, gin.H{"success": true, "message": "Toll plaza checkpoint mapped in geofence engine"})
+	if dbUnavailable(c) {
+		return
+	}
+	var req struct {
+		TollName     string  `json:"tollName"`
+		SystemType   string  `json:"systemType"`
+		RateStandard float64 `json:"rateStandard"`
+		Latitude     float64 `json:"latitude"`
+		Longitude    float64 `json:"longitude"`
+		City         string  `json:"city"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.TollName) == "" {
+		badRequest(c, "tollName is required")
+		return
+	}
+	var newID int64
+	err := deps.Pool.QueryRow(c.Request.Context(), `
+		INSERT INTO toll_plazas (name, system_type, rate_standard, latitude, longitude, city)
+		VALUES ($1, NULLIF($2,''), NULLIF($3,0), NULLIF($4,0), NULLIF($5,0), NULLIF($6,''))
+		RETURNING id
+	`, req.TollName, req.SystemType, req.RateStandard, req.Latitude, req.Longitude, req.City).Scan(&newID)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"success": true, "id": newID, "message": "Toll plaza checkpoint mapped"})
 }
 
-// Admin Hardware Device Inventory
+// ─── Admin Hardware Device Inventory ─────────────────────
+
 type AdminDeviceResp struct {
 	ID             int64  `json:"id"`
 	IMEI           string `json:"imei"`
 	SIMCardNo      string `json:"simCardNo"`
-	Operator       string `json:"operator"` // Etisalat, du, Airtel, Vodafone
+	Operator       string `json:"operator"`
 	Model          string `json:"model"`
 	Protocol       string `json:"protocol"`
 	Firmware       string `json:"firmware"`
 	AssignedTenant string `json:"assignedTenant"`
 	VehicleReg     string `json:"vehicleReg"`
 	LastPing       string `json:"lastPing"`
-	Status         string `json:"status"` // Online, Offline, Unassigned
+	Status         string `json:"status"`
 }
 
+// formatDeviceModel renders a stored device_type for display.
 func formatDeviceModel(model string) string {
 	m := strings.ReplaceAll(model, "_", " ")
 	upper := strings.ToUpper(m)
 	if strings.HasPrefix(upper, "TELTONIKA") {
-		rest := strings.TrimSpace(m[9:])
-		return "Teltonika " + rest
+		return "Teltonika " + strings.TrimSpace(m[len("TELTONIKA"):])
 	}
 	if strings.HasPrefix(upper, "CONCOX") {
-		rest := strings.TrimSpace(m[6:])
-		return "Concox " + rest
+		return "Concox " + strings.TrimSpace(m[len("CONCOX"):])
 	}
 	return m
 }
 
-func detectSIMOperator(sim string) string {
-	clean := strings.ReplaceAll(strings.ReplaceAll(sim, " ", ""), "-", "")
-	if strings.HasPrefix(clean, "+97152") || strings.HasPrefix(clean, "+97155") || strings.HasPrefix(clean, "+97158") ||
-		strings.HasPrefix(clean, "052") || strings.HasPrefix(clean, "055") || strings.HasPrefix(clean, "058") {
-		return "du Telecom"
-	}
-	return "e& (Etisalat UAE)"
-}
-
 func adminListDevicesHandler(c *gin.Context) {
-	if deps != nil && deps.Pool != nil {
-		query := `
-			SELECT d.id, d.imei, COALESCE(d.sim_no, ''), COALESCE(d.device_type, 'TELTONIKA_FMB920'),
-			       COALESCE(d.firmware_ver, '03.28.07.Rev.00'), COALESCE(c.name, 'Warehouse Stock'),
-			       COALESCE(v.reg_number, 'Unassigned'), COALESCE(d.status, 'active'), d.last_heartbeat, COALESCE(d.port, 5040)
-			FROM devices d
-			LEFT JOIN companies c ON d.company_id = c.id
-			LEFT JOIN vehicles v ON v.device_id = d.id
-			ORDER BY d.id ASC
-		`
-		rows, err := deps.Pool.Query(c.Request.Context(), query)
-		if err == nil {
-			defer rows.Close()
-			var devices []AdminDeviceResp
-			for rows.Next() {
-				var dev AdminDeviceResp
-				var model, rawStatus string
-				var lastHeartbeat *time.Time
-				var port int
-				if scanErr := rows.Scan(&dev.ID, &dev.IMEI, &dev.SIMCardNo, &model, &dev.Firmware, &dev.AssignedTenant, &dev.VehicleReg, &rawStatus, &lastHeartbeat, &port); scanErr == nil {
-					dev.Model = formatDeviceModel(model)
-					dev.Protocol = fmt.Sprintf("TCP/%d", port)
-					if dev.Protocol == "TCP/0" {
-						dev.Protocol = "TCP/5040"
-					}
-					dev.Operator = detectSIMOperator(dev.SIMCardNo)
+	if dbUnavailable(c) {
+		return
+	}
+	rows, err := deps.Pool.Query(c.Request.Context(), `
+		SELECT d.id, d.imei, COALESCE(d.sim_no,''), COALESCE(d.sim_operator,''), COALESCE(d.device_type,''),
+		       COALESCE(d.firmware_ver,''), COALESCE(c.name,''), COALESCE(v.reg_number,''),
+		       COALESCE(d.status,''), d.last_heartbeat, COALESCE(d.port,0)
+		FROM devices d
+		LEFT JOIN companies c ON d.company_id = c.id
+		LEFT JOIN vehicles v ON v.device_id = d.id
+		ORDER BY d.id ASC
+	`)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	defer rows.Close()
 
-					if dev.VehicleReg == "Unassigned" || dev.AssignedTenant == "Warehouse Stock" {
-						dev.Status = "Unassigned"
-					} else if rawStatus == "active" {
-						dev.Status = "Online"
-					} else {
-						dev.Status = "Offline"
-					}
-
-					if lastHeartbeat != nil {
-						dev.LastPing = lastHeartbeat.Format("2006-01-02 15:04")
-					} else {
-						dev.LastPing = "Just now"
-					}
-
-					devices = append(devices, dev)
-				}
-			}
-			if len(devices) > 0 {
-				c.JSON(http.StatusOK, gin.H{"success": true, "data": devices})
-				return
-			}
+	list := make([]AdminDeviceResp, 0)
+	for rows.Next() {
+		var dev AdminDeviceResp
+		var model, rawStatus string
+		var lastHeartbeat *time.Time
+		var port int
+		if err := rows.Scan(&dev.ID, &dev.IMEI, &dev.SIMCardNo, &dev.Operator, &model, &dev.Firmware,
+			&dev.AssignedTenant, &dev.VehicleReg, &rawStatus, &lastHeartbeat, &port); err != nil {
+			continue
 		}
-	}
+		dev.Model = formatDeviceModel(model)
+		dev.Protocol = fmt.Sprintf("TCP/%d", port)
+		dev.LastPing = fmtTime(lastHeartbeat, "2006-01-02 15:04")
 
-	devices := []AdminDeviceResp{
-		{ID: 1, IMEI: "867829048192019", SIMCardNo: "+971 50 1928374", Operator: "e& (Etisalat UAE)", Model: "Teltonika FMB920", Protocol: "TCP/5040", Firmware: "03.28.07.Rev.00", AssignedTenant: "Emirates Trans Logistics L.L.C", VehicleReg: "DXB-K-49201", LastPing: "Just now", Status: "Online"},
-		{ID: 2, IMEI: "867829048192020", SIMCardNo: "+971 55 9812734", Operator: "du Telecom", Model: "Teltonika FMB125", Protocol: "TCP/5040", Firmware: "03.28.05.Rev.02", AssignedTenant: "Gulf Cold Chain Express", VehicleReg: "AUH-5-88392", LastPing: "1 min ago", Status: "Online"},
-		{ID: 3, IMEI: "867829048192021", SIMCardNo: "+971 50 4481923", Operator: "e& (Etisalat UAE)", Model: "Concox GT06N", Protocol: "TCP/5023", Firmware: "01.12.89", AssignedTenant: "Emirates Trans Logistics L.L.C", VehicleReg: "SHJ-2-34901", LastPing: "3 mins ago", Status: "Online"},
-		{ID: 4, IMEI: "867829048192099", SIMCardNo: "+971 52 3349182", Operator: "du Telecom", Model: "Teltonika FMC130 4G", Protocol: "TCP/5040", Firmware: "03.29.00.Rev.01", AssignedTenant: "Warehouse Stock", VehicleReg: "Unassigned", LastPing: "Yesterday", Status: "Unassigned"},
+		switch {
+		case dev.VehicleReg == "" && dev.AssignedTenant == "":
+			dev.Status = "Unassigned"
+		case lastHeartbeat != nil && time.Since(*lastHeartbeat) < 15*time.Minute:
+			dev.Status = "Online"
+		case rawStatus == "active":
+			dev.Status = "Offline"
+		default:
+			dev.Status = rawStatus
+		}
+		list = append(list, dev)
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": devices})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": list})
 }
 
 func adminCreateDeviceHandler(c *gin.Context) {
+	if dbUnavailable(c) {
+		return
+	}
 	var body struct {
 		IMEI        string `json:"imei"`
 		SIMCardNo   string `json:"simCardNo"`
@@ -1237,121 +1611,337 @@ func adminCreateDeviceHandler(c *gin.Context) {
 		Firmware    string `json:"firmware"`
 		CompanyName string `json:"companyName"`
 	}
-	if err := c.ShouldBindJSON(&body); err == nil && body.IMEI != "" && deps != nil && deps.Pool != nil {
-		var companyID *int64
-		if body.CompanyName != "" {
-			var cid int64
-			if err := deps.Pool.QueryRow(c.Request.Context(), "SELECT id FROM companies WHERE name ILIKE $1 LIMIT 1", "%"+body.CompanyName+"%").Scan(&cid); err == nil {
-				companyID = &cid
-			}
-		}
-		_, _ = deps.Pool.Exec(c.Request.Context(), `
-			INSERT INTO devices (imei, sim_no, device_type, firmware_ver, company_id, status, port, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, 'active', 5040, NOW(), NOW())
-			ON CONFLICT (imei) DO UPDATE SET sim_no = EXCLUDED.sim_no, updated_at = NOW()
-		`, body.IMEI, body.SIMCardNo, body.Model, body.Firmware, companyID)
+	if err := c.ShouldBindJSON(&body); err != nil || strings.TrimSpace(body.IMEI) == "" {
+		badRequest(c, "imei is required")
+		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"success": true, "message": "Hardware tracker provisioned with SIM ICCID profile"})
+
+	ctx := c.Request.Context()
+	var companyID *int64
+	if body.CompanyName != "" {
+		var cid int64
+		if err := deps.Pool.QueryRow(ctx, "SELECT id FROM companies WHERE name ILIKE $1 LIMIT 1", "%"+body.CompanyName+"%").Scan(&cid); err == nil {
+			companyID = &cid
+		}
+	}
+
+	// Ports are parsed from the protocol string when provided (e.g. "TCP/5040").
+	var port *int
+	if body.Protocol != "" {
+		if p, err := strconv.Atoi(strings.TrimPrefix(body.Protocol, "TCP/")); err == nil && p > 0 {
+			port = &p
+		}
+	}
+
+	var newID int64
+	err := deps.Pool.QueryRow(ctx, `
+		INSERT INTO devices (imei, sim_no, sim_operator, device_type, firmware_ver, company_id, status, port, created_at, updated_at)
+		VALUES ($1, NULLIF($2,''), NULLIF($3,''), NULLIF($4,''), NULLIF($5,''), $6, 'active', COALESCE($7, 5040), NOW(), NOW())
+		ON CONFLICT (imei) DO UPDATE SET
+			sim_no = COALESCE(EXCLUDED.sim_no, devices.sim_no),
+			sim_operator = COALESCE(EXCLUDED.sim_operator, devices.sim_operator),
+			device_type = COALESCE(EXCLUDED.device_type, devices.device_type),
+			firmware_ver = COALESCE(EXCLUDED.firmware_ver, devices.firmware_ver),
+			company_id = COALESCE(EXCLUDED.company_id, devices.company_id),
+			port = COALESCE(EXCLUDED.port, devices.port),
+			updated_at = NOW()
+		RETURNING id
+	`, body.IMEI, body.SIMCardNo, body.Operator, body.Model, body.Firmware, companyID, port).Scan(&newID)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"success": true, "id": newID, "message": "Hardware tracker provisioned"})
 }
 
 func adminUpdateDeviceHandler(c *gin.Context) {
-	idStr := c.Param("id")
-	id, _ := strconv.ParseInt(idStr, 10, 64)
+	if dbUnavailable(c) {
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		badRequest(c, "invalid device id")
+		return
+	}
 	var body struct {
 		SIMCardNo string `json:"simCardNo"`
+		Operator  string `json:"operator"`
 		Firmware  string `json:"firmware"`
 		Status    string `json:"status"`
 	}
-	if err := c.ShouldBindJSON(&body); err == nil && id > 0 && deps != nil && deps.Pool != nil {
-		status := "active"
-		if strings.ToLower(body.Status) == "offline" {
-			status = "inactive"
-		}
-		_, _ = deps.Pool.Exec(c.Request.Context(), `
-			UPDATE devices SET sim_no = COALESCE(NULLIF($1, ''), sim_no),
-			                   firmware_ver = COALESCE(NULLIF($2, ''), firmware_ver),
-			                   status = $3, updated_at = NOW()
-			WHERE id = $4
-		`, body.SIMCardNo, body.Firmware, status, id)
+	if err := c.ShouldBindJSON(&body); err != nil {
+		badRequest(c, err.Error())
+		return
+	}
+	tag, err := deps.Pool.Exec(c.Request.Context(), `
+		UPDATE devices SET
+			sim_no = COALESCE(NULLIF($1,''), sim_no),
+			sim_operator = COALESCE(NULLIF($2,''), sim_operator),
+			firmware_ver = COALESCE(NULLIF($3,''), firmware_ver),
+			status = COALESCE(NULLIF(LOWER($4),''), status),
+			updated_at = NOW()
+		WHERE id = $5
+	`, body.SIMCardNo, body.Operator, body.Firmware, body.Status, id)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "device not found"})
+		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Device configuration updated"})
 }
 
-// Module Rights Matrix & Roles
+// ─── Roles & Permissions ─────────────────────────────────
+
 type RoleWithRights struct {
-	ID          int64            `json:"id"`
-	RoleName    string           `json:"roleName"`
-	Description string           `json:"description"`
-	Permissions map[string]int   `json:"permissions"` // e.g. "tracking": 15 (View+Add+Edit+Delete)
+	ID          int64          `json:"id"`
+	RoleName    string         `json:"roleName"`
+	Description string         `json:"description"`
+	Permissions map[string]int `json:"permissions"`
 }
 
 func listRolesHandler(c *gin.Context) {
-	roles := []RoleWithRights{
-		{
-			ID: 1, RoleName: "Tenant Admin", Description: "Full administrative access within tenant company",
-			Permissions: map[string]int{
-				"tracking": 15, "reports": 15, "fleet": 15, "control_panel": 15, "reminders": 15, "billing": 7, "users": 15,
-			},
-		},
-		{
-			ID: 2, RoleName: "Fleet Dispatcher", Description: "Dispatches trips, monitors live positions, assigns drivers",
-			Permissions: map[string]int{
-				"tracking": 7, "reports": 3, "fleet": 15, "control_panel": 0, "reminders": 7, "billing": 0, "users": 0,
-			},
-		},
-		{
-			ID: 3, RoleName: "Security Operations", Description: "Authorised to issue remote immobilizer cuts and monitor alarms",
-			Permissions: map[string]int{
-				"tracking": 7, "reports": 1, "fleet": 1, "control_panel": 15, "reminders": 1, "billing": 0, "users": 0,
-			},
-		},
-		{
-			ID: 4, RoleName: "View Only Client Auditor", Description: "Read-only access for compliance audit & consignment checking",
-			Permissions: map[string]int{
-				"tracking": 1, "reports": 1, "fleet": 1, "control_panel": 0, "reminders": 1, "billing": 0, "users": 0,
-			},
-		},
+	if dbUnavailable(c) {
+		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": roles})
+	ctx := c.Request.Context()
+
+	rows, err := deps.Pool.Query(ctx, `
+		SELECT r.id, r.role_name, COALESCE(r.description,''), COALESCE(r.permission_mask,0),
+		       COALESCE(m.module_name,''), COALESCE(m.permission_mask,0)
+		FROM roles r
+		LEFT JOIN module_permissions m ON m.role_name = r.role_name
+		ORDER BY r.id ASC
+	`)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	defer rows.Close()
+
+	byID := map[int64]*RoleWithRights{}
+	order := []int64{}
+	for rows.Next() {
+		var id int64
+		var roleName, description, module string
+		var mask, moduleMask int
+		if err := rows.Scan(&id, &roleName, &description, &mask, &module, &moduleMask); err != nil {
+			continue
+		}
+		role, exists := byID[id]
+		if !exists {
+			role = &RoleWithRights{ID: id, RoleName: roleName, Description: description, Permissions: map[string]int{}}
+			byID[id] = role
+			order = append(order, id)
+		}
+		if module != "" {
+			role.Permissions[module] = moduleMask
+		}
+	}
+	list := make([]*RoleWithRights, 0, len(order))
+	for _, id := range order {
+		list = append(list, byID[id])
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": list})
 }
 
 func createRoleHandler(c *gin.Context) {
-	c.JSON(http.StatusCreated, gin.H{"success": true, "message": "Role created with permission vector"})
+	if dbUnavailable(c) {
+		return
+	}
+	var req struct {
+		RoleName    string         `json:"roleName"`
+		Description string         `json:"description"`
+		Permissions map[string]int `json:"permissions"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.RoleName) == "" {
+		badRequest(c, "roleName is required")
+		return
+	}
+	ctx := c.Request.Context()
+	var newID int64
+	if err := deps.Pool.QueryRow(ctx, `
+		INSERT INTO roles (role_name, description, permission_mask, is_system)
+		VALUES ($1, NULLIF($2,''), 0, FALSE) RETURNING id
+	`, req.RoleName, req.Description).Scan(&newID); err != nil {
+		serverError(c, err)
+		return
+	}
+	for module, mask := range req.Permissions {
+		_, _ = deps.Pool.Exec(ctx, `
+			INSERT INTO module_permissions (role_name, module_name, permission_mask)
+			VALUES ($1,$2,$3)
+			ON CONFLICT (role_name, module_name) DO UPDATE SET permission_mask = EXCLUDED.permission_mask
+		`, req.RoleName, module, mask)
+	}
+	c.JSON(http.StatusCreated, gin.H{"success": true, "id": newID, "message": "Role created with permission vector"})
 }
 
 func updateRoleHandler(c *gin.Context) {
+	if dbUnavailable(c) {
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		badRequest(c, "invalid role id")
+		return
+	}
+	var req struct {
+		RoleName    string         `json:"roleName"`
+		Description string         `json:"description"`
+		Permissions map[string]int `json:"permissions"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err.Error())
+		return
+	}
+
+	ctx := c.Request.Context()
+	var roleName string
+	if err := deps.Pool.QueryRow(ctx, "SELECT role_name FROM roles WHERE id = $1", id).Scan(&roleName); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "role not found"})
+		return
+	}
+	if req.RoleName != "" {
+		if _, err := deps.Pool.Exec(ctx, "UPDATE roles SET role_name = $1 WHERE id = $2", req.RoleName, id); err != nil {
+			serverError(c, err)
+			return
+		}
+		_, _ = deps.Pool.Exec(ctx, "UPDATE module_permissions SET role_name = $1 WHERE role_name = $2", req.RoleName, roleName)
+		roleName = req.RoleName
+	}
+	if req.Description != "" {
+		_, _ = deps.Pool.Exec(ctx, "UPDATE roles SET description = $1 WHERE id = $2", req.Description, id)
+	}
+	for module, mask := range req.Permissions {
+		_, _ = deps.Pool.Exec(ctx, `
+			INSERT INTO module_permissions (role_name, module_name, permission_mask)
+			VALUES ($1,$2,$3)
+			ON CONFLICT (role_name, module_name) DO UPDATE SET permission_mask = EXCLUDED.permission_mask
+		`, roleName, module, mask)
+	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Role rights matrix updated"})
 }
 
-// Billing Master Handlers
-type BillingRecord struct {
-	ID          int64   `json:"id"`
-	InvoiceNo   string  `json:"invoiceNo"`
-	CompanyName string  `json:"companyName"`
-	BillingPlan string  `json:"billingPlan"` // AED 40/device/month
-	DeviceCount int     `json:"deviceCount"`
-	SubTotal    float64 `json:"subTotal"`
-	TaxVAT      float64 `json:"taxVat"`
-	TotalAmount float64 `json:"totalAmount"`
-	Status      string  `json:"status"` // Paid, Unpaid, Overdue
-	DueDate     string  `json:"dueDate"`
-	PaidAt      string  `json:"paidAt,omitempty"`
-}
+// ─── Billing Master ──────────────────────────────────────
 
 func listBillingHandler(c *gin.Context) {
-	invoices := []BillingRecord{
-		{ID: 1, InvoiceNo: "INV-2026-0901", CompanyName: "Emirates Trans Logistics L.L.C", BillingPlan: "Enterprise GPS + SIRA Secure Relay (40 AED/mo)", DeviceCount: 18, SubTotal: 720.0, TaxVAT: 36.0, TotalAmount: 756.0, Status: "Paid", DueDate: "2026-09-05", PaidAt: "2026-09-04"},
-		{ID: 2, InvoiceNo: "INV-2026-0902", CompanyName: "Gulf Cold Chain Express", BillingPlan: "Cold Chain Telemetry + Temp Probe (55 AED/mo)", DeviceCount: 8, SubTotal: 440.0, TaxVAT: 22.0, TotalAmount: 462.0, Status: "Paid", DueDate: "2026-09-05", PaidAt: "2026-09-05"},
-		{ID: 3, InvoiceNo: "INV-2026-1001", CompanyName: "Emirates Trans Logistics L.L.C", BillingPlan: "Enterprise GPS + SIRA Secure Relay (40 AED/mo)", DeviceCount: 18, SubTotal: 720.0, TaxVAT: 36.0, TotalAmount: 756.0, Status: "Unpaid", DueDate: "2026-10-05"},
+	if dbUnavailable(c) {
+		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": invoices})
+	rows, err := deps.Pool.Query(c.Request.Context(), `
+		SELECT i.id, i.inv_number, COALESCE(c.name,''), COALESCE(i.plan,''), COALESCE(i.device_count,0),
+		       COALESCE(i.amount,0)::float8, COALESCE(i.tax_amount,0)::float8, COALESCE(i.total_amount,0)::float8,
+		       CASE
+		           WHEN LOWER(COALESCE(i.status,'')) = 'paid' THEN 'Paid'
+		           WHEN i.due_date IS NOT NULL AND i.due_date < CURRENT_DATE THEN 'Overdue'
+		           ELSE 'Unpaid'
+		       END,
+		       i.due_date
+		FROM invoices i
+		LEFT JOIN companies c ON i.company_id = c.id
+		ORDER BY i.id DESC
+	`)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	defer rows.Close()
+
+	type BillingRecord struct {
+		ID          int64   `json:"id"`
+		InvoiceNo   string  `json:"invoiceNo"`
+		CompanyName string  `json:"companyName"`
+		BillingPlan string  `json:"billingPlan"`
+		DeviceCount int     `json:"deviceCount"`
+		SubTotal    float64 `json:"subTotal"`
+		TaxVAT      float64 `json:"taxVat"`
+		TotalAmount float64 `json:"totalAmount"`
+		Status      string  `json:"status"`
+		DueDate     string  `json:"dueDate"`
+		PaidAt      string  `json:"paidAt,omitempty"`
+	}
+	list := make([]BillingRecord, 0)
+	for rows.Next() {
+		var b BillingRecord
+		var due *time.Time
+		if err := rows.Scan(&b.ID, &b.InvoiceNo, &b.CompanyName, &b.BillingPlan, &b.DeviceCount,
+			&b.SubTotal, &b.TaxVAT, &b.TotalAmount, &b.Status, &due); err == nil {
+			b.DueDate = fmtTime(due, "2006-01-02")
+			list = append(list, b)
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": list})
 }
 
 func createBillingHandler(c *gin.Context) {
-	c.JSON(http.StatusCreated, gin.H{"success": true, "message": "Tax invoice generated"})
+	if dbUnavailable(c) {
+		return
+	}
+	var req struct {
+		CompanyID     int64   `json:"companyId"`
+		CompanyName   string  `json:"companyName"`
+		BillingPlan   string  `json:"billingPlan"`
+		DeviceCount   int     `json:"deviceCount"`
+		RatePerDevice float64 `json:"ratePerDevice"`
+		DueDate       string  `json:"dueDate"`
+		Notes         string  `json:"notes"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err.Error())
+		return
+	}
+	if req.DeviceCount <= 0 || req.RatePerDevice <= 0 {
+		badRequest(c, "deviceCount and ratePerDevice are required")
+		return
+	}
+
+	ctx := c.Request.Context()
+	companyID := req.CompanyID
+	if companyID <= 0 && req.CompanyName != "" {
+		_ = deps.Pool.QueryRow(ctx, "SELECT id FROM companies WHERE name ILIKE $1 LIMIT 1", "%"+req.CompanyName+"%").Scan(&companyID)
+	}
+	if companyID <= 0 {
+		badRequest(c, "companyId or a matching companyName is required")
+		return
+	}
+
+	var vat float64
+	_ = deps.Pool.QueryRow(ctx, "SELECT COALESCE(vat_percent,0) FROM company_settings WHERE company_id = $1", companyID).Scan(&vat)
+
+	amount := float64(req.DeviceCount) * req.RatePerDevice
+	tax := amount * vat / 100.0
+	total := amount + tax
+
+	var due *time.Time
+	if req.DueDate != "" {
+		if t, err := time.Parse("2006-01-02", req.DueDate); err == nil {
+			due = &t
+		}
+	}
+
+	var nextID int64
+	_ = deps.Pool.QueryRow(ctx, "SELECT COALESCE(MAX(id),0) + 1 FROM invoices").Scan(&nextID)
+	invNumber := fmt.Sprintf("INV-%d-%04d", time.Now().Year(), nextID)
+
+	var newID int64
+	err := deps.Pool.QueryRow(ctx, `
+		INSERT INTO invoices (company_id, inv_number, inv_date, amount, tax_amount, total_amount, paid_amount,
+		                      status, due_date, plan, device_count, rate_per_device, notes)
+		VALUES ($1,$2,CURRENT_DATE,$3,$4,$5,0,'unpaid',$6,NULLIF($7,''),$8,$9,NULLIF($10,''))
+		RETURNING id
+	`, companyID, invNumber, amount, tax, total, due, req.BillingPlan, req.DeviceCount, req.RatePerDevice, req.Notes).Scan(&newID)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"success": true, "id": newID, "invoiceNo": invNumber, "message": "Tax invoice generated"})
 }
 
-// Master Lookup Handlers (Generic)
+// ─── Master Lookups ──────────────────────────────────────
+
 type MasterItem struct {
 	ID        int64  `json:"id"`
 	Type      string `json:"type"`
@@ -1361,102 +1951,128 @@ type MasterItem struct {
 }
 
 func listMastersHandler(c *gin.Context) {
+	if dbUnavailable(c) {
+		return
+	}
 	mType := c.Param("type")
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"type":    mType,
-		"data":    getMasterDataForType(mType),
-	})
+	companyID := getEffectiveCompanyID(c)
+
+	rows, err := deps.Pool.Query(c.Request.Context(), `
+		SELECT id, category, code, name, COALESCE(is_default, FALSE)
+		FROM lookup_masters
+		WHERE category = $1 AND (company_id IS NULL OR company_id = $2)
+		ORDER BY is_default DESC, name ASC
+	`, mType, companyID)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	defer rows.Close()
+
+	list := make([]MasterItem, 0)
+	for rows.Next() {
+		var m MasterItem
+		if err := rows.Scan(&m.ID, &m.Type, &m.Code, &m.Name, &m.IsDefault); err == nil {
+			list = append(list, m)
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "type": mType, "data": list})
 }
 
 func createMasterHandler(c *gin.Context) {
-	c.JSON(http.StatusCreated, gin.H{"success": true, "message": "Master record created"})
+	if dbUnavailable(c) {
+		return
+	}
+	mType := c.Param("type")
+	companyID := getEffectiveCompanyID(c)
+	var req struct {
+		Code      string `json:"code"`
+		Name      string `json:"name"`
+		IsDefault bool   `json:"isDefault"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Code) == "" || strings.TrimSpace(req.Name) == "" {
+		badRequest(c, "code and name are required")
+		return
+	}
+	if req.IsDefault {
+		_, _ = deps.Pool.Exec(c.Request.Context(), "UPDATE lookup_masters SET is_default = FALSE WHERE category = $1", mType)
+	}
+	var newID int64
+	var owner *int64
+	if companyID > 0 {
+		owner = &companyID
+	}
+	err := deps.Pool.QueryRow(c.Request.Context(), `
+		INSERT INTO lookup_masters (company_id, category, code, name, is_default)
+		VALUES ($1, $2, $3, $4, $5) RETURNING id
+	`, owner, mType, req.Code, req.Name, req.IsDefault).Scan(&newID)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"success": true, "id": newID, "message": "Master record created"})
 }
 
 func updateMasterHandler(c *gin.Context) {
+	if dbUnavailable(c) {
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		badRequest(c, "invalid master id")
+		return
+	}
+	var req struct {
+		Code      string `json:"code"`
+		Name      string `json:"name"`
+		IsDefault *bool  `json:"isDefault"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err.Error())
+		return
+	}
+	ctx := c.Request.Context()
+	if req.IsDefault != nil && *req.IsDefault {
+		var category string
+		if err := deps.Pool.QueryRow(ctx, "SELECT category FROM lookup_masters WHERE id = $1", id).Scan(&category); err == nil {
+			_, _ = deps.Pool.Exec(ctx, "UPDATE lookup_masters SET is_default = FALSE WHERE category = $1", category)
+		}
+	}
+	tag, err := deps.Pool.Exec(ctx, `
+		UPDATE lookup_masters SET
+			code = COALESCE(NULLIF($1,''), code),
+			name = COALESCE(NULLIF($2,''), name),
+			is_default = COALESCE($3, is_default)
+		WHERE id = $4
+	`, req.Code, req.Name, req.IsDefault, id)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "master record not found"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Master record updated"})
 }
 
 func deleteMasterHandler(c *gin.Context) {
+	if dbUnavailable(c) {
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		badRequest(c, "invalid master id")
+		return
+	}
+	if _, err := deps.Pool.Exec(c.Request.Context(), "DELETE FROM lookup_masters WHERE id = $1", id); err != nil {
+		serverError(c, err)
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Master record deleted"})
 }
 
-func adminListMastersHandler(c *gin.Context) {
-	listMastersHandler(c)
-}
-
-func adminCreateMasterHandler(c *gin.Context) {
-	createMasterHandler(c)
-}
-
-func adminUpdateMasterHandler(c *gin.Context) {
-	updateMasterHandler(c)
-}
-
-func adminDeleteMasterHandler(c *gin.Context) {
-	deleteMasterHandler(c)
-}
-
-func getMasterDataForType(mType string) []MasterItem {
-	switch mType {
-	case "tyre-brands":
-		return []MasterItem{
-			{ID: 1, Type: mType, Code: "BS", Name: "Bridgestone", IsDefault: true},
-			{ID: 2, Type: mType, Code: "MC", Name: "Michelin", IsDefault: false},
-			{ID: 3, Type: mType, Code: "GY", Name: "Goodyear", IsDefault: false},
-			{ID: 4, Type: mType, Code: "PI", Name: "Pirelli", IsDefault: false},
-			{ID: 5, Type: mType, Code: "YK", Name: "Yokohama", IsDefault: false},
-		}
-	case "axle-positions":
-		return []MasterItem{
-			{ID: 1, Type: mType, Code: "FL", Name: "Front-Left", IsDefault: true},
-			{ID: 2, Type: mType, Code: "FR", Name: "Front-Right", IsDefault: true},
-			{ID: 3, Type: mType, Code: "ROL", Name: "Rear-Outer-Left", IsDefault: false},
-			{ID: 4, Type: mType, Code: "RIL", Name: "Rear-Inner-Left", IsDefault: false},
-			{ID: 5, Type: mType, Code: "ROR", Name: "Rear-Outer-Right", IsDefault: false},
-			{ID: 6, Type: mType, Code: "RIR", Name: "Rear-Inner-Right", IsDefault: false},
-			{ID: 7, Type: mType, Code: "SP1", Name: "Spare Axle 1", IsDefault: false},
-		}
-	case "voucher-categories":
-		return []MasterItem{
-			{ID: 1, Type: mType, Code: "FUEL", Name: "Fuel (Diesel/Petrol)", IsDefault: true},
-			{ID: 2, Type: mType, Code: "TOLL", Name: "Toll (Salik/Darb/FASTag)", IsDefault: true},
-			{ID: 3, Type: mType, Code: "MAINT", Name: "Mechanical Maintenance", IsDefault: false},
-			{ID: 4, Type: mType, Code: "LOAD", Name: "Loading / Pallet Handling", IsDefault: false},
-			{ID: 5, Type: mType, Code: "POLICE", Name: "Police / RTA Fine", IsDefault: false},
-			{ID: 6, Type: mType, Code: "DIET", Name: "Driver Batta / Daily Allowance", IsDefault: false},
-		}
-	case "complaint-categories":
-		return []MasterItem{
-			{ID: 1, Type: mType, Code: "OFFLINE", Name: "GPS Tracker Offline", IsDefault: true},
-			{ID: 2, Type: mType, Code: "RELAY", Name: "Immobilizer Relay Problem", IsDefault: false},
-			{ID: 3, Type: mType, Code: "FUEL_SNS", Name: "Fuel Level Sensor Error", IsDefault: false},
-			{ID: 4, Type: mType, Code: "TEMP_SNS", Name: "Temperature Probe Calibration", IsDefault: false},
-			{ID: 5, Type: mType, Code: "SIRA", Name: "SIRA Gateway Compliance Audit", IsDefault: false},
-		}
-	case "device-models":
-		return []MasterItem{
-			{ID: 1, Type: mType, Code: "FMB920", Name: "Teltonika FMB920 2G Compact", IsDefault: true},
-			{ID: 2, Type: mType, Code: "FMB125", Name: "Teltonika FMB125 Dual SIM RS232", IsDefault: false},
-			{ID: 3, Type: mType, Code: "FMC130", Name: "Teltonika FMC130 4G LTE Cat 1", IsDefault: false},
-			{ID: 4, Type: mType, Code: "GT06N", Name: "Concox GT06N Standard Tracker", IsDefault: false},
-		}
-	default:
-		return []MasterItem{
-			{ID: 1, Type: mType, Code: "STD1", Name: "Standard Option 1", IsDefault: true},
-			{ID: 2, Type: mType, Code: "STD2", Name: "Standard Option 2", IsDefault: false},
-		}
-	}
-}
-
-// Distance calculation helper
-func calcDistanceKm(lat1, lon1, lat2, lon2 float64) float64 {
-	rad := math.Pi / 180
-	dLat := (lat2 - lat1) * rad
-	dLon := (lon2 - lon1) * rad
-	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
-		math.Cos(lat1*rad)*math.Cos(lat2*rad)*
-			math.Sin(dLon/2)*math.Sin(dLon/2)
-	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
-	return 6371 * c
-}
+func adminListMastersHandler(c *gin.Context)  { listMastersHandler(c) }
+func adminCreateMasterHandler(c *gin.Context) { createMasterHandler(c) }
+func adminUpdateMasterHandler(c *gin.Context) { updateMasterHandler(c) }
+func adminDeleteMasterHandler(c *gin.Context) { deleteMasterHandler(c) }

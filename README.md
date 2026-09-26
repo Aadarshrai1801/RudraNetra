@@ -178,26 +178,33 @@
 
 ## ⚡ Quick Start
 
+> **Database-only architecture.** PostgreSQL is the single source of truth.
+> The API serves 503 when the database is unreachable — there is no in-memory
+> or mock fallback anywhere in the backend or frontends. See
+> [`docs/api-contract.md`](docs/api-contract.md) for the full API surface.
+
 ### 1. Launch Core Infrastructure
 ```bash
 cd infra
 docker compose up -d postgres redis nats
 ```
 
-### 2. Apply Schema & Seed Dataset
-```bash
-# 1. Initialize schema, PostGIS extensions, and TimescaleDB hypertables
-Get-Content backend\migrations\000001_init_schema.up.sql | docker exec -i rudra-postgres psql -U rudra -d rudra_netra
+On a **fresh volume**, PostgreSQL automatically applies all migrations and
+seeds (see `infra/postgres-init/00_bootstrap.sh`):
+`000001` → `000002` → base + module seeds → `000003` → DB-only module seed.
 
-# 2. Seed initial multi-tenant accounts, 312 vehicles, and geofence polygons
-Get-Content backend\scripts\seed.sql | docker exec -i rudra-postgres psql -U rudra -d rudra_netra
+### 2. Update an Existing Database
+```bash
+# Apply the DB-only migration and its companion seed
+Get-Content backend\migrations\000003_db_only.up.sql | docker exec -i rudra-postgres psql -U rudra -d rudra_netra
+Get-Content backend\scripts\seed_db_only.sql | docker exec -i rudra-postgres psql -U rudra -d rudra_netra
 ```
 
 ### 3. Run Backend Services (Go)
 ```bash
 cd backend
 
-# Terminal 1: GPS Ingestion Engine (TCP :5040)
+# Terminal 1: GPS Ingestion Engine (TCP :5040, persists to TimescaleDB)
 go run ./cmd/rudra-ingest
 
 # Terminal 2: REST API & Real-time WebSocket Hub (HTTP :8080)
@@ -218,6 +225,9 @@ pnpm dev:client
 # Start Admin Management Portal (http://localhost:3001)
 pnpm dev:admin
 ```
+
+Default credentials (stored in the database): `admin` / `password` for the
+fleet portal, `superadmin` / `password` for the SuperAdmin console.
 
 ---
 

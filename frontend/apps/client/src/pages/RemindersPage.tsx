@@ -9,18 +9,28 @@ import { useVehicleStore } from '../store/vehicleStore';
 
 interface Reminder {
   id: number;
-  vehicleId: number;
-  vehicleReg: string;
-  reminderType: string;
-  dueDate: string;
-  dueKm: number;
-  alertBeforeDays: number;
-  alertBeforeKm: number;
-  notes: string;
+  vehicleId: number | null;
+  vehicleReg: string | null;
+  reminderType: string | null;
+  dueDate: string | null;
+  dueKm: number | null;
+  alertBeforeDays: number | null;
+  alertBeforeKm: number | null;
+  notes: string | null;
   isAcknowledged: boolean;
-  status: 'Valid' | 'Due Soon' | 'Expired';
-  daysRemaining: number;
+  status: string | null;
+  daysRemaining: number | null;
 }
+
+const dash = (value: unknown): string =>
+  value === null || value === undefined || value === '' ? '—' : String(value);
+
+const optionalNumber = (value: string): number | null => {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const num = Number(trimmed);
+  return Number.isFinite(num) ? num : null;
+};
 
 export const RemindersPage: React.FC = () => {
   const user = useAuthStore((state) => state.user);
@@ -36,10 +46,10 @@ export const RemindersPage: React.FC = () => {
 
   const [newReminder, setNewReminder] = useState({
     vehicleId: '',
-    reminderType: 'Insurance Policy Renewal',
+    reminderType: '',
     dueDate: '',
-    dueKm: 0,
-    alertBeforeDays: 15,
+    dueKm: '',
+    alertBeforeDays: '',
     notes: '',
   });
 
@@ -75,33 +85,44 @@ export const RemindersPage: React.FC = () => {
       showToast('Please select a vehicle and due date');
       return;
     }
+    if (!newReminder.reminderType) {
+      showToast('Please select a reminder category');
+      return;
+    }
 
     try {
+      const body: Record<string, unknown> = {
+        vehicleId: Number(newReminder.vehicleId),
+        reminderType: newReminder.reminderType,
+        dueDate: newReminder.dueDate,
+      };
+      const dueKm = optionalNumber(newReminder.dueKm);
+      const alertBeforeDays = optionalNumber(newReminder.alertBeforeDays);
+      if (dueKm !== null) body.dueKm = dueKm;
+      if (alertBeforeDays !== null) body.alertBeforeDays = alertBeforeDays;
+      if (newReminder.notes.trim()) body.notes = newReminder.notes.trim();
+
       const res = await fetchWithAuth('/api/v1/reminders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          vehicleId: Number(newReminder.vehicleId),
-          reminderType: newReminder.reminderType,
-          dueDate: newReminder.dueDate,
-          dueKm: Number(newReminder.dueKm) || 0,
-          alertBeforeDays: Number(newReminder.alertBeforeDays) || 15,
-          notes: newReminder.notes,
-        }),
+        body: JSON.stringify(body),
       });
+      const json = await res.json().catch(() => null);
 
-      if (res.ok) {
+      if (res.ok && json?.success !== false) {
         showToast('Compliance reminder scheduled successfully');
         setIsModalOpen(false);
         setNewReminder({
           vehicleId: '',
-          reminderType: 'Insurance Policy Renewal',
+          reminderType: '',
           dueDate: '',
-          dueKm: 0,
-          alertBeforeDays: 15,
+          dueKm: '',
+          alertBeforeDays: '',
           notes: '',
         });
         loadReminders();
+      } else {
+        showToast(json?.error || 'Error scheduling reminder');
       }
     } catch (err) {
       showToast('Error scheduling reminder');
@@ -139,10 +160,10 @@ export const RemindersPage: React.FC = () => {
   };
 
   const filteredReminders = reminders.filter((r) => {
-    if (filterType !== 'all' && !r.reminderType.toLowerCase().includes(filterType.toLowerCase())) {
+    if (filterType !== 'all' && !(r.reminderType || '').toLowerCase().includes(filterType.toLowerCase())) {
       return false;
     }
-    if (filterStatus !== 'all' && r.status.toLowerCase() !== filterStatus.toLowerCase()) {
+    if (filterStatus !== 'all' && (r.status || '').toLowerCase() !== filterStatus.toLowerCase()) {
       return false;
     }
     return true;
@@ -219,7 +240,7 @@ export const RemindersPage: React.FC = () => {
             <Clock size={22} color="var(--attention)" />
           </div>
           <div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase' }}>Due Within 15 Days</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase' }}>Due Soon</div>
             <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--attention)' }}>{dueSoonCount}</div>
           </div>
         </div>
@@ -309,19 +330,21 @@ export const RemindersPage: React.FC = () => {
                     <td style={{ padding: '12px 16px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <Car size={16} color="var(--accent)" />
-                        <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{rem.vehicleReg}</span>
+                        <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{dash(rem.vehicleReg)}</span>
                       </div>
                     </td>
                     <td style={{ padding: '12px 16px' }}>
-                      <span style={{ fontWeight: 600 }}>{rem.reminderType}</span>
+                      <span style={{ fontWeight: 600 }}>{dash(rem.reminderType)}</span>
                     </td>
                     <td style={{ padding: '12px 16px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <Calendar size={14} color="var(--text-tertiary)" />
-                        <span>{rem.dueDate}</span>
+                        <span>{dash(rem.dueDate)}</span>
                       </div>
                       <div style={{ fontSize: '0.75rem', color: isOverdue ? '#DC2626' : isDueSoon ? 'var(--attention)' : 'var(--text-tertiary)' }}>
-                        {rem.daysRemaining < 0
+                        {rem.daysRemaining == null
+                          ? '—'
+                          : rem.daysRemaining < 0
                           ? `${Math.abs(rem.daysRemaining)} days overdue`
                           : rem.daysRemaining === 0
                           ? 'Expires Today'
@@ -329,7 +352,10 @@ export const RemindersPage: React.FC = () => {
                       </div>
                     </td>
                     <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
-                      {rem.alertBeforeDays} days prior {rem.dueKm > 0 ? `| ${rem.dueKm.toLocaleString()} KM` : ''}
+                      {[
+                        rem.alertBeforeDays ? `${rem.alertBeforeDays} days prior` : null,
+                        rem.dueKm != null && rem.dueKm > 0 ? `${rem.dueKm.toLocaleString()} KM` : null,
+                      ].filter(Boolean).join(' | ') || '—'}
                     </td>
                     <td style={{ padding: '12px 16px' }}>
                       <span
@@ -346,7 +372,7 @@ export const RemindersPage: React.FC = () => {
                           border: `1px solid ${isOverdue ? '#FCA5A5' : isDueSoon ? 'var(--attention-border)' : 'var(--good-border)'}`,
                         }}
                       >
-                        {rem.status}
+                        {dash(rem.status)}
                       </span>
                     </td>
                     <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.82rem', maxWidth: '200px' }}>
@@ -444,7 +470,9 @@ export const RemindersPage: React.FC = () => {
                   value={newReminder.reminderType}
                   onChange={(e) => setNewReminder({ ...newReminder, reminderType: e.target.value })}
                   style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', fontSize: '0.9rem' }}
+                  required
                 >
+                  <option value="">Select reminder category...</option>
                   <option value="Insurance Policy Renewal">Insurance Policy Renewal</option>
                   <option value="RTA Vehicle Fitness Inspection">RTA Vehicle Fitness Inspection</option>
                   <option value="PUC Emission Certificate">PUC Emission Certificate</option>
@@ -474,8 +502,9 @@ export const RemindersPage: React.FC = () => {
                   </label>
                   <input
                     type="number"
+                    placeholder="e.g. 15"
                     value={newReminder.alertBeforeDays}
-                    onChange={(e) => setNewReminder({ ...newReminder, alertBeforeDays: Number(e.target.value) })}
+                    onChange={(e) => setNewReminder({ ...newReminder, alertBeforeDays: e.target.value })}
                     style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', fontSize: '0.9rem' }}
                     min="1"
                     max="90"
@@ -489,9 +518,10 @@ export const RemindersPage: React.FC = () => {
                 </label>
                 <input
                   type="number"
+                  min="0"
                   placeholder="e.g. 85000"
-                  value={newReminder.dueKm || ''}
-                  onChange={(e) => setNewReminder({ ...newReminder, dueKm: Number(e.target.value) })}
+                  value={newReminder.dueKm}
+                  onChange={(e) => setNewReminder({ ...newReminder, dueKm: e.target.value })}
                   style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', fontSize: '0.9rem' }}
                 />
               </div>

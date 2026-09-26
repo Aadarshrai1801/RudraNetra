@@ -1,45 +1,73 @@
 import React, { useState, useEffect } from 'react';
 import { 
   BarChart3, TrendingUp, Gauge, Fuel, Clock, ShieldAlert,
-  Car, ArrowUpRight
+  Car
 } from 'lucide-react';
 import { fetchWithAuth } from '../utils/api';
 import { useAuthStore } from '../store/authStore';
 
-interface AnalyticsData {
-  fleetOccupancyPct: number;
-  activeVehicles: number;
-  idleVehicles: number;
-  stoppedVehicles: number;
-  runningVehicles: number;
-  avgDistancePerDay: number;
-  totalFleetKmToday: number;
-  fuelEfficiencyKmpl: number;
-  totalFuelBurnedLtr: number;
-  carbonEmissionsKg: number;
-  utilizationTrend: Array<{ day: string; occupancy: number; km: number }>;
-  engineStatusRatio: { running: number; idle: number; stopped: number };
-  topSpeedViolators: Array<{ vehicle: string; driver: string; topSpeed: number; count: number }>;
+interface UtilizationPoint {
+  day?: string | null;
+  occupancy?: number | null;
+  km?: number | null;
 }
+
+interface SpeedViolator {
+  vehicle?: string | null;
+  driver?: string | null;
+  topSpeed?: number | null;
+  count?: number | null;
+}
+
+interface AnalyticsData {
+  fleetOccupancyPct?: number | null;
+  activeVehicles?: number | null;
+  idleVehicles?: number | null;
+  stoppedVehicles?: number | null;
+  runningVehicles?: number | null;
+  avgDistancePerDay?: number | null;
+  totalFleetKmToday?: number | null;
+  totalKm31Days?: number | null;
+  fuelEfficiencyKmpl?: number | null;
+  totalFuelBurnedLtr?: number | null;
+  totalFuelCost?: number | null;
+  carbonEmissionsKg?: number | null;
+  utilizationTrend?: UtilizationPoint[] | null;
+  engineStatusRatio?: { running?: number | null; idle?: number | null; stopped?: number | null } | null;
+  topSpeedViolators?: SpeedViolator[] | null;
+}
+
+const isNumber = (value: number | null | undefined): value is number =>
+  value !== null && value !== undefined && Number.isFinite(Number(value));
+
+const formatNumber = (value: number | null | undefined, digits = 0): string => {
+  if (!isNumber(value)) return '—';
+  return Number(value).toLocaleString('en-US', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+};
 
 export const AnalyticsPage: React.FC = () => {
   const user = useAuthStore((state) => state.user);
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     const fetchAnalytics = async () => {
       setLoading(true);
+      setError(false);
       try {
         const res = await fetchWithAuth('/api/v1/dashboard/analytics');
-        if (res.ok) {
-          const json = await res.json();
-          if (json.success && json.data) {
-            setData(json.data);
-          }
-        }
+        if (!res.ok) throw new Error(`Request failed with status ${res.status}`);
+        const json = await res.json();
+        if (!json.success || !json.data) throw new Error(json.error || 'Invalid analytics payload');
+        setData(json.data);
       } catch (err) {
         console.error('Failed to load analytics:', err);
+        setData(null);
+        setError(true);
       } finally {
         setLoading(false);
       }
@@ -48,13 +76,72 @@ export const AnalyticsPage: React.FC = () => {
     fetchAnalytics();
   }, [user?.company_id]);
 
-  if (loading || !data) {
+  if (loading) {
     return (
       <div className="page-container" style={{ maxWidth: '1180px', textAlign: 'center', padding: '60px' }}>
         <p style={{ color: 'var(--text-secondary)' }}>Calculating fleet utilization & fuel telemetry metrics...</p>
       </div>
     );
   }
+
+  if (error || !data) {
+    return (
+      <div className="page-container" style={{ maxWidth: '1180px' }}>
+        <div style={{ marginBottom: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <BarChart3 size={24} color="var(--accent)" />
+            <h1 style={{ fontSize: '1.65rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              Fleet Analytics & Utilization
+            </h1>
+          </div>
+        </div>
+        <div className="card" style={{ padding: '60px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+          Analytics data is unavailable for this organization.
+        </div>
+      </div>
+    );
+  }
+
+  const trend = data.utilizationTrend ?? [];
+  const violators = data.topSpeedViolators ?? [];
+  const ratio = data.engineStatusRatio;
+  const ratioTotal = ratio
+    ? (ratio.running ?? 0) + (ratio.idle ?? 0) + (ratio.stopped ?? 0)
+    : 0;
+  const ratioPct = (value: number | null | undefined): number | null =>
+    ratioTotal > 0 ? ((value ?? 0) / ratioTotal) * 100 : null;
+
+  const hasFuelRecords = isNumber(data.totalFuelBurnedLtr) && data.totalFuelBurnedLtr > 0;
+
+  const occupancySub = [
+    isNumber(data.runningVehicles) ? `${formatNumber(data.runningVehicles)} running` : null,
+    isNumber(data.idleVehicles) ? `${formatNumber(data.idleVehicles)} idling` : null,
+    isNumber(data.stoppedVehicles) ? `${formatNumber(data.stoppedVehicles)} stopped` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  const distanceSub = [
+    isNumber(data.avgDistancePerDay) ? `Avg ${formatNumber(data.avgDistancePerDay, 1)} KM/day` : null,
+    isNumber(data.totalKm31Days) ? `${formatNumber(data.totalKm31Days)} KM in 31 days` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  const activeFleetSub = [
+    isNumber(data.idleVehicles) ? `${formatNumber(data.idleVehicles)} Idling` : null,
+    isNumber(data.stoppedVehicles) ? `${formatNumber(data.stoppedVehicles)} Parked` : null,
+  ]
+    .filter(Boolean)
+    .join(' • ');
+
+  const emissionsSub = [
+    isNumber(data.totalFuelBurnedLtr) ? `${formatNumber(data.totalFuelBurnedLtr)} L burned` : null,
+    isNumber(data.totalFuelCost) ? `Fuel cost ${formatNumber(data.totalFuelCost, 2)}` : null,
+    isNumber(data.carbonEmissionsKg) ? `${formatNumber(data.carbonEmissionsKg, 1)} kg CO₂` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
     <div className="page-container" style={{ maxWidth: '1180px' }}>
@@ -81,11 +168,10 @@ export const AnalyticsPage: React.FC = () => {
             </div>
           </div>
           <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-            {data.fleetOccupancyPct}%
+            {isNumber(data.fleetOccupancyPct) ? `${formatNumber(data.fleetOccupancyPct, 1)}%` : '—'}
           </div>
-          <div style={{ fontSize: '0.78rem', color: 'var(--good)', fontWeight: 600, marginTop: '4px', display: 'flex', alignItems: 'center', gap: '3px' }}>
-            <ArrowUpRight size={13} />
-            <span>+4.2% vs last week</span>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', marginTop: '4px' }}>
+            {occupancySub || '—'}
           </div>
         </div>
 
@@ -97,10 +183,11 @@ export const AnalyticsPage: React.FC = () => {
             </div>
           </div>
           <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-            {data.totalFleetKmToday.toLocaleString()} <span style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-secondary)' }}>KM</span>
+            {isNumber(data.totalFleetKmToday) ? formatNumber(data.totalFleetKmToday, 0) : '—'}{' '}
+            <span style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-secondary)' }}>KM</span>
           </div>
           <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-            Avg {data.avgDistancePerDay} KM per unit
+            {distanceSub || '—'}
           </div>
         </div>
 
@@ -112,10 +199,13 @@ export const AnalyticsPage: React.FC = () => {
             </div>
           </div>
           <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-            {data.fuelEfficiencyKmpl} <span style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-secondary)' }}>KM/L</span>
+            {hasFuelRecords && isNumber(data.fuelEfficiencyKmpl) ? formatNumber(data.fuelEfficiencyKmpl, 1) : '—'}{' '}
+            <span style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-secondary)' }}>KM/L</span>
           </div>
           <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-            {data.totalFuelBurnedLtr} Litres consumed
+            {isNumber(data.totalFuelBurnedLtr)
+              ? `${formatNumber(data.totalFuelBurnedLtr)} Litres consumed (31 days)`
+              : 'No fuel records'}
           </div>
         </div>
 
@@ -127,10 +217,11 @@ export const AnalyticsPage: React.FC = () => {
             </div>
           </div>
           <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-            {data.activeVehicles} <span style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--good)' }}>Online</span>
+            {isNumber(data.activeVehicles) ? formatNumber(data.activeVehicles) : '—'}{' '}
+            <span style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--good)' }}>Online</span>
           </div>
           <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-            {data.idleVehicles} Idling • {data.stoppedVehicles} Parked
+            {activeFleetSub || '—'}
           </div>
         </div>
       </div>
@@ -144,29 +235,46 @@ export const AnalyticsPage: React.FC = () => {
             Daily fleet occupancy percentage across all active units
           </p>
 
-          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', height: '180px', paddingBottom: '10px', borderBottom: '1px solid var(--border)' }}>
-            {data.utilizationTrend.map((d) => (
-              <div key={d.day} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', flex: 1 }}>
-                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent)' }}>{d.occupancy}%</div>
-                <div
-                  style={{
-                    width: '32px',
-                    height: `${(d.occupancy / 100) * 120}px`,
-                    background: 'var(--accent)',
-                    borderRadius: '4px 4px 0 0',
-                    transition: 'all 0.3s ease',
-                  }}
-                  title={`${d.day}: ${d.km} KM`}
-                />
-                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{d.day}</span>
-              </div>
-            ))}
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '12px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-            <span>Target Occupancy: 80%</span>
-            <span>Green driving threshold: Active</span>
-          </div>
+          {trend.length === 0 ? (
+            <div
+              style={{
+                height: '180px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderBottom: '1px solid var(--border)',
+                color: 'var(--text-secondary)',
+                fontSize: '0.85rem',
+              }}
+            >
+              No utilization trend data available.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', height: '180px', paddingBottom: '10px', borderBottom: '1px solid var(--border)' }}>
+              {trend.map((point, idx) => {
+                const hasOccupancy = isNumber(point.occupancy);
+                const barPct = hasOccupancy ? Math.max(0, Math.min(100, Number(point.occupancy))) : 0;
+                return (
+                  <div key={`${point.day ?? 'day'}-${idx}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', flex: 1 }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent)' }}>
+                      {hasOccupancy ? `${formatNumber(point.occupancy, 0)}%` : '—'}
+                    </div>
+                    <div
+                      style={{
+                        width: '32px',
+                        height: `${(barPct / 100) * 120}px`,
+                        background: 'var(--accent)',
+                        borderRadius: '4px 4px 0 0',
+                        transition: 'all 0.3s ease',
+                      }}
+                      title={point.day ? `${point.day}: ${isNumber(point.km) ? `${formatNumber(point.km)} KM` : '—'}` : undefined}
+                    />
+                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{point.day || '—'}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Engine Status Breakdown */}
@@ -176,45 +284,51 @@ export const AnalyticsPage: React.FC = () => {
             Run vs Idle vs Parked ratios
           </p>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '6px' }}>
-                <span style={{ fontWeight: 600, color: 'var(--good)' }}>Running & In-Transit</span>
-                <span style={{ fontWeight: 700 }}>{data.engineStatusRatio.running}%</span>
+          {!ratio || ratioTotal === 0 ? (
+            <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+              No engine status data available.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '6px' }}>
+                  <span style={{ fontWeight: 600, color: 'var(--good)' }}>Running & In-Transit</span>
+                  <span style={{ fontWeight: 700 }}>{formatNumber(ratioPct(ratio.running), 1)}%</span>
+                </div>
+                <div style={{ height: '8px', background: 'var(--bg-subtle)', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div style={{ width: `${ratioPct(ratio.running) ?? 0}%`, height: '100%', background: 'var(--good)' }} />
+                </div>
               </div>
-              <div style={{ height: '8px', background: 'var(--bg-subtle)', borderRadius: '4px', overflow: 'hidden' }}>
-                <div style={{ width: `${data.engineStatusRatio.running}%`, height: '100%', background: 'var(--good)' }} />
+
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '6px' }}>
+                  <span style={{ fontWeight: 600, color: 'var(--attention)' }}>Stationary Idling (Engine ON)</span>
+                  <span style={{ fontWeight: 700 }}>{formatNumber(ratioPct(ratio.idle), 1)}%</span>
+                </div>
+                <div style={{ height: '8px', background: 'var(--bg-subtle)', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div style={{ width: `${ratioPct(ratio.idle) ?? 0}%`, height: '100%', background: 'var(--attention)' }} />
+                </div>
+              </div>
+
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '6px' }}>
+                  <span style={{ fontWeight: 600, color: 'var(--text-tertiary)' }}>Parked & Stopped</span>
+                  <span style={{ fontWeight: 700 }}>{formatNumber(ratioPct(ratio.stopped), 1)}%</span>
+                </div>
+                <div style={{ height: '8px', background: 'var(--bg-subtle)', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div style={{ width: `${ratioPct(ratio.stopped) ?? 0}%`, height: '100%', background: 'var(--text-tertiary)' }} />
+                </div>
               </div>
             </div>
+          )}
 
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '6px' }}>
-                <span style={{ fontWeight: 600, color: 'var(--attention)' }}>Stationary Idling (Engine ON)</span>
-                <span style={{ fontWeight: 700 }}>{data.engineStatusRatio.idle}%</span>
-              </div>
-              <div style={{ height: '8px', background: 'var(--bg-subtle)', borderRadius: '4px', overflow: 'hidden' }}>
-                <div style={{ width: `${data.engineStatusRatio.idle}%`, height: '100%', background: 'var(--attention)' }} />
-              </div>
-            </div>
-
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '6px' }}>
-                <span style={{ fontWeight: 600, color: 'var(--text-tertiary)' }}>Parked & Stopped</span>
-                <span style={{ fontWeight: 700 }}>{data.engineStatusRatio.stopped}%</span>
-              </div>
-              <div style={{ height: '8px', background: 'var(--bg-subtle)', borderRadius: '4px', overflow: 'hidden' }}>
-                <div style={{ width: `${data.engineStatusRatio.stopped}%`, height: '100%', background: 'var(--text-tertiary)' }} />
-              </div>
-            </div>
-          </div>
-
-          <div style={{ marginTop: '24px', padding: '12px', background: 'var(--attention-bg)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--attention-border)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', fontWeight: 700, color: 'var(--attention)' }}>
+          <div style={{ marginTop: '24px', padding: '12px', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
               <Clock size={14} />
-              <span>Idling Fuel Alert</span>
+              <span>Fuel & Emissions (31 Days)</span>
             </div>
             <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              Excessive idling (&gt;15 min) accounts for ~84L wasted diesel this week.
+              {emissionsSub || 'No fuel records available.'}
             </p>
           </div>
         </div>
@@ -224,7 +338,7 @@ export const AnalyticsPage: React.FC = () => {
       <div className="card" style={{ overflow: 'hidden' }}>
         <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <ShieldAlert size={18} color="#DC2626" />
-          <h2 style={{ fontSize: '1.05rem', fontWeight: 700 }}>Top Overspeed Violations (Last 7 Days)</h2>
+          <h2 style={{ fontSize: '1.05rem', fontWeight: 700 }}>Top Overspeed Violations (Last 31 Days)</h2>
         </div>
 
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
@@ -234,34 +348,31 @@ export const AnalyticsPage: React.FC = () => {
               <th style={{ padding: '12px 16px', fontWeight: 600 }}>Assigned Driver</th>
               <th style={{ padding: '12px 16px', fontWeight: 600 }}>Peak Recorded Speed</th>
               <th style={{ padding: '12px 16px', fontWeight: 600 }}>Instances Count</th>
-              <th style={{ padding: '12px 16px', fontWeight: 600 }}>Risk Severity</th>
             </tr>
           </thead>
           <tbody>
-            {data.topSpeedViolators.map((violator, idx) => (
-              <tr key={idx} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                <td style={{ padding: '12px 16px', fontWeight: 700 }}>{violator.vehicle}</td>
-                <td style={{ padding: '12px 16px', color: 'var(--text-secondary)' }}>{violator.driver}</td>
-                <td style={{ padding: '12px 16px' }}>
-                  <span style={{ fontWeight: 800, color: '#DC2626' }}>{violator.topSpeed} km/h</span>
-                </td>
-                <td style={{ padding: '12px 16px', fontWeight: 600 }}>{violator.count} times</td>
-                <td style={{ padding: '12px 16px' }}>
-                  <span
-                    style={{
-                      padding: '2px 8px',
-                      borderRadius: 'var(--radius-sm)',
-                      fontSize: '0.76rem',
-                      fontWeight: 700,
-                      background: '#FEE2E2',
-                      color: '#DC2626',
-                    }}
-                  >
-                    High Risk
-                  </span>
+            {violators.length === 0 ? (
+              <tr>
+                <td colSpan={4} style={{ padding: '36px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                  No overspeed violations recorded.
                 </td>
               </tr>
-            ))}
+            ) : (
+              violators.map((violator, idx) => (
+                <tr key={`${violator.vehicle ?? 'vehicle'}-${idx}`} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                  <td style={{ padding: '12px 16px', fontWeight: 700 }}>{violator.vehicle || '—'}</td>
+                  <td style={{ padding: '12px 16px', color: 'var(--text-secondary)' }}>{violator.driver || '—'}</td>
+                  <td style={{ padding: '12px 16px' }}>
+                    <span style={{ fontWeight: 800, color: '#DC2626' }}>
+                      {isNumber(violator.topSpeed) ? `${formatNumber(violator.topSpeed, 1)} km/h` : '—'}
+                    </span>
+                  </td>
+                  <td style={{ padding: '12px 16px', fontWeight: 600 }}>
+                    {isNumber(violator.count) ? `${formatNumber(violator.count)} times` : '—'}
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>

@@ -19,24 +19,47 @@ interface DeviceItem {
   status: 'Online' | 'Offline' | 'Unassigned';
 }
 
+interface CompanyOption {
+  id: number;
+  name: string;
+}
+
+interface MasterOption {
+  id: number;
+  type: string;
+  code: string;
+  name: string;
+  isDefault: boolean;
+}
+
 export const DeviceMasterPage: React.FC = () => {
   const [devices, setDevices] = useState<DeviceItem[]>([]);
+  const [companies, setCompanies] = useState<CompanyOption[]>([]);
+  const [deviceModels, setDeviceModels] = useState<MasterOption[]>([]);
+  const [simOperators, setSimOperators] = useState<MasterOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingDevice, setEditingDevice] = useState<DeviceItem | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const [newDevice, setNewDevice] = useState({
     imei: '',
     simCardNo: '',
-    operator: 'e& (Etisalat UAE)',
-    model: 'Teltonika FMB920',
-    protocol: 'TCP/5040',
-    firmware: '03.28.07.Rev.00',
-    companyName: 'Emirates Trans Logistics L.L.C',
+    operator: '',
+    model: '',
+    protocol: '',
+    firmware: '',
+    companyName: '',
+  });
+
+  const [editDeviceForm, setEditDeviceForm] = useState({
+    simCardNo: '',
+    operator: '',
+    firmware: '',
   });
 
   const showToast = (msg: string) => {
@@ -61,8 +84,40 @@ export const DeviceMasterPage: React.FC = () => {
     }
   };
 
+  const loadOptions = async () => {
+    try {
+      const [companiesRes, modelsRes, operatorsRes] = await Promise.all([
+        fetchWithAdminAuth('/api/v1/admin/companies'),
+        fetchWithAdminAuth('/api/v1/admin/masters/device-models'),
+        fetchWithAdminAuth('/api/v1/admin/masters/sim-operators'),
+      ]);
+
+      if (companiesRes.ok) {
+        const json = await companiesRes.json();
+        if (json.success && Array.isArray(json.data)) {
+          setCompanies(json.data);
+        }
+      }
+      if (modelsRes.ok) {
+        const json = await modelsRes.json();
+        if (json.success && Array.isArray(json.data)) {
+          setDeviceModels(json.data);
+        }
+      }
+      if (operatorsRes.ok) {
+        const json = await operatorsRes.json();
+        if (json.success && Array.isArray(json.data)) {
+          setSimOperators(json.data);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load device lookup options:', err);
+    }
+  };
+
   useEffect(() => {
     loadDevices();
+    loadOptions();
   }, []);
 
   useEffect(() => {
@@ -89,27 +144,62 @@ export const DeviceMasterPage: React.FC = () => {
         setNewDevice({
           imei: '',
           simCardNo: '',
-          operator: 'e& (Etisalat UAE)',
-          model: 'Teltonika FMB920',
-          protocol: 'TCP/5040',
-          firmware: '03.28.07.Rev.00',
-          companyName: 'Emirates Trans Logistics L.L.C',
+          operator: '',
+          model: '',
+          protocol: '',
+          firmware: '',
+          companyName: '',
         });
         loadDevices();
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        showToast(errJson.error || 'Failed to provision device');
       }
     } catch (err) {
       showToast('Failed to provision device');
     }
   };
 
-  const filteredDevices = devices.filter((d) => {
-    const matchesSearch =
-      d.imei.includes(search) ||
-      d.simCardNo.includes(search) ||
-      d.vehicleReg.toLowerCase().includes(search.toLowerCase()) ||
-      d.assignedTenant.toLowerCase().includes(search.toLowerCase());
+  const handleOpenEdit = (device: DeviceItem) => {
+    setEditingDevice(device);
+    setEditDeviceForm({
+      simCardNo: device.simCardNo || '',
+      operator: device.operator || '',
+      firmware: device.firmware || '',
+    });
+  };
 
-    const matchesStatus = statusFilter === 'all' || d.status.toLowerCase() === statusFilter.toLowerCase();
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingDevice) return;
+    try {
+      const res = await fetchWithAdminAuth(`/api/v1/admin/devices/${editingDevice.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editDeviceForm),
+      });
+      if (res.ok) {
+        showToast('Device configuration updated');
+        setEditingDevice(null);
+        loadDevices();
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        showToast(errJson.error || 'Failed to update device');
+      }
+    } catch (err) {
+      showToast('Failed to update device');
+    }
+  };
+
+  const filteredDevices = devices.filter((d) => {
+    const query = search.toLowerCase();
+    const matchesSearch =
+      (d.imei || '').includes(search) ||
+      (d.simCardNo || '').includes(search) ||
+      (d.vehicleReg || '').toLowerCase().includes(query) ||
+      (d.assignedTenant || '').toLowerCase().includes(query);
+
+    const matchesStatus = statusFilter === 'all' || (d.status || '').toLowerCase() === statusFilter.toLowerCase();
     return matchesSearch && matchesStatus;
   });
 
@@ -175,13 +265,13 @@ export const DeviceMasterPage: React.FC = () => {
         <div className="card" style={{ padding: '18px 22px' }}>
           <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Total Trackers</div>
           <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: '4px' }}>{devices.length}</div>
-          <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '2px' }}>Teltonika & Concox Units</div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '2px' }}>Registered hardware trackers</div>
         </div>
 
         <div className="card" style={{ padding: '18px 22px' }}>
           <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Online & Streaming</div>
           <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--good)', marginTop: '4px' }}>{onlineCount}</div>
-          <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '2px' }}>Active socket pings</div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '2px' }}>Heartbeat within the last 15 minutes</div>
         </div>
 
         <div className="card" style={{ padding: '18px 22px' }}>
@@ -244,18 +334,19 @@ export const DeviceMasterPage: React.FC = () => {
               <th style={{ padding: '12px 16px', fontWeight: 600 }}>Vehicle Plate</th>
               <th style={{ padding: '12px 16px', fontWeight: 600 }}>Last Ping</th>
               <th style={{ padding: '12px 16px', fontWeight: 600 }}>Status</th>
+              <th style={{ padding: '12px 16px', fontWeight: 600 }}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={7} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)' }}>
+                <td colSpan={8} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)' }}>
                   Loading hardware inventory...
                 </td>
               </tr>
             ) : filteredDevices.length === 0 ? (
               <tr>
-                <td colSpan={7} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)' }}>
+                <td colSpan={8} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)' }}>
                   No hardware devices found matching your criteria.
                 </td>
               </tr>
@@ -264,30 +355,30 @@ export const DeviceMasterPage: React.FC = () => {
                 <tr key={dev.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                   <td style={{ padding: '12px 16px' }}>
                     <div style={{ fontWeight: 700, fontFamily: 'monospace', color: 'var(--accent)' }}>{dev.imei}</div>
-                    <div style={{ fontSize: '0.74rem', color: 'var(--text-tertiary)' }}>FW: {dev.firmware}</div>
+                    <div style={{ fontSize: '0.74rem', color: 'var(--text-tertiary)' }}>FW: {dev.firmware || '—'}</div>
                   </td>
                   <td style={{ padding: '12px 16px' }}>
-                    <div style={{ fontWeight: 600 }}>{dev.simCardNo}</div>
-                    <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>{dev.operator}</div>
+                    <div style={{ fontWeight: 600 }}>{dev.simCardNo || '—'}</div>
+                    <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>{dev.operator || '—'}</div>
                   </td>
                   <td style={{ padding: '12px 16px' }}>
-                    <div style={{ fontWeight: 600 }}>{dev.model}</div>
-                    <div style={{ fontSize: '0.76rem', color: 'var(--text-tertiary)' }}>{dev.protocol}</div>
+                    <div style={{ fontWeight: 600 }}>{dev.model || '—'}</div>
+                    <div style={{ fontSize: '0.76rem', color: 'var(--text-tertiary)' }}>{dev.protocol || '—'}</div>
                   </td>
                   <td style={{ padding: '12px 16px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <Building2 size={14} color="var(--text-tertiary)" />
-                      <span>{dev.assignedTenant}</span>
+                      <span>{dev.assignedTenant || '—'}</span>
                     </div>
                   </td>
                   <td style={{ padding: '12px 16px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <Car size={14} color="var(--accent)" />
-                      <span style={{ fontWeight: 600 }}>{dev.vehicleReg}</span>
+                      <span style={{ fontWeight: 600 }}>{dev.vehicleReg || '—'}</span>
                     </div>
                   </td>
                   <td style={{ padding: '12px 16px', color: 'var(--text-tertiary)', fontSize: '0.82rem' }}>
-                    {dev.lastPing}
+                    {dev.lastPing || '—'}
                   </td>
                   <td style={{ padding: '12px 16px' }}>
                     <span
@@ -302,6 +393,16 @@ export const DeviceMasterPage: React.FC = () => {
                     >
                       {dev.status}
                     </span>
+                  </td>
+                  <td style={{ padding: '12px 16px' }}>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEdit(dev)}
+                      className="btn btn-secondary"
+                      style={{ padding: '5px 12px', fontSize: '0.78rem' }}
+                    >
+                      Edit
+                    </button>
                   </td>
                 </tr>
               ))
@@ -340,7 +441,9 @@ export const DeviceMasterPage: React.FC = () => {
                 <option value={25}>25</option>
                 <option value={50}>50</option>
                 <option value={100}>100</option>
-                <option value={350}>All (330+)</option>
+                {devices.length > 0 && (
+                  <option value={Math.max(1, devices.length)}>All ({devices.length})</option>
+                )}
               </select>
               <span>per page</span>
               <span style={{ marginLeft: '12px', color: 'var(--text-tertiary)' }}>
@@ -422,10 +525,12 @@ export const DeviceMasterPage: React.FC = () => {
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Telco Operator</label>
                   <select value={newDevice.operator} onChange={(e) => setNewDevice({ ...newDevice, operator: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                    <option value="e& (Etisalat UAE)">e& (Etisalat UAE)</option>
-                    <option value="du Telecom">du Telecom</option>
-                    <option value="Airtel M2M">Airtel M2M</option>
-                    <option value="Vodafone IoT">Vodafone IoT</option>
+                    <option value="">
+                      {simOperators.length === 0 ? 'No SIM operators configured in masters' : 'Select operator'}
+                    </option>
+                    {simOperators.map((op) => (
+                      <option key={op.id} value={op.name}>{op.name}</option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -433,24 +538,69 @@ export const DeviceMasterPage: React.FC = () => {
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Device Model</label>
                   <select value={newDevice.model} onChange={(e) => setNewDevice({ ...newDevice, model: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                    <option value="Teltonika FMB920">Teltonika FMB920 (2G)</option>
-                    <option value="Teltonika FMB125">Teltonika FMB125 (Dual SIM)</option>
-                    <option value="Teltonika FMC130">Teltonika FMC130 (4G LTE)</option>
-                    <option value="Concox GT06N">Concox GT06N</option>
+                    <option value="">
+                      {deviceModels.length === 0 ? 'No device models configured in masters' : 'Select device model'}
+                    </option>
+                    {deviceModels.map((m) => (
+                      <option key={m.id} value={m.name}>{m.name}</option>
+                    ))}
                   </select>
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Socket Protocol Port</label>
-                  <input type="text" value={newDevice.protocol} onChange={(e) => setNewDevice({ ...newDevice, protocol: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
+                  <input type="text" placeholder="Enter protocol / port" value={newDevice.protocol} onChange={(e) => setNewDevice({ ...newDevice, protocol: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
                 </div>
               </div>
               <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Firmware Revision</label>
+                <input type="text" placeholder="Enter firmware revision" value={newDevice.firmware} onChange={(e) => setNewDevice({ ...newDevice, firmware: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
+              </div>
+              <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Initial Tenant Company Assignment</label>
-                <input type="text" placeholder="Emirates Trans Logistics L.L.C" value={newDevice.companyName} onChange={(e) => setNewDevice({ ...newDevice, companyName: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
+                <select value={newDevice.companyName} onChange={(e) => setNewDevice({ ...newDevice, companyName: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                  <option value="">Unassigned</option>
+                  {companies.map((company) => (
+                    <option key={company.id} value={company.name}>{company.name}</option>
+                  ))}
+                </select>
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
                 <button type="button" onClick={() => setIsModalOpen(false)} className="btn btn-secondary">Cancel</button>
                 <button type="submit" className="btn btn-primary">Provision Tracker</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* Edit Device Modal */}
+      {editingDevice && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0, 0, 0, 0.45)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '480px', padding: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+              <div>
+                <h3 style={{ fontSize: '1.2rem', fontWeight: 700 }}>Edit Device Configuration</h3>
+                <div style={{ fontSize: '0.76rem', color: 'var(--text-tertiary)', fontFamily: 'monospace' }}>{editingDevice.imei}</div>
+              </div>
+              <button onClick={() => setEditingDevice(null)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} /></button>
+            </div>
+            <form onSubmit={handleUpdate} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>SIM Card Phone Number</label>
+                  <input type="text" value={editDeviceForm.simCardNo} onChange={(e) => setEditDeviceForm({ ...editDeviceForm, simCardNo: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Telco Operator</label>
+                  <input type="text" value={editDeviceForm.operator} onChange={(e) => setEditDeviceForm({ ...editDeviceForm, operator: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
+                </div>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Firmware Revision</label>
+                <input type="text" value={editDeviceForm.firmware} onChange={(e) => setEditDeviceForm({ ...editDeviceForm, firmware: e.target.value })} style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+                <button type="button" onClick={() => setEditingDevice(null)} className="btn btn-secondary">Cancel</button>
+                <button type="submit" className="btn btn-primary">Save Configuration</button>
               </div>
             </form>
           </div>

@@ -14,10 +14,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rudra-netra/backend/internal/config"
 	"github.com/rudra-netra/backend/internal/handler"
 	"github.com/rudra-netra/backend/internal/handler/middleware"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rudra-netra/backend/internal/repository/postgres"
 	"github.com/rudra-netra/backend/internal/service"
 	ws "github.com/rudra-netra/backend/internal/websocket"
@@ -34,22 +34,31 @@ func main() {
 		logger.Fatal("failed to load config", zap.Error(err))
 	}
 
-	// Initialize database connection pool (PostgreSQL) if available
+	// Initialize the PostgreSQL connection pool. The database is the only data
+	// source: retry briefly on startup, then fail fast if it is unreachable.
 	var pool *pgxpool.Pool
 	var userRepo *postgres.UserRepository
 	var vehicleRepo *postgres.VehicleRepository
 	var companyRepo *postgres.CompanyRepository
 
-	db, err := postgres.NewDB(context.Background(), &cfg.Database, logger)
-	if err != nil {
-		logger.Warn("PostgreSQL not reachable — running in standalone mode with full in-memory fallback", zap.Error(err))
-	} else {
-		defer db.Close()
-		pool = db.Pool
-		userRepo = postgres.NewUserRepository(pool)
-		vehicleRepo = postgres.NewVehicleRepository(pool)
-		companyRepo = postgres.NewCompanyRepository(pool)
+	var db *postgres.DB
+	for attempt := 1; attempt <= 12; attempt++ {
+		db, err = postgres.NewDB(context.Background(), &cfg.Database, logger)
+		if err == nil {
+			break
+		}
+		logger.Warn("PostgreSQL not reachable, retrying",
+			zap.Int("attempt", attempt), zap.Error(err))
+		time.Sleep(5 * time.Second)
 	}
+	if err != nil || db == nil {
+		logger.Fatal("PostgreSQL is required but unreachable; refusing to start", zap.Error(err))
+	}
+	defer db.Close()
+	pool = db.Pool
+	userRepo = postgres.NewUserRepository(pool)
+	vehicleRepo = postgres.NewVehicleRepository(pool)
+	companyRepo = postgres.NewCompanyRepository(pool)
 
 	authService := service.NewAuthService(userRepo, &cfg.JWT)
 
