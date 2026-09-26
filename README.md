@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/RudraNetraLogo.png" alt="RudraNetra Logo" width="280" />
+  <img src="D:\RudraNetra\frontend\apps\client\public\logo.png" alt="RudraNetra Logo" width="280" />
 </p>
 
 <h1 align="center">RudraNetra</h1>
