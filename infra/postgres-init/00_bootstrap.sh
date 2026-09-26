@@ -1,7 +1,17 @@
 #!/bin/bash
 # ============================================================================
 # RudraNetra PostgreSQL bootstrap.
-# Runs migrations and seed data in dependency order on first container start.
+# Runs migrations and reference/registry seed data in dependency order on
+# first container start.
+#
+# Telemetry is DEVICE-FED ONLY: no simulated position history, alerts, raw
+# packets, command logs or fuel ledger are left behind. Positions and event
+# logs start empty and are filled exclusively by real trackers connecting to
+# rudra-ingest (TCP 5040).
+#
+# Optional demo datasets live in backend/scripts/ (seed_telemetry_history.sql,
+# seed_alert_catalog.sql, seed_allied_positions.sql). Run them manually only
+# when you want a populated demo environment.
 # ============================================================================
 set -e
 
@@ -13,38 +23,40 @@ $PSQL -f /migrations/000001_init_schema.up.sql
 echo "[rudranet] applying migration 000002 (legacy feature schema)"
 $PSQL -f /migrations/000002_legacy_features.up.sql
 
-echo "[rudranet] seeding base dataset"
+echo "[rudranet] seeding base registry dataset"
 $PSQL -f /seeds/seed.sql
 
 if [ -f /seeds/seed_org2.sql ]; then
-  echo "[rudranet] seeding second tenant dataset"
+  echo "[rudranet] seeding second tenant registry"
   $PSQL -f /seeds/seed_org2.sql
 fi
 if [ -f /seeds/seed_modules.sql ]; then
-  echo "[rudranet] seeding module dataset"
+  echo "[rudranet] seeding module registry data"
   $PSQL -f /seeds/seed_modules.sql
-fi
-if [ -f /seeds/seed_allied_positions.sql ]; then
-  echo "[rudranet] seeding allied positions"
-  $PSQL -f /seeds/seed_allied_positions.sql
 fi
 
 echo "[rudranet] applying migration 000003 (db-only refactor)"
 $PSQL -f /migrations/000003_db_only.up.sql
+
+echo "[rudranet] applying migration 000004 (device command lifecycle)"
+$PSQL -f /migrations/000004_device_command_ack.up.sql
+
+echo "[rudranet] applying migration 000005 (timescale compression/retention)"
+$PSQL -f /migrations/000005_timescale_policies.up.sql
 
 if [ -f /seeds/seed_db_only.sql ]; then
   echo "[rudranet] seeding DB-only module data"
   $PSQL -f /seeds/seed_db_only.sql
 fi
 
-if [ -f /seeds/seed_telemetry_history.sql ]; then
-  echo "[rudranet] seeding telemetry history and derived alerts"
-  $PSQL -f /seeds/seed_telemetry_history.sql
-fi
+echo "[rudranet] purging imported/simulated telemetry (device-fed only)"
+$PSQL <<'SQL'
+TRUNCATE positions;
+TRUNCATE alerts;
+TRUNCATE raw_packets;
+TRUNCATE device_commands;
+TRUNCATE fuel_records;
+UPDATE devices SET last_heartbeat = NULL;
+SQL
 
-if [ -f /seeds/seed_alert_catalog.sql ]; then
-  echo "[rudranet] seeding full alert catalogue"
-  $PSQL -f /seeds/seed_alert_catalog.sql
-fi
-
-echo "[rudranet] database bootstrap complete"
+echo "[rudranet] database bootstrap complete (telemetry empty until devices connect)"
