@@ -64,8 +64,9 @@ type JWTConfig struct {
 }
 
 type IngestConfig struct {
-	Host string `mapstructure:"host"`
-	Port int    `mapstructure:"port"`
+	Host        string `mapstructure:"host"`
+	Port        int    `mapstructure:"port"`
+	MetricsPort int    `mapstructure:"metrics_port"`
 }
 
 type SMSConfig struct {
@@ -114,6 +115,7 @@ func Load(configPath string) (*Config, error) {
 
 	v.SetDefault("ingest.host", "0.0.0.0")
 	v.SetDefault("ingest.port", 5040)
+	v.SetDefault("ingest.metrics_port", 5041)
 
 	// Read config file
 	if configPath != "" {

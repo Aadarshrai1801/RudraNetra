@@ -8,21 +8,24 @@ import (
 // Position represents a GPS position received from a device.
 // Stored in a TimescaleDB hypertable for efficient time-range queries.
 type Position struct {
-	Time        time.Time       `json:"time" db:"time"`
-	DeviceID    int64           `json:"device_id" db:"device_id"`
-	Latitude    float64         `json:"lat" db:"latitude"`
-	Longitude   float64         `json:"lng" db:"longitude"`
-	Speed       float32         `json:"speed" db:"speed"`
-	Heading     float32         `json:"heading" db:"heading"`
-	Altitude    float32         `json:"altitude" db:"altitude"`
-	Satellites  int16           `json:"satellites" db:"satellites"`
-	Ignition    bool            `json:"ignition" db:"ignition"`
-	GSMSignal   int16           `json:"gsm_signal" db:"gsm_signal"`
-	Voltage     float32         `json:"voltage" db:"voltage"`
-	Temperature float32         `json:"temperature" db:"temperature"`
-	Odometer    int64           `json:"odometer" db:"odometer"`
-	RFIDTag     string          `json:"rfid_tag,omitempty" db:"rfid_tag"`
-	RawData     json.RawMessage `json:"raw_data,omitempty" db:"raw_data"` // all IO elements
+	Time           time.Time       `json:"time" db:"time"`
+	DeviceID       int64           `json:"device_id" db:"device_id"`
+	Latitude       float64         `json:"lat" db:"latitude"`
+	Longitude      float64         `json:"lng" db:"longitude"`
+	Speed          float32         `json:"speed" db:"speed"`
+	Heading        float32         `json:"heading" db:"heading"`
+	Altitude       float32         `json:"altitude" db:"altitude"`
+	Satellites     int16           `json:"satellites" db:"satellites"`
+	Ignition       bool            `json:"ignition" db:"ignition"`
+	GSMSignal      int16           `json:"gsm_signal" db:"gsm_signal"`
+	Voltage        float32         `json:"voltage" db:"voltage"`
+	Temperature    float32         `json:"temperature" db:"temperature"`
+	Odometer       int64           `json:"odometer" db:"odometer"`
+	RFIDTag        string          `json:"rfid_tag,omitempty" db:"rfid_tag"`
+	FuelLevelPct   *float64        `json:"fuel_level_pct,omitempty" db:"fuel_level_pct"`
+	BackupBatteryV *float64        `json:"backup_battery_v,omitempty" db:"backup_battery_v"`
+	DoorOpen       *bool           `json:"door_open,omitempty" db:"door_open"`
+	RawData        json.RawMessage `json:"raw_data,omitempty" db:"raw_data"` // all IO elements
 }
 
 // LivePosition is a Position enriched with vehicle info for WebSocket broadcast.
@@ -33,6 +36,27 @@ type LivePosition struct {
 	Model     string `json:"model,omitempty"`
 	IconType  string `json:"icon_type,omitempty"`
 	Status    string `json:"status"` // moving, idle, stopped, offline
+}
+
+// LiveEvent is the realtime position payload published by the ingestion
+// service (Redis) and broadcast by the API over WebSocket.
+type LiveEvent struct {
+	CompanyID   int64    `json:"company_id"`
+	DeviceID    int64    `json:"device_id"`
+	RegNumber   string   `json:"reg_number"`
+	Lat         float64  `json:"lat"`
+	Lng         float64  `json:"lng"`
+	Speed       float64  `json:"speed"`
+	Heading     float64  `json:"heading"`
+	Ignition    bool     `json:"ignition"`
+	Status      string   `json:"status"`
+	Temperature *float64 `json:"temperature,omitempty"`
+	Voltage     *float64 `json:"voltage,omitempty"`
+	FuelPct     *float64 `json:"fuel_pct,omitempty"`
+	BatteryV    *float64 `json:"battery_v,omitempty"`
+	DoorOpen    *bool    `json:"door_open,omitempty"`
+	Odometer    int64    `json:"odometer"`
+	Timestamp   string   `json:"timestamp"`
 }
 
 // HistoryRequest defines parameters for fetching position history.
