@@ -175,10 +175,15 @@ export const LiveTrackingPage: React.FC<{ initialAction?: string }> = ({ initial
     });
   };
 
-  // Load organization-scoped fleet vehicles using the stored session only
+  // Load organization-scoped fleet vehicles using the stored session only.
+  // A 15s poll is kept as a fallback for when the WebSocket is unavailable.
   useEffect(() => {
     if (token && user?.company_id !== undefined && user?.company_id !== null) {
       fetchVehicles(token, user.company_id);
+      const interval = setInterval(() => {
+        fetchVehicles(token, user.company_id);
+      }, 15000);
+      return () => clearInterval(interval);
     }
   }, [token, user?.company_id, fetchVehicles]);
 
@@ -211,9 +216,9 @@ export const LiveTrackingPage: React.FC<{ initialAction?: string }> = ({ initial
       if (v.temperature !== undefined && v.temperature !== null) {
         freezer++;
       }
-      // A device is active only if it received a real telemetry ping recently (within last 30 minutes)
-      const isRecent = v.timestamp ? (Date.now() - new Date(v.timestamp).getTime()) < 30 * 60 * 1000 : false;
-      if (isRecent) active++;
+      // Active means the device is reporting now: the API sets `online` when a
+      // position arrived within the last 15 minutes (status stays last known).
+      if (v.online === true) active++;
       else inactive++;
     });
 
@@ -233,7 +238,6 @@ export const LiveTrackingPage: React.FC<{ initialAction?: string }> = ({ initial
   const vehicleList = useMemo(() => {
     const list = Array.from(vehiclesMap.values());
     return list.filter((v) => {
-      const isRecent = v.timestamp ? (Date.now() - new Date(v.timestamp).getTime()) < 30 * 60 * 1000 : false;
       const matchesFilter =
         filterStatus === 'all' ||
         (filterStatus === 'moving' && v.status === 'moving') ||
@@ -242,8 +246,8 @@ export const LiveTrackingPage: React.FC<{ initialAction?: string }> = ({ initial
         (filterStatus === 'parked' && (v.status === 'stopped' || v.status === 'offline')) ||
         (filterStatus === 'stopped' && (v.status === 'stopped' || v.status === 'offline')) ||
         (filterStatus === 'freezer' && (v.temperature !== undefined && v.temperature !== null)) ||
-        (filterStatus === 'active' && isRecent) ||
-        (filterStatus === 'inactive' && !isRecent);
+        (filterStatus === 'active' && v.online === true) ||
+        (filterStatus === 'inactive' && v.online !== true);
 
       const query = searchQuery.toLowerCase();
       const matchesSearch =

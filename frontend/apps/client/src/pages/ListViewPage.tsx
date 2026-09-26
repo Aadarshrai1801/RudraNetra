@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useVehicleStore } from '../store/vehicleStore';
 import type { VehiclePosition } from '../store/vehicleStore';
 import { useAuthStore } from '../store/authStore';
@@ -27,40 +27,83 @@ export const ListViewPage: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [fuelByReg, setFuelByReg] = useState<Map<string, number>>(new Map());
+  const [apiList, setApiList] = useState<VehiclePosition[]>([]);
+  const [pageLoading, setPageLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // `fuel_pct` is returned by GET /api/v1/vehicles. Prefer the value on the
-  // store record; the store does not always carry it, so read the API once
-  // and fall back to '—' when the database has no fuel level.
-  useEffect(() => {
-    const loadFuelLevels = async () => {
-      try {
-        const res = await fetchWithAuth('/api/v1/vehicles?limit=500');
-        if (!res.ok) return;
-        const json = await res.json();
-        if (!json.success || !Array.isArray(json.data)) return;
-        const map = new Map<string, number>();
-        json.data.forEach((item: any) => {
-          if (typeof item.reg_number === 'string' && typeof item.fuel_pct === 'number') {
-            map.set(item.reg_number, item.fuel_pct);
-          }
-        });
-        setFuelByReg(map);
-      } catch (err) {
-        console.error('Failed to load vehicle fuel levels:', err);
-      }
-    };
-    loadFuelLevels();
-  }, [user?.company_id]);
-
-  // `fuel_pct` is returned by GET /api/v1/vehicles; read it when the store
-  // carries it, otherwise show '—'.
   type VehicleWithFuel = VehiclePosition & { fuel_pct?: number | null };
-  const vehicleList = Array.from(vehiclesMap.values()) as VehicleWithFuel[];
+
+  // Maps one API row onto the shape this ledger renders.
+  const mapVehicle = (v: any): VehicleWithFuel => {
+    const devId = v.device_id ?? v.id;
+    const lat = typeof v.lat === 'number' ? v.lat : undefined;
+    const lng = typeof v.lng === 'number' ? v.lng : undefined;
+    const makeModel = [v.make, v.model].filter(Boolean).join(' ').trim();
+    return {
+      device_id: devId,
+      reg_number: v.reg_number ?? '',
+      name: makeModel || undefined,
+      driver_name: v.driver_name ?? undefined,
+      driver_phone: v.driver_phone ?? undefined,
+      lat,
+      lng,
+      speed: typeof v.speed === 'number' ? v.speed : undefined,
+      heading: typeof v.heading === 'number' ? v.heading : undefined,
+      ignition: typeof v.ignition === 'boolean' ? v.ignition : undefined,
+      status: v.status ?? (lat !== undefined ? undefined : 'offline'),
+      online: typeof v.online === 'boolean' ? v.online : undefined,
+      timestamp: v.timestamp ?? undefined,
+      odometer: typeof v.odometer === 'number' ? v.odometer : undefined,
+      temperature: typeof v.temperature === 'number' ? v.temperature : undefined,
+      location_name: v.location_name ?? undefined,
+      fuel_pct: typeof v.fuel_pct === 'number' ? v.fuel_pct : null,
+    };
+  };
+
+  // The page loads its own fleet snapshot so the ledger can never render empty
+  // when the API has data; fetchWithAuth handles expired sessions. The shared
+  // store is still refreshed for live WebSocket updates on other pages.
+  const loadPage = useCallback(async () => {
+    setPageLoading(true);
+    setLoadError(null);
+    try {
+      const res = await fetchWithAuth('/api/v1/vehicles?limit=500');
+      if (!res.ok) throw new Error(`Request failed with status ${res.status}`);
+      const json = await res.json();
+      if (!json.success || !Array.isArray(json.data)) {
+        throw new Error(json.error || 'Invalid vehicles payload');
+      }
+      setApiList(json.data.map(mapVehicle));
+
+      const fuel = new Map<string, number>();
+      json.data.forEach((item: any) => {
+        if (typeof item.reg_number === 'string' && typeof item.fuel_pct === 'number') {
+          fuel.set(item.reg_number, item.fuel_pct);
+        }
+      });
+      setFuelByReg(fuel);
+    } catch (err: any) {
+      console.error('Failed to load fleet list:', err);
+      setLoadError(err?.message || 'Failed to load fleet list');
+    } finally {
+      setPageLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPage();
+    if (token && user?.company_id !== undefined && user?.company_id !== null) {
+      fetchVehicles(token, user.company_id);
+    }
+  }, [loadPage, token, user?.company_id, fetchVehicles]);
+
+  const storeList = Array.from(vehiclesMap.values()) as VehicleWithFuel[];
+  const vehicleList: VehicleWithFuel[] = storeList.length > 0 ? storeList : apiList;
 
   const fuelPctOf = (v: VehicleWithFuel): number | null => {
     if (v.fuel_pct !== undefined && v.fuel_pct !== null) return Number(v.fuel_pct);
@@ -68,7 +111,10 @@ export const ListViewPage: React.FC = () => {
     return fromApi !== undefined ? fromApi : null;
   };
 
-  // Status counts matching legacy header pills
+  // Status counts matching the legacy header pills. "Active" means the device
+  // is reporting now (position within the last 15 minutes, the API `online`
+  // flag); "Inactive" means it is not. Individual vehicle status stays the
+  // last known state from the database.
   const counts = useMemo(() => {
     let moving = 0;
     let stopped = 0;
@@ -80,14 +126,13 @@ export const ListViewPage: React.FC = () => {
     vehicleList.forEach((v) => {
       if (v.status === 'moving') moving++;
       else if (v.status === 'idle') idle++;
-      else stopped++;
+      else if (v.status === 'stopped') stopped++;
 
       if (v.temperature !== undefined && v.temperature !== null) {
         freezer++;
       }
 
-      const isRecent = v.timestamp ? (Date.now() - new Date(v.timestamp).getTime()) < 30 * 60 * 1000 : false;
-      if (isRecent) active++;
+      if (v.online === true) active++;
       else inactive++;
     });
 
@@ -109,14 +154,8 @@ export const ListViewPage: React.FC = () => {
       if (statusFilter === 'idle' && v.status !== 'idle') return false;
       if (statusFilter === 'stopped' && v.status !== 'stopped') return false;
       if (statusFilter === 'freezer' && (v.temperature === undefined || v.temperature === null)) return false;
-      if (statusFilter === 'active') {
-        const isRecent = v.timestamp ? (Date.now() - new Date(v.timestamp).getTime()) < 30 * 60 * 1000 : false;
-        if (!isRecent) return false;
-      }
-      if (statusFilter === 'inactive') {
-        const isRecent = v.timestamp ? (Date.now() - new Date(v.timestamp).getTime()) < 30 * 60 * 1000 : false;
-        if (isRecent) return false;
-      }
+      if (statusFilter === 'active' && v.online !== true) return false;
+      if (statusFilter === 'inactive' && v.online === true) return false;
 
       // Search filter
       if (searchQuery) {
@@ -224,7 +263,10 @@ export const ListViewPage: React.FC = () => {
 
         <div style={{ display: 'flex', gap: '10px' }}>
           <button
-            onClick={() => fetchVehicles(token || undefined, user?.company_id)}
+            onClick={() => {
+              loadPage();
+              fetchVehicles(token || undefined, user?.company_id);
+            }}
             className="btn btn-secondary"
             title="Refresh fleet data"
           >
@@ -250,8 +292,8 @@ export const ListViewPage: React.FC = () => {
       >
         {[
           { id: 'all', label: 'All', count: counts.total, bg: '#0284C7', color: '#fff' },
-          { id: 'active', label: 'Active', count: counts.active, bg: '#16A34A', color: '#fff' },
-          { id: 'inactive', label: 'Inactive', count: counts.inactive, bg: '#DC2626', color: '#fff' },
+          { id: 'active', label: 'Active', count: counts.active, bg: '#16A34A', color: '#fff', title: 'Reporting in the last 15 minutes' },
+          { id: 'inactive', label: 'Inactive', count: counts.inactive, bg: '#DC2626', color: '#fff', title: 'No data in the last 15 minutes' },
           { id: 'freezer', label: 'Freezer', count: counts.freezer, bg: '#06B6D4', color: '#fff' },
           { id: 'moving', label: 'Moving', count: counts.moving, bg: '#22C55E', color: '#fff' },
           { id: 'stopped', label: 'Stopped', count: counts.stopped, bg: '#EF4444', color: '#fff' },
@@ -262,6 +304,7 @@ export const ListViewPage: React.FC = () => {
             <button
               key={tab.id}
               onClick={() => setStatusFilter(tab.id as any)}
+              title={(tab as any).title}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -366,7 +409,26 @@ export const ListViewPage: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {filteredVehicles.length === 0 ? (
+              {pageLoading && vehicleList.length === 0 ? (
+                <tr>
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
+                    Loading fleet data…
+                  </td>
+                </tr>
+              ) : loadError && vehicleList.length === 0 ? (
+                <tr>
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
+                    {loadError}{' '}
+                    <button
+                      onClick={loadPage}
+                      className="btn btn-secondary btn-sm"
+                      style={{ marginLeft: '8px', fontSize: '0.8rem' }}
+                    >
+                      Retry
+                    </button>
+                  </td>
+                </tr>
+              ) : filteredVehicles.length === 0 ? (
                 <tr>
                   <td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
                     No fleet vehicles match the selected criteria.

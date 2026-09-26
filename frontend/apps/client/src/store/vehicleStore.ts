@@ -16,6 +16,7 @@ export interface VehiclePosition {
   heading?: number;
   ignition?: boolean;
   status?: VehicleStatus;
+  online?: boolean;
   timestamp?: string;
   odometer?: number;
   temperature?: number;
@@ -122,6 +123,10 @@ export const useVehicleStore = create<VehicleState>((set) => ({
         const lat = typeof v.lat === 'number' ? v.lat : undefined;
         const lng = typeof v.lng === 'number' ? v.lng : undefined;
         const hasPosition = lat !== undefined && lng !== undefined;
+        // Status always reflects the LAST KNOWN state stored in the database;
+        // stale vehicles keep their recorded state (moving/idle/stopped). The
+        // `online` flag is informational (position within the last 15 minutes).
+        const online = typeof v.online === 'boolean' ? v.online : hasPosition;
         const makeModel = [v.make, v.model].filter(Boolean).join(' ').trim();
 
         const pos: VehiclePosition = {
@@ -135,7 +140,8 @@ export const useVehicleStore = create<VehicleState>((set) => ({
           speed: typeof v.speed === 'number' ? v.speed : undefined,
           heading: typeof v.heading === 'number' ? v.heading : undefined,
           ignition: typeof v.ignition === 'boolean' ? v.ignition : undefined,
-          status: v.status ?? (hasPosition ? undefined : 'offline'),
+          status: hasPosition ? (v.status ?? undefined) : 'offline',
+          online,
           timestamp: v.timestamp ?? undefined,
           odometer: typeof v.odometer === 'number' ? v.odometer : undefined,
           temperature: typeof v.temperature === 'number' ? v.temperature : undefined,
