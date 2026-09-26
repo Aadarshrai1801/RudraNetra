@@ -12,21 +12,36 @@ import { useAuthStore } from '../store/authStore';
 
 interface ZoneItem {
   id: number;
-  name: string;
-  type: string;
-  speedLimit: number;
+  name: string | null;
+  type: string | null;
+  speedLimit: number | null;
   alertOnEnter: boolean;
   alertOnExit: boolean;
-  areaKm2: number;
-  activeVehicles: number;
+  areaKm2: number | null;
+  activeVehicles: number | null;
 }
 
 interface SavedPlace {
   id: number;
-  name: string;
-  category: string;
-  address: string;
+  name: string | null;
+  category: string | null;
+  address: string | null;
 }
+
+const dash = (value: unknown): string =>
+  value === null || value === undefined || value === '' ? '—' : String(value);
+
+// Boundary vertices entered by the user; the API expects [lng, lat] pairs.
+const parseCoordinateLines = (raw: string): [number, number][] => {
+  const points: [number, number][] = [];
+  raw.split('\n').forEach((line) => {
+    const parts = line.split(',').map((part) => Number(part.trim()));
+    if (parts.length === 2 && parts.every((num) => Number.isFinite(num))) {
+      points.push([parts[0], parts[1]]);
+    }
+  });
+  return points;
+};
 
 export const GeofencesPage: React.FC<{ initialTab?: 'zones' | 'places' }> = ({ initialTab = 'zones' }) => {
   const user = useAuthStore((state) => state.user);
@@ -50,9 +65,10 @@ export const GeofencesPage: React.FC<{ initialTab?: 'zones' | 'places' }> = ({ i
 
   const [newZone, setNewZone] = useState({
     name: '',
-    speedLimit: 40,
-    alertOnEnter: true,
-    alertOnExit: true,
+    speedLimit: '',
+    alertOnEnter: false,
+    alertOnExit: false,
+    coordinates: '',
   });
 
   const showToast = (msg: string) => {
@@ -95,18 +111,37 @@ export const GeofencesPage: React.FC<{ initialTab?: 'zones' | 'places' }> = ({ i
   const handleCreateZone = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newZone.name) return;
+
+    const coordinates = parseCoordinateLines(newZone.coordinates);
+    if (coordinates.length < 3) {
+      showToast('Enter at least 3 boundary points as "longitude, latitude" (one per line).');
+      return;
+    }
+
     try {
+      const body: Record<string, unknown> = {
+        name: newZone.name,
+        coordinates,
+        alertOnEnter: newZone.alertOnEnter,
+        alertOnExit: newZone.alertOnExit,
+      };
+      const speedLimit = Number(newZone.speedLimit);
+      if (newZone.speedLimit.trim() !== '' && Number.isFinite(speedLimit) && speedLimit > 0) {
+        body.speedLimit = speedLimit;
+      }
+
       const res = await fetchWithAuth('/api/v1/geofences', {
         method: 'POST',
-        body: JSON.stringify(newZone),
+        body: JSON.stringify(body),
       });
-      if (res.ok) {
+      const json = await res.json().catch(() => null);
+      if (res.ok && json?.success !== false) {
         showToast(`Zone "${newZone.name}" created successfully in database.`);
         setIsCreateModalOpen(false);
-        setNewZone({ name: '', speedLimit: 40, alertOnEnter: true, alertOnExit: true });
+        setNewZone({ name: '', speedLimit: '', alertOnEnter: false, alertOnExit: false, coordinates: '' });
         loadData();
       } else {
-        showToast('Failed to create zone.');
+        showToast(json?.error || 'Failed to create zone.');
       }
     } catch (err) {
       showToast('Error creating zone in database.');
@@ -204,32 +239,41 @@ export const GeofencesPage: React.FC<{ initialTab?: 'zones' | 'places' }> = ({ i
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
-              {zones.map((z) => (
+              {zones.map((z) => {
+                const activeVehicles = typeof z.activeVehicles === 'number' ? z.activeVehicles : null;
+                const hasVehiclesInside = activeVehicles !== null && activeVehicles > 0;
+                return (
                 <div key={z.id} className="card">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
                     <div>
                       <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                        {z.name}
+                        {dash(z.name)}
                       </h3>
                       <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px', display: 'block' }}>
-                        {z.type}
+                        {dash(z.type)}
                       </span>
                     </div>
 
-                    <span className={z.activeVehicles > 0 ? 'badge badge-good' : 'badge badge-neutral'}>
-                      <span className={z.activeVehicles > 0 ? 'status-dot status-dot-good' : 'status-dot status-dot-neutral'} />
-                      <span>{z.activeVehicles > 0 ? `${z.activeVehicles} vehicles inside` : 'No vehicles inside'}</span>
+                    <span className={hasVehiclesInside ? 'badge badge-good' : 'badge badge-neutral'}>
+                      <span className={hasVehiclesInside ? 'status-dot status-dot-good' : 'status-dot status-dot-neutral'} />
+                      <span>
+                        {activeVehicles === null
+                          ? '—'
+                          : activeVehicles > 0
+                          ? `${activeVehicles} vehicles inside`
+                          : 'No vehicles inside'}
+                      </span>
                     </span>
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '0.875rem', marginBottom: '16px' }}>
                     <div>
                       <span style={{ color: 'var(--text-secondary)' }}>Speed limit:</span>{' '}
-                      <strong style={{ color: 'var(--text-primary)' }}>{z.speedLimit} km/h</strong>
+                      <strong style={{ color: 'var(--text-primary)' }}>{z.speedLimit ? `${z.speedLimit} km/h` : '—'}</strong>
                     </div>
                     <div>
                       <span style={{ color: 'var(--text-secondary)' }}>Zone area:</span>{' '}
-                      <strong style={{ color: 'var(--text-primary)' }}>{z.areaKm2} km²</strong>
+                      <strong style={{ color: 'var(--text-primary)' }}>{z.areaKm2 != null ? `${z.areaKm2} km²` : '—'}</strong>
                     </div>
                     <div>
                       <span style={{ color: 'var(--text-secondary)' }}>Entry alert:</span>{' '}
@@ -247,11 +291,11 @@ export const GeofencesPage: React.FC<{ initialTab?: 'zones' | 'places' }> = ({ i
 
                   <div style={{ paddingTop: '14px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>
-                      Automatic alerts enabled
+                      {(z.alertOnEnter || z.alertOnExit) ? 'Entry/exit alerts enabled' : 'Alerts disabled'}
                     </span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <button
-                        onClick={() => handleDeleteZone(z.id, z.name)}
+                        onClick={() => handleDeleteZone(z.id, z.name || `#${z.id}`)}
                         title="Delete zone"
                         style={{
                           background: 'none',
@@ -285,7 +329,8 @@ export const GeofencesPage: React.FC<{ initialTab?: 'zones' | 'places' }> = ({ i
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </>
@@ -304,26 +349,40 @@ export const GeofencesPage: React.FC<{ initialTab?: 'zones' | 'places' }> = ({ i
               </tr>
             </thead>
             <tbody>
-              {places.map((place) => (
-                <tr key={place.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '16px 20px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <MapPin size={16} color="var(--accent)" />
-                      <span>{place.name}</span>
-                    </div>
-                  </td>
-                  <td style={{ padding: '16px 20px', color: 'var(--text-secondary)' }}>{place.category}</td>
-                  <td style={{ padding: '16px 20px', color: 'var(--text-secondary)' }}>{place.address}</td>
-                  <td style={{ padding: '16px 20px', textAlign: 'right' }}>
-                    <button
-                      onClick={() => showToast(`Opening ${place.name} on map`)}
-                      className="btn btn-secondary btn-sm"
-                    >
-                      View on map
-                    </button>
+              {loading ? (
+                <tr>
+                  <td colSpan={4} style={{ padding: '36px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                    Loading locations…
                   </td>
                 </tr>
-              ))}
+              ) : places.length === 0 ? (
+                <tr>
+                  <td colSpan={4} style={{ padding: '36px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                    No locations configured for this organization yet.
+                  </td>
+                </tr>
+              ) : (
+                places.map((place) => (
+                  <tr key={place.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                    <td style={{ padding: '16px 20px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <MapPin size={16} color="var(--accent)" />
+                        <span>{dash(place.name)}</span>
+                      </div>
+                    </td>
+                    <td style={{ padding: '16px 20px', color: 'var(--text-secondary)' }}>{dash(place.category)}</td>
+                    <td style={{ padding: '16px 20px', color: 'var(--text-secondary)' }}>{dash(place.address)}</td>
+                    <td style={{ padding: '16px 20px', textAlign: 'right' }}>
+                      <button
+                        onClick={() => showToast(`Opening ${place.name || `location #${place.id}`} on map`)}
+                        className="btn btn-secondary btn-sm"
+                      >
+                        View on map
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -406,9 +465,12 @@ export const GeofencesPage: React.FC<{ initialTab?: 'zones' | 'places' }> = ({ i
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
                   Speed limit inside zone
                 </label>
-                <select
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="e.g. 40"
                   value={newZone.speedLimit}
-                  onChange={(e) => setNewZone({ ...newZone, speedLimit: Number(e.target.value) })}
+                  onChange={(e) => setNewZone({ ...newZone, speedLimit: e.target.value })}
                   style={{
                     width: '100%',
                     padding: '10px 12px',
@@ -419,12 +481,37 @@ export const GeofencesPage: React.FC<{ initialTab?: 'zones' | 'places' }> = ({ i
                     background: 'var(--bg-page)',
                     color: 'var(--text-primary)',
                   }}
-                >
-                  <option value={20}>20 km/h (Depot / Warehouse Yard)</option>
-                  <option value={30}>30 km/h (Cargo Terminal)</option>
-                  <option value={40}>40 km/h (Industrial District)</option>
-                  <option value={60}>60 km/h (Connecting Roads)</option>
-                </select>
+                />
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '4px', display: 'block' }}>
+                  Leave blank if the zone has no speed limit.
+                </span>
+              </div>
+
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                  Zone boundary (one vertex per line as "longitude, latitude")
+                </label>
+                <textarea
+                  rows={4}
+                  required
+                  placeholder={'lon, lat\nlon, lat\nlon, lat'}
+                  value={newZone.coordinates}
+                  onChange={(e) => setNewZone({ ...newZone, coordinates: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border)',
+                    fontSize: '0.85rem',
+                    fontFamily: 'var(--font-mono)',
+                    background: 'var(--bg-page)',
+                    color: 'var(--text-primary)',
+                    resize: 'vertical',
+                  }}
+                />
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '4px', display: 'block' }}>
+                  Minimum 3 vertices; the polygon is closed automatically by the server.
+                </span>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '24px' }}>

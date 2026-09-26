@@ -52,7 +52,6 @@ const routeTitles: Record<string, string> = {
   '/location-manager': 'Location Manager',
   '/enable-feature': 'Enable Feature',
   '/guest-access': 'Enable Feature',
-  '/sms-email-config': 'Sms & Email Configuration',
   '/asset-manager': 'Asset Manager',
   '/devices': 'Asset Manager',
   '/complaint-manager': 'Complaint Manager',
@@ -90,15 +89,17 @@ const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const fetchVehicles = useVehicleStore((state) => state.fetchVehicles);
 
   const activeToken = token || localStorage.getItem('rudra_auth_token') || '';
+  const activeCompany = user?.company_id ?? null;
 
   useEffect(() => {
-    const activeCompany = user?.company_id || 1;
-    if (activeToken) {
+    // Never fabricate a tenant: only fetch the fleet scoped to the company
+    // returned by the login endpoint.
+    if (activeToken && activeCompany !== null) {
       fetchVehicles(activeToken, activeCompany);
     }
-  }, [activeToken, user?.company_id, fetchVehicles]);
+  }, [activeToken, activeCompany, fetchVehicles]);
 
-  if (!isAuthenticated && !activeToken) {
+  if (!isAuthenticated || !activeToken) {
     return <Navigate to="/login" replace />;
   }
 
@@ -284,14 +285,6 @@ export const App: React.FC = () => {
           element={
             <DashboardLayout>
               <GeofencesPage initialTab="places" />
-            </DashboardLayout>
-          }
-        />
-        <Route
-          path="/sms-email-config"
-          element={
-            <DashboardLayout>
-              <AlertsPage initialTab="rules" />
             </DashboardLayout>
           }
         />

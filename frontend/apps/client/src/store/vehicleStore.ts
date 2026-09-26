@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { useAuthStore } from './authStore';
 
+export type VehicleStatus = 'moving' | 'idle' | 'stopped' | 'offline';
+
 export interface VehiclePosition {
   device_id: number;
   reg_number: string;
@@ -8,13 +10,13 @@ export interface VehiclePosition {
   driver_name?: string;
   driver_phone?: string;
   location_name?: string;
-  lat: number;
-  lng: number;
-  speed: number;
-  heading: number;
-  ignition: boolean;
-  status: 'moving' | 'idle' | 'stopped' | 'offline';
-  timestamp: string;
+  lat?: number;
+  lng?: number;
+  speed?: number;
+  heading?: number;
+  ignition?: boolean;
+  status?: VehicleStatus;
+  timestamp?: string;
   odometer?: number;
   temperature?: number;
   idle_duration_min?: number;
@@ -75,13 +77,25 @@ export const useVehicleStore = create<VehicleState>((set) => ({
           ? 'http://localhost:8080'
           : '';
 
-      const targetCompany = companyId || useAuthStore.getState().user?.company_id || 1;
-      const url = `${host}/api/v1/vehicles?limit=500${targetCompany ? `&company_id=${targetCompany}` : ''}`;
-      
-      let activeToken = token || useAuthStore.getState().token || localStorage.getItem('rudra_auth_token') || '';
-      let res = await fetch(url, {
+      const auth = useAuthStore.getState();
+      const targetCompany = companyId ?? auth.user?.company_id ?? null;
+      const params = new URLSearchParams({ limit: '500' });
+      if (targetCompany !== null) {
+        params.set('company_id', String(targetCompany));
+      }
+      const url = `${host}/api/v1/vehicles?${params.toString()}`;
+
+      const activeToken =
+        token || auth.token || localStorage.getItem('rudra_auth_token') || '';
+
+      if (!activeToken) {
+        auth.logout();
+        throw new Error('Unauthenticated: no active session. Please sign in.');
+      }
+
+      const res = await fetch(url, {
         headers: {
-          Authorization: activeToken ? `Bearer ${activeToken}` : '',
+          Authorization: `Bearer ${activeToken}`,
           'Content-Type': 'application/json',
         },
       });
@@ -102,42 +116,38 @@ export const useVehicleStore = create<VehicleState>((set) => ({
 
       const map = new Map<number, VehiclePosition>();
       json.data.forEach((v: any) => {
-        const devId = v.device_id || v.id;
-        const lat = v.lat !== undefined && v.lat !== null ? v.lat : 24.8952;
-        const lng = v.lng !== undefined && v.lng !== null ? v.lng : 55.142;
-        const speed = v.speed ?? 0;
-        const ignition = Boolean(v.ignition);
-        const status =
-          v.status || (speed > 2 ? 'moving' : ignition ? 'idle' : 'stopped');
+        const devId = v.device_id ?? v.id;
+        // DB-only data: absent coordinates stay absent so the vehicle is
+        // rendered as offline instead of being placed on the map.
+        const lat = typeof v.lat === 'number' ? v.lat : undefined;
+        const lng = typeof v.lng === 'number' ? v.lng : undefined;
+        const hasPosition = lat !== undefined && lng !== undefined;
+        const makeModel = [v.make, v.model].filter(Boolean).join(' ').trim();
 
         const pos: VehiclePosition = {
           device_id: devId,
           reg_number: v.reg_number,
-          name: `${v.make || ''} ${v.model || ''}`.trim() || v.reg_number,
-          driver_name: v.driver_name,
-          driver_phone: v.driver_phone,
+          name: makeModel || undefined,
+          driver_name: v.driver_name ?? undefined,
+          driver_phone: v.driver_phone ?? undefined,
           lat,
           lng,
-          speed,
-          heading: v.heading ?? 0,
-          ignition,
-          status,
-          timestamp: v.timestamp || '',
-          odometer: v.odometer,
-          temperature: v.temperature,
-          location_name:
-            v.location_name ||
-            (v.lat
-              ? `${v.lat.toFixed(4)}°N, ${v.lng.toFixed(4)}°E`
-              : 'Fleet Depot, UAE'),
+          speed: typeof v.speed === 'number' ? v.speed : undefined,
+          heading: typeof v.heading === 'number' ? v.heading : undefined,
+          ignition: typeof v.ignition === 'boolean' ? v.ignition : undefined,
+          status: v.status ?? (hasPosition ? undefined : 'offline'),
+          timestamp: v.timestamp ?? undefined,
+          odometer: typeof v.odometer === 'number' ? v.odometer : undefined,
+          temperature: typeof v.temperature === 'number' ? v.temperature : undefined,
+          location_name: v.location_name ?? undefined,
         };
         map.set(devId, pos);
       });
 
       set({
         vehicles: map,
-        totalCount: json.total || map.size,
-        companyId: json.company_id || companyId || null,
+        totalCount: json.total ?? map.size,
+        companyId: targetCompany,
         loading: false,
       });
     } catch (err: any) {

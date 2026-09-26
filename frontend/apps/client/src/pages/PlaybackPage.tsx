@@ -22,6 +22,7 @@ export const PlaybackPage: React.FC = () => {
   const token = useAuthStore((state) => state.token);
   const vehiclesMap = useVehicleStore((state) => state.vehicles);
   const fetchVehicles = useVehicleStore((state) => state.fetchVehicles);
+  const vehiclesLoading = useVehicleStore((state) => state.loading);
 
   const vehicleList = Array.from(vehiclesMap.values());
   const [selectedVehicle, setSelectedVehicle] = useState<string>('');
@@ -73,7 +74,7 @@ export const PlaybackPage: React.FC = () => {
             lat: d.lat,
             lng: d.lng,
             speed: Math.round(d.speed || 0),
-            time: d.time || '12:00 pm',
+            time: d.time || '—',
           }));
           setRoutePoints(pts);
           setCurrentIndex(0);
@@ -95,6 +96,7 @@ export const PlaybackPage: React.FC = () => {
             if (pts.length > 0) {
               map.easeTo({ center: [pts[0].lng, pts[0].lat], zoom: 12.5 });
               if (markerRef.current) {
+                markerRef.current.getElement().style.display = '';
                 markerRef.current.setLngLat([pts[0].lng, pts[0].lat]);
               }
             }
@@ -103,6 +105,9 @@ export const PlaybackPage: React.FC = () => {
           setRoutePoints([]);
           setCurrentIndex(0);
           setIsPlaying(false);
+          if (markerRef.current) {
+            markerRef.current.getElement().style.display = 'none';
+          }
           const map = mapRef.current;
           if (map && map.getSource('route')) {
             const geoSource = map.getSource('route') as maplibregl.GeoJSONSource;
@@ -164,9 +169,11 @@ export const PlaybackPage: React.FC = () => {
       });
     });
 
-    const initialCenter: [number, number] = routePoints.length > 0
+    // Map center starts from the first real track point when available.
+    const hasRealPoint = routePoints.length > 0;
+    const initialCenter: [number, number] = hasRealPoint
       ? [routePoints[0].lng, routePoints[0].lat]
-      : [55.2341, 25.1382];
+      : [0, 0];
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
@@ -176,7 +183,7 @@ export const PlaybackPage: React.FC = () => {
         layers: layersArr,
       },
       center: initialCenter,
-      zoom: 12.5,
+      zoom: hasRealPoint ? 12.5 : 1,
     });
 
     map.on('load', () => {
@@ -242,6 +249,11 @@ export const PlaybackPage: React.FC = () => {
       const marker = new maplibregl.Marker({ element: el })
         .setLngLat(initialCenter)
         .addTo(map);
+
+      // Hide the playback marker until a real track point is available.
+      if (routePoints.length === 0) {
+        el.style.display = 'none';
+      }
 
       markerRef.current = marker;
     });
@@ -312,15 +324,12 @@ export const PlaybackPage: React.FC = () => {
     }
   };
 
-  const currentPoint = routePoints[currentIndex] || routePoints[0] || {
-    lat: 25.1382,
-    lng: 55.2341,
-    speed: 0,
-    time: '12:00 pm',
-  };
+  const currentPoint = routePoints[currentIndex];
   const currentStyle =
     FREE_DUBAI_MAP_STYLES.find((s) => s.id === activeStyleId) ||
     FREE_DUBAI_MAP_STYLES[0];
+  const hasRoute = routePoints.length > 0;
+  const lastPoint = routePoints[routePoints.length - 1];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
@@ -437,7 +446,7 @@ export const PlaybackPage: React.FC = () => {
               }}
             >
               {vehicleList.length === 0 ? (
-                <option value="">Loading vehicles…</option>
+                <option value="">{vehiclesLoading ? 'Loading vehicles…' : 'No vehicles available'}</option>
               ) : (
                 vehicleList.map((v) => (
                   <option key={v.reg_number} value={v.reg_number}>
@@ -458,7 +467,37 @@ export const PlaybackPage: React.FC = () => {
       {/* Map Element */}
       <div ref={mapContainerRef} style={{ flex: 1, width: '100%', position: 'relative' }} />
 
-      {/* Floating Bottom Playback Controls */}
+      {/* Empty state when the selected vehicle has no stored history */}
+      {!isLoadingRoute && routePoints.length === 0 && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            zIndex: 15,
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-lg)',
+            boxShadow: 'var(--shadow-lg)',
+            padding: '20px 28px',
+            textAlign: 'center',
+            maxWidth: '440px',
+          }}
+        >
+          <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+            No route history
+          </h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginTop: '6px' }}>
+            {selectedVehicle
+              ? `No track points are stored for ${selectedVehicle}.`
+              : 'Select a vehicle to load its route history.'}
+          </p>
+        </div>
+      )}
+
+      {/* Floating Bottom Playback Controls (only when real track points exist) */}
+      {hasRoute && (
       <div
         style={{
           position: 'absolute',
@@ -480,7 +519,7 @@ export const PlaybackPage: React.FC = () => {
         {/* Progress Slider */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
           <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--accent)', minWidth: '65px' }}>
-            {currentPoint.time}
+            {currentPoint?.time ?? '—'}
           </span>
           <input
             type="range"
@@ -496,7 +535,7 @@ export const PlaybackPage: React.FC = () => {
             }}
           />
           <span style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', minWidth: '65px', textAlign: 'right' }}>
-            {routePoints[routePoints.length - 1]?.time || '12:00 pm'}
+            {lastPoint?.time ?? '—'}
           </span>
         </div>
 
@@ -554,7 +593,7 @@ export const PlaybackPage: React.FC = () => {
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Gauge size={16} color="var(--accent)" />
               <span className="tabular-num" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                {currentPoint.speed} km/h
+                {currentPoint ? `${currentPoint.speed} km/h` : '—'}
               </span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
@@ -566,6 +605,7 @@ export const PlaybackPage: React.FC = () => {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 };

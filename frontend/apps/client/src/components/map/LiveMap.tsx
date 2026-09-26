@@ -156,6 +156,10 @@ export const LiveMap: React.FC = () => {
     });
 
     vehicles.forEach((v: VehiclePosition) => {
+      // Vehicles without a GPS fix are listed as offline and have no marker.
+      if (typeof v.lat !== 'number' || typeof v.lng !== 'number') return;
+      const lat = v.lat;
+      const lng = v.lng;
       const isSelected = selectedDeviceId === v.device_id;
       let marker = markersRef.current.get(v.device_id);
 
@@ -170,12 +174,12 @@ export const LiveMap: React.FC = () => {
         });
 
         marker = new maplibregl.Marker({ element: el })
-          .setLngLat([v.lng, v.lat])
+          .setLngLat([lng, lat])
           .addTo(map);
 
         markersRef.current.set(v.device_id, marker);
       } else {
-        marker.setLngLat([v.lng, v.lat]);
+        marker.setLngLat([lng, lat]);
       }
 
       const el = marker.getElement();
@@ -196,7 +200,7 @@ export const LiveMap: React.FC = () => {
 
       const speedOrState =
         v.status === 'moving'
-          ? `${Math.round(v.speed)} km/h`
+          ? `${Math.round(v.speed ?? 0)} km/h`
           : statusWord;
 
       el.innerHTML = `
@@ -244,7 +248,7 @@ export const LiveMap: React.FC = () => {
   useEffect(() => {
     if (!selectedDeviceId || !mapRef.current) return;
     const vehicle = vehicles.get(selectedDeviceId);
-    if (vehicle) {
+    if (vehicle && typeof vehicle.lat === 'number' && typeof vehicle.lng === 'number') {
       mapRef.current.easeTo({
         center: [vehicle.lng, vehicle.lat],
         zoom: 13,

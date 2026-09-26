@@ -9,14 +9,17 @@ import { useVehicleStore } from '../store/vehicleStore';
 
 interface TempUser {
   id: number;
-  guestName: string;
-  shareLink: string;
-  accessToken: string;
-  vehicleIds: string[];
-  expiresAt: string;
-  createdAt: string;
-  status: 'Active' | 'Expired';
+  guestName: string | null;
+  shareLink: string | null;
+  accessToken: string | null;
+  vehicleIds: string[] | null;
+  expiresAt: string | null;
+  createdAt: string | null;
+  status: string | null;
 }
+
+const dash = (value: unknown): string =>
+  value === null || value === undefined || value === '' ? '—' : String(value);
 
 export const GuestAccessPage: React.FC = () => {
   const user = useAuthStore((state) => state.user);
@@ -73,12 +76,13 @@ export const GuestAccessPage: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           guestName: newGuest.guestName,
-          durationHours: Number(newGuest.durationHours) || 24,
-          vehicleIds: newGuest.selectedVehicles.length > 0 ? newGuest.selectedVehicles : ['ALL'],
+          durationHours: Number(newGuest.durationHours),
+          vehicleIds: newGuest.selectedVehicles,
         }),
       });
+      const json = await res.json().catch(() => null);
 
-      if (res.ok) {
+      if (res.ok && json?.success !== false) {
         showToast('Guest tracking link generated');
         setIsModalOpen(false);
         setNewGuest({
@@ -87,6 +91,8 @@ export const GuestAccessPage: React.FC = () => {
           selectedVehicles: [],
         });
         loadTempUsers();
+      } else {
+        showToast(json?.error || 'Failed to generate tracking link');
       }
     } catch (err) {
       showToast('Failed to generate tracking link');
@@ -107,8 +113,9 @@ export const GuestAccessPage: React.FC = () => {
     }
   };
 
-  const copyToClipboard = (link: string) => {
-    const fullUrl = `${window.location.origin}${link}`;
+  const copyToClipboard = (link: string | null) => {
+    if (!link) return;
+    const fullUrl = link.startsWith('http') ? link : `${window.location.origin}${link}`;
     navigator.clipboard.writeText(fullUrl);
     showToast('Secure tracking link copied to clipboard');
   };
@@ -205,42 +212,47 @@ export const GuestAccessPage: React.FC = () => {
             ) : (
               tempUsers.map((u) => {
                 const isExpired = u.status === 'Expired';
+                const vehicleIds = u.vehicleIds || [];
 
                 return (
                   <tr key={u.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                     <td style={{ padding: '12px 16px' }}>
-                      <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{u.guestName}</div>
+                      <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{dash(u.guestName)}</div>
                       <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', fontFamily: 'monospace' }}>
-                        Token: {u.accessToken}
+                        Token: {dash(u.accessToken)}
                       </div>
                     </td>
                     <td style={{ padding: '12px 16px' }}>
                       <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                        {u.vehicleIds.map((v, idx) => (
-                          <span
-                            key={idx}
-                            style={{
-                              padding: '2px 8px',
-                              borderRadius: 'var(--radius-sm)',
-                              background: 'var(--bg-subtle)',
-                              fontSize: '0.78rem',
-                              fontWeight: 600,
-                              color: 'var(--text-primary)',
-                            }}
-                          >
-                            {v.replace(/['"]+/g, '')}
-                          </span>
-                        ))}
+                        {vehicleIds.length === 0 ? (
+                          <span style={{ color: 'var(--text-tertiary)', fontSize: '0.78rem' }}>—</span>
+                        ) : (
+                          vehicleIds.map((v, idx) => (
+                            <span
+                              key={idx}
+                              style={{
+                                padding: '2px 8px',
+                                borderRadius: 'var(--radius-sm)',
+                                background: 'var(--bg-subtle)',
+                                fontSize: '0.78rem',
+                                fontWeight: 600,
+                                color: 'var(--text-primary)',
+                              }}
+                            >
+                              {v.replace(/['"]+/g, '')}
+                            </span>
+                          ))
+                        )}
                       </div>
                     </td>
                     <td style={{ padding: '12px 16px', color: 'var(--text-secondary)' }}>
-                      {u.createdAt}
+                      {dash(u.createdAt)}
                     </td>
                     <td style={{ padding: '12px 16px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                         <Clock size={14} color={isExpired ? '#DC2626' : 'var(--accent)'} />
                         <span style={{ fontWeight: 600, color: isExpired ? '#DC2626' : 'var(--text-primary)' }}>
-                          {u.expiresAt}
+                          {dash(u.expiresAt)}
                         </span>
                       </div>
                     </td>
@@ -255,12 +267,12 @@ export const GuestAccessPage: React.FC = () => {
                           color: isExpired ? '#DC2626' : 'var(--good)',
                         }}
                       >
-                        {u.status}
+                        {dash(u.status)}
                       </span>
                     </td>
                     <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
-                        {!isExpired && (
+                        {!isExpired && u.shareLink && (
                           <button
                             onClick={() => copyToClipboard(u.shareLink)}
                             className="btn btn-secondary"

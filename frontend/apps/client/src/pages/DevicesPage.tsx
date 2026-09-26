@@ -5,18 +5,30 @@ import { useAuthStore } from '../store/authStore';
 
 interface DeviceItem {
   id: number;
-  imei: string;
-  protocol: string;
-  simNo: string;
-  port: number;
-  assignedVehicle: string;
-  status: 'active' | 'offline';
-  warrantyEnd: string;
+  imei: string | null;
+  protocol: string | null;
+  simNo: string | null;
+  port: number | null;
+  assignedVehicle: string | null;
+  status: string | null;
+  warrantyEnd: string | null;
 }
+
+interface MasterItem {
+  id: number;
+  type: string;
+  code: string;
+  name: string;
+  isDefault: boolean;
+}
+
+const dash = (value: unknown): string =>
+  value === null || value === undefined || value === '' ? '—' : String(value);
 
 export const DevicesPage: React.FC = () => {
   const user = useAuthStore((state) => state.user);
   const [devices, setDevices] = useState<DeviceItem[]>([]);
+  const [deviceModels, setDeviceModels] = useState<MasterItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
@@ -24,9 +36,9 @@ export const DevicesPage: React.FC = () => {
 
   const [newTracker, setNewTracker] = useState({
     imei: '',
-    protocol: 'TELTONIKA_FMB920',
-    simNo: '+97150',
-    port: 5040,
+    protocol: '',
+    simNo: '',
+    port: '',
     assignedVehicle: '',
   });
 
@@ -38,11 +50,21 @@ export const DevicesPage: React.FC = () => {
   const loadDevices = async () => {
     setLoading(true);
     try {
-      const res = await fetchWithAuth('/api/v1/devices');
-      if (res.ok) {
-        const json = await res.json();
+      const [devicesRes, modelsRes] = await Promise.all([
+        fetchWithAuth('/api/v1/devices'),
+        fetchWithAuth('/api/v1/masters/device-models'),
+      ]);
+
+      if (devicesRes.ok) {
+        const json = await devicesRes.json();
         if (json.success && Array.isArray(json.data)) {
           setDevices(json.data);
+        }
+      }
+      if (modelsRes.ok) {
+        const json = await modelsRes.json();
+        if (json.success && Array.isArray(json.data)) {
+          setDeviceModels(json.data);
         }
       }
     } catch (err) {
@@ -58,41 +80,51 @@ export const DevicesPage: React.FC = () => {
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTracker.imei) return;
+    const imei = newTracker.imei.trim();
+    if (!imei) return;
+
+    // Only user-entered values are sent; the server applies the DB defaults.
+    const payload: Record<string, string | number> = { imei };
+    if (newTracker.protocol) payload.protocol = newTracker.protocol;
+    if (newTracker.simNo.trim()) payload.simNo = newTracker.simNo.trim();
+    if (newTracker.assignedVehicle.trim()) payload.assignedVehicle = newTracker.assignedVehicle.trim();
+    const port = Number(newTracker.port);
+    if (newTracker.port !== '' && Number.isFinite(port) && port > 0) payload.port = port;
 
     try {
       const res = await fetchWithAuth('/api/v1/devices', {
         method: 'POST',
-        body: JSON.stringify(newTracker),
+        body: JSON.stringify(payload),
       });
+      const json = await res.json().catch(() => null);
 
-      if (res.ok) {
-        showToast(`Tracker IMEI ${newTracker.imei} registered successfully in database.`);
+      if (res.ok && json?.success) {
+        showToast(`Tracker IMEI ${imei} registered successfully in database.`);
         setIsRegisterModalOpen(false);
         setNewTracker({
           imei: '',
-          protocol: 'TELTONIKA_FMB920',
-          simNo: '+97150',
-          port: 5040,
+          protocol: '',
+          simNo: '',
+          port: '',
           assignedVehicle: '',
         });
         loadDevices();
       } else {
-        showToast('Failed to register device.');
+        showToast(json?.error || 'Failed to register device.');
       }
     } catch (err) {
       showToast('Error registering tracker.');
     }
   };
 
-  const handleDeleteDevice = async (id: number, imei: string) => {
+  const handleDeleteDevice = async (id: number, imei: string | null) => {
     try {
       const res = await fetchWithAuth(`/api/v1/devices/${id}`, {
         method: 'DELETE',
       });
       if (res.ok) {
         setDevices((prev) => prev.filter((d) => d.id !== id));
-        showToast(`Tracker IMEI ${imei} deleted.`);
+        showToast(`Tracker IMEI ${imei || id} deleted.`);
       }
     } catch (err) {
       showToast('Failed to delete device.');
@@ -101,8 +133,13 @@ export const DevicesPage: React.FC = () => {
 
   const filtered = devices.filter(
     (d) =>
-      d.imei.includes(searchTerm) ||
-      d.assignedVehicle.toLowerCase().includes(searchTerm.toLowerCase())
+      (d.imei || '').includes(searchTerm) ||
+      (d.assignedVehicle || '').toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const assignedCount = devices.filter((d) => Boolean(d.assignedVehicle)).length;
+  const configuredPorts = Array.from(
+    new Set(devices.map((d) => d.port).filter((p): p is number => typeof p === 'number' && p > 0))
   );
 
   return (
@@ -133,25 +170,35 @@ export const DevicesPage: React.FC = () => {
             <Cpu size={18} color="var(--cyan-accent)" />
           </div>
           <div style={{ fontSize: '1.8rem', fontWeight: 800, marginTop: '8px' }}>{devices.length}</div>
-          <div style={{ fontSize: '0.75rem', color: '#10b981', marginTop: '4px' }}>All assigned to active fleet</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+            {devices.length === 0 ? 'No devices registered' : `${assignedCount} assigned to a vehicle`}
+          </div>
         </div>
 
         <div className="glass-panel" style={{ padding: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 600 }}>
-            <span>Ingestion Port</span>
+            <span>Configured TCP Ports</span>
             <Wifi size={18} color="#10b981" />
           </div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 800, marginTop: '8px' }}>TCP :5040</div>
-          <div style={{ fontSize: '0.75rem', color: '#10b981', marginTop: '4px' }}>rudra-ingest listener active</div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 800, marginTop: '8px' }}>
+            {configuredPorts.length > 0 ? configuredPorts.map((p) => `:${p}`).join(', ') : '—'}
+          </div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+            Ports stored on registered devices
+          </div>
         </div>
 
         <div className="glass-panel" style={{ padding: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 600 }}>
-            <span>Protocol Support</span>
+            <span>Device Models</span>
             <ShieldCheck size={18} color="#38bdf8" />
           </div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 800, marginTop: '8px' }}>Teltonika Codec 8</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px' }}>FMB920, FMB120, FMC130</div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 800, marginTop: '8px' }}>
+            {deviceModels[0]?.name || '—'}
+          </div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+            {deviceModels.length > 0 ? `${deviceModels.length} model(s) configured` : 'No device models configured'}
+          </div>
         </div>
       </div>
 
@@ -204,55 +251,58 @@ export const DevicesPage: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                filtered.map((d) => (
-                  <tr key={d.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                    <td style={{ padding: '14px 10px', fontWeight: 600 }}>{d.id}</td>
-                    <td style={{ padding: '14px 10px', fontFamily: 'var(--font-mono)', color: 'var(--cyan-accent)', fontWeight: 600 }}>
-                      {d.imei}
-                    </td>
-                    <td style={{ padding: '14px 10px' }}>{d.protocol}</td>
-                    <td style={{ padding: '14px 10px', fontFamily: 'var(--font-mono)' }}>{d.simNo || '—'}</td>
-                    <td style={{ padding: '14px 10px', fontFamily: 'var(--font-mono)' }}>:{d.port}</td>
-                    <td style={{ padding: '14px 10px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Link2 size={14} color="#10b981" />
-                        {d.assignedVehicle || 'Unassigned'}
-                      </div>
-                    </td>
-                    <td style={{ padding: '14px 10px' }}>
-                      <span
-                        style={{
-                          padding: '2px 8px',
-                          borderRadius: '4px',
-                          fontSize: '0.7rem',
-                          fontWeight: 700,
-                          background: 'rgba(16,185,129,0.15)',
-                          color: '#10b981',
-                        }}
-                      >
-                        {d.status.toUpperCase()}
-                      </span>
-                    </td>
-                    <td style={{ padding: '14px 10px', color: 'var(--text-muted)' }}>{d.warrantyEnd}</td>
-                    <td style={{ padding: '14px 10px', textAlign: 'right' }}>
-                      <button
-                        onClick={() => handleDeleteDevice(d.id, d.imei)}
-                        title="Delete tracker"
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: 'var(--text-muted)',
-                          cursor: 'pointer',
-                          padding: '4px',
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
-                        onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                filtered.map((d) => {
+                  const isOnline = /active|online|connected/i.test(d.status || '');
+                  return (
+                    <tr key={d.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                      <td style={{ padding: '14px 10px', fontWeight: 600 }}>{d.id}</td>
+                      <td style={{ padding: '14px 10px', fontFamily: 'var(--font-mono)', color: 'var(--cyan-accent)', fontWeight: 600 }}>
+                        {dash(d.imei)}
+                      </td>
+                      <td style={{ padding: '14px 10px' }}>{dash(d.protocol)}</td>
+                      <td style={{ padding: '14px 10px', fontFamily: 'var(--font-mono)' }}>{d.simNo || '—'}</td>
+                      <td style={{ padding: '14px 10px', fontFamily: 'var(--font-mono)' }}>{d.port ? `:${d.port}` : '—'}</td>
+                      <td style={{ padding: '14px 10px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Link2 size={14} color="#10b981" />
+                          {d.assignedVehicle || '—'}
+                        </div>
+                      </td>
+                      <td style={{ padding: '14px 10px' }}>
+                        <span
+                          style={{
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            fontSize: '0.7rem',
+                            fontWeight: 700,
+                            background: isOnline ? 'rgba(16,185,129,0.15)' : 'rgba(148,163,184,0.15)',
+                            color: isOnline ? '#10b981' : 'var(--text-muted)',
+                          }}
+                        >
+                          {d.status ? d.status.toUpperCase() : '—'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '14px 10px', color: 'var(--text-muted)' }}>{dash(d.warrantyEnd)}</td>
+                      <td style={{ padding: '14px 10px', textAlign: 'right' }}>
+                        <button
+                          onClick={() => handleDeleteDevice(d.id, d.imei)}
+                          title="Delete tracker"
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: 'var(--text-muted)',
+                            cursor: 'pointer',
+                            padding: '4px',
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
+                          onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -365,10 +415,14 @@ export const DevicesPage: React.FC = () => {
                         outline: 'none',
                       }}
                     >
-                      <option value="TELTONIKA_FMB920">Teltonika FMB920 (Codec 8)</option>
-                      <option value="TELTONIKA_FMB120">Teltonika FMB120</option>
-                      <option value="TELTONIKA_FMC130">Teltonika FMC130 (4G Cat1)</option>
-                      <option value="GPS103_TCP">GPS103 Protocol</option>
+                      <option value="">Select device model...</option>
+                      {deviceModels.length === 0 ? (
+                        <option value="" disabled>No device models configured</option>
+                      ) : (
+                        deviceModels.map((m) => (
+                          <option key={m.id} value={m.code || m.name}>{m.name}</option>
+                        ))
+                      )}
                     </select>
                   </div>
 
@@ -378,8 +432,10 @@ export const DevicesPage: React.FC = () => {
                     </label>
                     <input
                       type="number"
+                      min="1"
+                      placeholder="Server default"
                       value={newTracker.port}
-                      onChange={(e) => setNewTracker((prev) => ({ ...prev, port: Number(e.target.value) }))}
+                      onChange={(e) => setNewTracker((prev) => ({ ...prev, port: e.target.value }))}
                       style={{
                         width: '100%',
                         background: 'var(--bg-base)',

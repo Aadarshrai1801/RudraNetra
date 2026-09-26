@@ -24,7 +24,7 @@ export const ControlPanelPage: React.FC = () => {
   const vehiclesMap = useVehicleStore((state) => state.vehicles);
   const vehicleList = Array.from(vehiclesMap.values());
 
-  const [selectedVehicleId, setSelectedVehicleId] = useState<string>('1');
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string>('');
   const [commandLogs, setCommandLogs] = useState<CommandLog[]>([]);
   const [loading, setLoading] = useState(false);
   const [logsLoading, setLogsLoading] = useState(true);
@@ -63,10 +63,10 @@ export const ControlPanelPage: React.FC = () => {
   }, [user?.company_id]);
 
   useEffect(() => {
-    if (vehicleList.length > 0 && selectedVehicleId === '1') {
+    if (vehicleList.length > 0 && !selectedVehicleId) {
       setSelectedVehicleId(String(vehicleList[0].device_id));
     }
-  }, [vehicleList]);
+  }, [vehicleList, selectedVehicleId]);
 
   const initiateCommand = (command: string, title: string, desc: string, requirePin: boolean) => {
     if (requirePin) {
@@ -403,14 +403,14 @@ export const ControlPanelPage: React.FC = () => {
             </div>
 
             <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.5 }}>
-              You are about to execute <strong>{pendingAction.title}</strong> on unit <strong>{vehicleList.find(v => String(v.device_id) === String(selectedVehicleId))?.reg_number || `Unit ${selectedVehicleId}`}</strong>. Please enter your 4-digit security PIN to confirm authorization.
+              You are about to execute <strong>{pendingAction.title}</strong> on unit <strong>{vehicleList.find(v => String(v.device_id) === String(selectedVehicleId))?.reg_number || 'the selected vehicle'}</strong>. Please enter your 4-digit security PIN to confirm authorization.
             </p>
 
             <form onSubmit={handlePinSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div>
                 <input
                   type="password"
-                  placeholder="Enter 4-digit PIN (default: 1234)"
+                  placeholder="Enter 4-digit security PIN"
                   value={enteredPin}
                   onChange={(e) => {
                     setEnteredPin(e.target.value);

@@ -36,24 +36,21 @@ export function useWebSocket() {
         const msg = JSON.parse(event.data);
         if (msg.type === 'position' || msg.lat !== undefined) {
           const payload = msg.payload || msg;
+          if (typeof payload.device_id !== 'number') return;
+          // Pass through exactly what the API sent: missing fields stay
+          // undefined and are rendered as '—' / hidden by the UI.
           const pos: VehiclePosition = {
             device_id: payload.device_id,
-            reg_number: payload.reg_number || `DEV-${payload.device_id}`,
-            lat: payload.lat,
-            lng: payload.lng,
-            speed: payload.speed || 0,
-            heading: payload.heading || 0,
-            ignition: Boolean(payload.ignition),
-            status:
-              payload.status ||
-              (payload.speed > 2
-                ? 'moving'
-                : payload.ignition
-                ? 'idle'
-                : 'stopped'),
-            timestamp: payload.timestamp || payload.time || '',
-            odometer: payload.odometer,
-            temperature: payload.temperature,
+            reg_number: payload.reg_number,
+            lat: typeof payload.lat === 'number' ? payload.lat : undefined,
+            lng: typeof payload.lng === 'number' ? payload.lng : undefined,
+            speed: typeof payload.speed === 'number' ? payload.speed : undefined,
+            heading: typeof payload.heading === 'number' ? payload.heading : undefined,
+            ignition: typeof payload.ignition === 'boolean' ? payload.ignition : undefined,
+            status: payload.status,
+            timestamp: payload.timestamp ?? payload.time,
+            odometer: typeof payload.odometer === 'number' ? payload.odometer : undefined,
+            temperature: typeof payload.temperature === 'number' ? payload.temperature : undefined,
           };
           updatePosition(pos);
         }
