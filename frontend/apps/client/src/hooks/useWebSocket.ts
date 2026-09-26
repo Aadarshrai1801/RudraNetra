@@ -51,7 +51,7 @@ export function useWebSocket() {
                 : payload.ignition
                 ? 'idle'
                 : 'stopped'),
-            timestamp: payload.timestamp || new Date().toISOString(),
+            timestamp: payload.timestamp || payload.time || '',
             odometer: payload.odometer,
             temperature: payload.temperature,
           };
