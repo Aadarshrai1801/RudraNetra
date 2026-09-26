@@ -1,5 +1,9 @@
 # RudraNetra API Reference
 
+> **Current contract:** [`api-contract.md`](api-contract.md) is the
+> authoritative DB-only API reference (every endpoint reads/writes PostgreSQL).
+> This file is kept as a quick authentication/tracking overview.
+
 ## Base URL
 `/api/v1`
 
