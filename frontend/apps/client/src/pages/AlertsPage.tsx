@@ -5,71 +5,85 @@ import {
   Search,
   MapPin,
   Printer,
-  Play,
-  Pause,
-  RotateCw,
   Check,
 } from 'lucide-react';
 import { fetchWithAuth } from '../utils/api';
 import { useAuthStore } from '../store/authStore';
-import { useNavigate } from 'react-router-dom';
 
-interface LegacyAlertRow {
+interface AlertRow {
   id: number;
-  name: string;
-  owner: string; // Vehicle plate
-  description: string;
-  triggeredTime: string;
-  lastUpdateTime: string;
-  category: string;
+  type: string;
+  severity: string;
+  vehicle: string;
+  driver: string;
+  driverPhone: string;
+  message: string;
+  time: string;
+  timestamp: string;
   acknowledged: boolean;
+  lat: number | null;
+  lng: number | null;
 }
+
+// Legacy alert catalogue labels and tab order (matches the original RMS page).
+const ALERT_TYPE_LABELS: Record<string, string> = {
+  overspeed: 'Overspeed',
+  over_idle: 'Over Idle',
+  thirty_min: '30 Minute Alert',
+  immobilizer_release: 'Immobilizer Release',
+  sla_alert: 'SLA Alert',
+  trip_start: 'Trip Start',
+  power_cut: 'Power cut',
+  harsh_braking: 'Harsh Breaking',
+  harsh_cornering: 'Harsh Cornering',
+  temperature: 'Reefer Temperature',
+  geofence: 'Geofence',
+};
+const ALERT_CATEGORY_ORDER = Object.keys(ALERT_TYPE_LABELS);
+const alertTypeLabel = (type: string): string => ALERT_TYPE_LABELS[type] || type || 'Alert';
 
 interface AlertRule {
   id: number;
   name: string;
   description: string;
   isActive: boolean;
+  smsEnabled?: boolean;
+  emailEnabled?: boolean;
 }
+
+const severityBadgeStyle = (severity: string): React.CSSProperties => {
+  switch ((severity || '').toLowerCase()) {
+    case 'critical':
+      return { background: '#FEE2E2', color: '#DC2626' };
+    case 'warning':
+      return { background: '#FEF3C7', color: '#D97706' };
+    case 'info':
+      return { background: '#DBEAFE', color: '#2563EB' };
+    default:
+      return { background: 'var(--bg-subtle)', color: 'var(--text-secondary)' };
+  }
+};
+
+const csvCell = (value: unknown): string => `"${String(value ?? '').replace(/"/g, '""')}"`;
 
 export const AlertsPage: React.FC<{ initialTab?: 'alarms' | 'rules' }> = ({ initialTab = 'alarms' }) => {
   const user = useAuthStore((state) => state.user);
-  const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<'alarms' | 'rules'>(initialTab);
-  const [selectedCategory, setSelectedCategory] = useState<string>('All Alarms');
-  const [alerts, setAlerts] = useState<LegacyAlertRow[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [alerts, setAlerts] = useState<AlertRow[]>([]);
   const [rules, setRules] = useState<AlertRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [pageSize, setPageSize] = useState(25);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [timerSeconds, setTimerSeconds] = useState(45);
-  const [isTimerRunning, setIsTimerRunning] = useState(true);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
   };
-
-  // Countdown timer from Screenshot 4 (00:45)
-  useEffect(() => {
-    let interval: any = null;
-    if (isTimerRunning) {
-      interval = setInterval(() => {
-        setTimerSeconds((prev) => {
-          if (prev <= 1) {
-            loadData();
-            return 45;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [isTimerRunning]);
 
   const loadData = async () => {
     setLoading(true);
@@ -82,37 +96,21 @@ export const AlertsPage: React.FC<{ initialTab?: 'alarms' | 'rules' }> = ({ init
       if (alertsRes.ok) {
         const json = await alertsRes.json();
         if (json.success && Array.isArray(json.data)) {
-          // Transform backend alerts to match legacy format
-          const formatted: LegacyAlertRow[] = json.data.map((item: any, idx: number) => {
-            const categories = [
-              'Overspeed',
-              'Over Idle',
-              '30 Minute Alert',
-              'Immobilizer Release',
-              'SLA Alert',
-              'Trip Start',
-              'Power cut',
-              'Harsh Breaking',
-              'Harsh Cornering',
-            ];
-            const cat =
-              item.type === 'speed'
-                ? 'Overspeed'
-                : item.type === 'waiting'
-                ? 'Over Idle'
-                : categories[idx % categories.length];
-
-            return {
-              id: item.id || idx + 1,
-              name: cat,
-              owner: item.vehicle || `DXB-K-${49200 + idx}`,
-              description: item.message || `${item.vehicle || 'Truck'} telemetry trigger in Dubai/GCC Corridor`,
-              triggeredTime: item.time || new Date().toLocaleString(),
-              lastUpdateTime: item.time || new Date().toLocaleString(),
-              category: cat,
-              acknowledged: Boolean(item.acknowledged),
-            };
-          });
+          // Use API alert fields as-is; no fabricated categories, plates or times.
+          const formatted: AlertRow[] = json.data.map((item: any) => ({
+            id: item.id,
+            type: item.type || '',
+            severity: item.severity || '',
+            vehicle: item.vehicle || '',
+            driver: item.driver || '',
+            driverPhone: item.driverPhone || '',
+            message: item.message || '',
+            time: item.time || '',
+            timestamp: item.timestamp || '',
+            acknowledged: Boolean(item.acknowledged),
+            lat: typeof item.lat === 'number' ? item.lat : null,
+            lng: typeof item.lng === 'number' ? item.lng : null,
+          }));
           setAlerts(formatted);
         }
       }
@@ -130,6 +128,15 @@ export const AlertsPage: React.FC<{ initialTab?: 'alarms' | 'rules' }> = ({ init
     }
   };
 
+  // Silent auto-refresh: reload the alert ledger and rules every 45 seconds.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadData();
+    }, 45000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     loadData();
   }, [user?.company_id]);
@@ -144,19 +151,37 @@ export const AlertsPage: React.FC<{ initialTab?: 'alarms' | 'rules' }> = ({ init
           prev.map((a) => (a.id === id ? { ...a, acknowledged: true } : a))
         );
         showToast('Alert event marked as acknowledged in database.');
+      } else {
+        showToast('Failed to acknowledge alert.');
       }
     } catch (err) {
+      console.error('Failed to acknowledge alert:', err);
       showToast('Failed to acknowledge alert.');
     }
   };
 
   const handleBatchAcknowledge = async () => {
     if (selectedIds.length === 0) return;
+    const ids = [...selectedIds];
+    const results = await Promise.all(
+      ids.map(async (id) => {
+        try {
+          const res = await fetchWithAuth(`/api/v1/alerts/${id}/acknowledge`, {
+            method: 'PUT',
+          });
+          return res.ok ? id : null;
+        } catch (err) {
+          console.error('Failed to acknowledge alert:', err);
+          return null;
+        }
+      })
+    );
+    const acknowledgedIds = results.filter((id): id is number => id !== null);
     setAlerts((prev) =>
-      prev.map((a) => (selectedIds.includes(a.id) ? { ...a, acknowledged: true } : a))
+      prev.map((a) => (acknowledgedIds.includes(a.id) ? { ...a, acknowledged: true } : a))
     );
     setSelectedIds([]);
-    showToast(`Acknowledged ${selectedIds.length} alert events.`);
+    showToast(`Acknowledged ${acknowledgedIds.length} of ${ids.length} alert events.`);
   };
 
   const toggleRule = async (id: number, currentActive: boolean) => {
@@ -177,31 +202,37 @@ export const AlertsPage: React.FC<{ initialTab?: 'alarms' | 'rules' }> = ({ init
     }
   };
 
-  // Counts for the 10 legacy alarm categories
-  const legacyCategories = [
-    { label: 'All Alarms', count: alerts.length || 4030 },
-    { label: 'Overspeed', count: alerts.filter((a) => a.category === 'Overspeed').length || 1452 },
-    { label: 'Over Idle', count: alerts.filter((a) => a.category === 'Over Idle').length || 2023 },
-    { label: '30 Minute Alert', count: alerts.filter((a) => a.category === '30 Minute Alert').length || 397 },
-    { label: 'Immobilizer Release', count: alerts.filter((a) => a.category === 'Immobilizer Release').length || 19 },
-    { label: 'SLA Alert', count: alerts.filter((a) => a.category === 'SLA Alert').length || 80 },
-    { label: 'Trip Start', count: alerts.filter((a) => a.category === 'Trip Start').length || 15 },
-    { label: 'Power cut', count: alerts.filter((a) => a.category === 'Power cut').length || 33 },
-    { label: 'Harsh Breaking', count: alerts.filter((a) => a.category === 'Harsh Breaking').length || 4 },
-    { label: 'Harsh Cornering', count: alerts.filter((a) => a.category === 'Harsh Cornering').length || 7 },
-  ];
+  // Category tabs cover the full legacy alert catalogue; counts come from the
+  // alerts actually stored for this tenant (0 when no event of that type).
+  const categoryTabs = useMemo(() => {
+    const counts = new Map<string, number>();
+    alerts.forEach((a) => {
+      if (a.type) counts.set(a.type, (counts.get(a.type) || 0) + 1);
+    });
+    const known = ALERT_CATEGORY_ORDER.map((type) => ({
+      type,
+      label: alertTypeLabel(type),
+      count: counts.get(type) || 0,
+    }));
+    const extra = Array.from(counts.keys())
+      .filter((type) => !ALERT_CATEGORY_ORDER.includes(type))
+      .map((type) => ({ type, label: alertTypeLabel(type), count: counts.get(type) || 0 }));
+    return [{ type: 'all', label: 'All Alarms', count: alerts.length }, ...known, ...extra];
+  }, [alerts]);
 
   const filteredAlerts = useMemo(() => {
     return alerts.filter((a) => {
-      if (selectedCategory !== 'All Alarms' && a.category !== selectedCategory) {
+      if (selectedCategory !== 'all' && a.type !== selectedCategory) {
         return false;
       }
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         return (
-          a.name.toLowerCase().includes(q) ||
-          a.owner.toLowerCase().includes(q) ||
-          a.description.toLowerCase().includes(q)
+          a.type.toLowerCase().includes(q) ||
+          alertTypeLabel(a.type).toLowerCase().includes(q) ||
+          a.vehicle.toLowerCase().includes(q) ||
+          a.driver.toLowerCase().includes(q) ||
+          a.message.toLowerCase().includes(q)
         );
       }
       return true;
@@ -216,13 +247,20 @@ export const AlertsPage: React.FC<{ initialTab?: 'alarms' | 'rules' }> = ({ init
   const totalPages = Math.ceil(filteredAlerts.length / pageSize) || 1;
 
   const handleExportExcel = () => {
-    const header = 'Name,Owner,Description,Triggered Time,Last Update Time,Status\n';
+    const header = 'Type,Severity,Vehicle,Driver,Message,Time,Timestamp,Acknowledged\n';
     const rows = filteredAlerts
       .map(
         (a) =>
-          `"${a.name}","${a.owner}","${a.description}","${a.triggeredTime}","${a.lastUpdateTime}","${
-            a.acknowledged ? 'Resolved' : 'Active'
-          }"`
+          [
+            csvCell(a.type),
+            csvCell(a.severity),
+            csvCell(a.vehicle),
+            csvCell(a.driver),
+            csvCell(a.message),
+            csvCell(a.time),
+            csvCell(a.timestamp),
+            csvCell(a.acknowledged ? 'Yes' : 'No'),
+          ].join(',')
       )
       .join('\n');
 
@@ -317,42 +355,8 @@ export const AlertsPage: React.FC<{ initialTab?: 'alarms' | 'rules' }> = ({ init
           </div>
         </div>
 
-        {/* Top Controls: 00:45 Timer, Play/Pause/Reload, Export To Excel (Screenshot 4) */}
+        {/* Top Controls: Export To Excel */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-sm)',
-              padding: '6px 12px',
-              fontSize: '0.88rem',
-              fontWeight: 700,
-              fontFamily: 'monospace',
-            }}
-          >
-            <span>00:{String(timerSeconds).padStart(2, '0')}</span>
-            <button
-              onClick={() => setIsTimerRunning(!isTimerRunning)}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' }}
-              title={isTimerRunning ? 'Pause' : 'Resume'}
-            >
-              {isTimerRunning ? <Pause size={13} /> : <Play size={13} />}
-            </button>
-            <button
-              onClick={() => {
-                setTimerSeconds(45);
-                loadData();
-              }}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' }}
-              title="Reset Timer and Refresh"
-            >
-              <RotateCw size={13} />
-            </button>
-          </div>
-
           <button
             onClick={handleExportExcel}
             className="btn btn-primary"
@@ -366,7 +370,7 @@ export const AlertsPage: React.FC<{ initialTab?: 'alarms' | 'rules' }> = ({ init
 
       {activeTab === 'alarms' ? (
         <>
-          {/* 10 Legacy Alarm Categories (Screenshot 4: Red brick pill tabs) */}
+          {/* Alarm categories derived from API alert types */}
           <div
             style={{
               display: 'flex',
@@ -375,13 +379,13 @@ export const AlertsPage: React.FC<{ initialTab?: 'alarms' | 'rules' }> = ({ init
               marginBottom: '20px',
             }}
           >
-            {legacyCategories.map((cat) => {
-              const active = selectedCategory === cat.label;
+            {categoryTabs.map((cat) => {
+              const active = selectedCategory === cat.type;
               return (
                 <button
-                  key={cat.label}
+                  key={cat.type}
                   onClick={() => {
-                    setSelectedCategory(cat.label);
+                    setSelectedCategory(cat.type);
                     setCurrentPage(1);
                   }}
                   style={{
@@ -507,7 +511,7 @@ export const AlertsPage: React.FC<{ initialTab?: 'alarms' | 'rules' }> = ({ init
             </div>
           </div>
 
-          {/* Alarm Ledger Table (Screenshot 4: Name | Owner | Description | Triggered Time | Last Update Time | Map) */}
+          {/* Alarm Ledger Table */}
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
@@ -531,25 +535,27 @@ export const AlertsPage: React.FC<{ initialTab?: 'alarms' | 'rules' }> = ({ init
                         style={{ cursor: 'pointer' }}
                       />
                     </th>
-                    <th style={{ padding: '12px 16px' }}>Name</th>
-                    <th style={{ padding: '12px 16px' }}>Owner</th>
-                    <th style={{ padding: '12px 16px' }}>Description</th>
-                    <th style={{ padding: '12px 16px' }}>Triggered Time</th>
-                    <th style={{ padding: '12px 16px' }}>Last Update Time</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'right' }}>Map</th>
+                    <th style={{ padding: '12px 16px' }}>Type</th>
+                    <th style={{ padding: '12px 16px' }}>Vehicle</th>
+                    <th style={{ padding: '12px 16px' }}>Driver</th>
+                    <th style={{ padding: '12px 16px' }}>Message</th>
+                    <th style={{ padding: '12px 16px' }}>Severity</th>
+                    <th style={{ padding: '12px 16px' }}>Time</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={7} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)' }}>
+                      <td colSpan={8} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)' }}>
                         Loading real-time alarm events...
                       </td>
                     </tr>
                   ) : pagedAlerts.length === 0 ? (
                     <tr>
-                      <td colSpan={7} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)' }}>
-                        No alarm triggers recorded for {selectedCategory}.
+                      <td colSpan={8} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)' }}>
+                        No alarm triggers recorded for{' '}
+                        {categoryTabs.find((c) => c.type === selectedCategory)?.label || 'this category'}.
                       </td>
                     </tr>
                   ) : (
@@ -576,46 +582,62 @@ export const AlertsPage: React.FC<{ initialTab?: 'alarms' | 'rules' }> = ({ init
                               style={{ cursor: 'pointer' }}
                             />
                           </td>
-                          <td style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                            <span
-                              style={{
-                                color: row.name.includes('Overspeed')
-                                  ? '#DC2626'
-                                  : row.name.includes('Idle')
-                                  ? '#D97706'
-                                  : 'var(--text-primary)',
-                              }}
-                            >
-                              {row.name}
+                          <td style={{ padding: '12px 16px', fontWeight: 700 }}>
+                            <span style={{ color: severityBadgeStyle(row.severity).color }}>
+                              {alertTypeLabel(row.type)}
                             </span>
                           </td>
-                          <td style={{ padding: '12px 16px', fontWeight: 600 }}>
-                            {row.owner}
+                          <td style={{ padding: '12px 16px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                            {row.vehicle || '—'}
+                          </td>
+                          <td style={{ padding: '12px 16px', color: 'var(--text-secondary)' }}>
+                            {row.driver || '—'}
                           </td>
                           <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', maxWidth: '320px' }}>
-                            {row.description}
+                            {row.message || '—'}
                           </td>
-                          <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.84rem' }}>
-                            {row.triggeredTime}
+                          <td style={{ padding: '12px 16px' }}>
+                            <span
+                              style={{
+                                padding: '2px 8px',
+                                borderRadius: 'var(--radius-sm)',
+                                fontSize: '0.76rem',
+                                fontWeight: 700,
+                                textTransform: 'uppercase',
+                                ...severityBadgeStyle(row.severity),
+                              }}
+                            >
+                              {row.severity || '—'}
+                            </span>
                           </td>
-                          <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.84rem' }}>
-                            {row.lastUpdateTime}
+                          <td
+                            style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.84rem' }}
+                            title={row.timestamp || undefined}
+                          >
+                            {row.time || row.timestamp || '—'}
                           </td>
                           <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
-                              <button
-                                onClick={() => navigate('/live')}
-                                style={{
-                                  background: 'none',
-                                  border: 'none',
-                                  cursor: 'pointer',
-                                  padding: '4px',
-                                  color: 'var(--accent)',
-                                }}
-                                title="Pinpoint on Map"
-                              >
-                                <MapPin size={16} />
-                              </button>
+                              {row.lat !== null && row.lng !== null ? (
+                                <a
+                                  href={`https://www.google.com/maps?q=${row.lat},${row.lng}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    padding: '4px',
+                                    color: 'var(--accent)',
+                                    display: 'inline-flex',
+                                  }}
+                                  title={`Open ${row.lat.toFixed(4)}, ${row.lng.toFixed(4)} in maps`}
+                                >
+                                  <MapPin size={16} />
+                                </a>
+                              ) : (
+                                <span style={{ color: 'var(--text-tertiary)', fontSize: '0.78rem' }}>—</span>
+                              )}
                               <button
                                 onClick={() => handleAcknowledge(row.id)}
                                 className="btn btn-secondary btn-sm"
@@ -628,7 +650,7 @@ export const AlertsPage: React.FC<{ initialTab?: 'alarms' | 'rules' }> = ({ init
                                   color: row.acknowledged ? 'var(--good)' : undefined,
                                 }}
                               >
-                                {row.acknowledged ? 'Resolved' : 'Acknowledge'}
+                                {row.acknowledged ? 'Acknowledged' : 'Acknowledge'}
                               </button>
                             </div>
                           </td>
@@ -686,39 +708,52 @@ export const AlertsPage: React.FC<{ initialTab?: 'alarms' | 'rules' }> = ({ init
               Sms & Email Configuration
             </h2>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-              Define automated SMS, Email, and WhatsApp dispatch channels for critical fleet violations.
+              Define automated SMS and Email dispatch channels for critical fleet violations.
             </p>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
-            {rules.map((rule) => (
-              <div key={rule.id} className="card" style={{ padding: '20px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                  <div>
-                    <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>
-                      {rule.name}
-                    </h3>
-                    <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                      {rule.description}
-                    </p>
+          {rules.length === 0 ? (
+            <div className="card" style={{ padding: '36px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+              No alert rules configured.
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
+              {rules.map((rule) => (
+                <div key={rule.id} className="card" style={{ padding: '20px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                    <div>
+                      <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>
+                        {rule.name}
+                      </h3>
+                      <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                        {rule.description || '—'}
+                      </p>
+                    </div>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={rule.isActive}
+                        onChange={() => toggleRule(rule.id, rule.isActive)}
+                        style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                      />
+                    </label>
                   </div>
-                  <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={rule.isActive}
-                      onChange={() => toggleRule(rule.id, rule.isActive)}
-                      style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                    />
-                  </label>
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '12px', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>
+                    {rule.smsEnabled ? (
+                      <span className="badge badge-neutral">SMS enabled</span>
+                    ) : (
+                      <span className="badge badge-neutral">SMS disabled</span>
+                    )}
+                    {rule.emailEnabled ? (
+                      <span className="badge badge-neutral">Email enabled</span>
+                    ) : (
+                      <span className="badge badge-neutral">Email disabled</span>
+                    )}
+                  </div>
                 </div>
-                <div style={{ display: 'flex', gap: '8px', marginTop: '12px', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>
-                  <span className="badge badge-neutral">SMS Alert</span>
-                  <span className="badge badge-neutral">Email Digest</span>
-                  <span className="badge badge-neutral">Telegram Hook</span>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
