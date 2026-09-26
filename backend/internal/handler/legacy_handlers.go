@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -10,6 +11,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+
+	"github.com/rudra-netra/backend/internal/events"
 )
 
 // ─────────────────────────────────────────────────────────────
@@ -208,7 +212,9 @@ type CommandRecord struct {
 	SentBy      string `json:"sentBy"`
 	Status      string `json:"status"`
 	SentAt      string `json:"sentAt"`
+	DeliveredAt string `json:"deliveredAt,omitempty"`
 	AckAt       string `json:"ackAt,omitempty"`
+	Response    string `json:"response,omitempty"`
 }
 
 // commandPayload maps a logical command to its Teltonika/Concox protocol string.
@@ -267,14 +273,10 @@ func sendDeviceCommandHandler(c *gin.Context) {
 		}
 	}
 
-	var exists bool
+	var imei string
 	if err := deps.Pool.QueryRow(c.Request.Context(),
-		"SELECT EXISTS(SELECT 1 FROM devices WHERE id = $1 AND company_id = $2)",
-		deviceID, companyID).Scan(&exists); err != nil {
-		serverError(c, err)
-		return
-	}
-	if !exists {
+		"SELECT imei FROM devices WHERE id = $1 AND company_id = $2",
+		deviceID, companyID).Scan(&imei); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "device not found for this organization"})
 		return
 	}
@@ -302,13 +304,37 @@ func sendDeviceCommandHandler(c *gin.Context) {
 		return
 	}
 
+	// Hand the command to the ingestion tier, which writes it to the device's
+	// live socket as a Codec 12 frame. Without Redis (or an offline device)
+	// the command stays queued in device_commands with status 'Sent'.
+	delivered := false
+	if deps.Redis != nil {
+		pubCtx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+		defer cancel()
+		if err := deps.Redis.Publish(pubCtx, events.CommandsChannel, map[string]interface{}{
+			"imei":       imei,
+			"command_id": newID,
+			"command":    rawCmd,
+		}); err == nil {
+			delivered = true
+		} else if deps.Logger != nil {
+			deps.Logger.Warn("failed to publish device command", zap.Error(err))
+		}
+	}
+
+	message := fmt.Sprintf("Command '%s' is queued for delivery to the hardware unit.", req.CommandType)
+	if delivered {
+		message = fmt.Sprintf("Command '%s' sent to the device gateway for delivery.", req.CommandType)
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success":     true,
 		"commandId":   newID,
 		"commandType": req.CommandType,
 		"rawCommand":  rawCmd,
 		"status":      "Sent",
-		"message":     fmt.Sprintf("Command '%s' queued for delivery to the hardware unit.", req.CommandType),
+		"queued":      delivered,
+		"message":     message,
 	})
 }
 
@@ -328,7 +354,8 @@ func listDeviceCommandsHandler(c *gin.Context) {
 
 	rows, err := deps.Pool.Query(c.Request.Context(), `
 		SELECT c.id, c.device_id, COALESCE(v.reg_number, d.imei, ''), c.command_type,
-		       COALESCE(c.command_payload, ''), COALESCE(c.sent_by, ''), c.status, c.sent_at
+		       COALESCE(c.command_payload, ''), COALESCE(c.sent_by, ''), c.status, c.sent_at,
+		       c.delivered_at, c.ack_at, COALESCE(c.response, '')
 		FROM device_commands c
 		LEFT JOIN devices d ON c.device_id = d.id
 		LEFT JOIN vehicles v ON v.device_id = d.id
@@ -346,11 +373,15 @@ func listDeviceCommandsHandler(c *gin.Context) {
 	for rows.Next() {
 		var rec CommandRecord
 		var sentAt time.Time
+		var deliveredAt, ackAt *time.Time
 		if err := rows.Scan(&rec.ID, &rec.DeviceID, &rec.VehicleReg, &rec.CommandType,
-			&rec.CommandStr, &rec.SentBy, &rec.Status, &sentAt); err != nil {
+			&rec.CommandStr, &rec.SentBy, &rec.Status, &sentAt,
+			&deliveredAt, &ackAt, &rec.Response); err != nil {
 			continue
 		}
 		rec.SentAt = sentAt.Format("2006-01-02 15:04:05")
+		rec.DeliveredAt = fmtTime(deliveredAt, "2006-01-02 15:04:05")
+		rec.AckAt = fmtTime(ackAt, "2006-01-02 15:04:05")
 		list = append(list, rec)
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": list})
@@ -366,7 +397,8 @@ func listAllCommandLogsHandler(c *gin.Context) {
 	}
 	rows, err := deps.Pool.Query(c.Request.Context(), `
 		SELECT c.id, c.device_id, COALESCE(v.reg_number, d.imei, ''), c.command_type,
-		       COALESCE(c.command_payload, ''), COALESCE(c.sent_by, ''), c.status, c.sent_at
+		       COALESCE(c.command_payload, ''), COALESCE(c.sent_by, ''), c.status, c.sent_at,
+		       c.delivered_at, c.ack_at, COALESCE(c.response, '')
 		FROM device_commands c
 		LEFT JOIN devices d ON c.device_id = d.id
 		LEFT JOIN vehicles v ON v.device_id = d.id
@@ -384,11 +416,15 @@ func listAllCommandLogsHandler(c *gin.Context) {
 	for rows.Next() {
 		var rec CommandRecord
 		var sentAt time.Time
+		var deliveredAt, ackAt *time.Time
 		if err := rows.Scan(&rec.ID, &rec.DeviceID, &rec.VehicleReg, &rec.CommandType,
-			&rec.CommandStr, &rec.SentBy, &rec.Status, &sentAt); err != nil {
+			&rec.CommandStr, &rec.SentBy, &rec.Status, &sentAt,
+			&deliveredAt, &ackAt, &rec.Response); err != nil {
 			continue
 		}
 		rec.SentAt = sentAt.Format("2006-01-02 15:04:05")
+		rec.DeliveredAt = fmtTime(deliveredAt, "2006-01-02 15:04:05")
+		rec.AckAt = fmtTime(ackAt, "2006-01-02 15:04:05")
 		list = append(list, rec)
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": list})
@@ -1583,14 +1619,11 @@ func adminListDevicesHandler(c *gin.Context) {
 		dev.Protocol = fmt.Sprintf("TCP/%d", port)
 		dev.LastPing = fmtTime(lastHeartbeat, "2006-01-02 15:04")
 
-		switch {
-		case dev.VehicleReg == "" && dev.AssignedTenant == "":
+		// Device status is the last value stored in the database; it only shows
+		// Unassigned when the device has no tenant or vehicle linked.
+		if dev.VehicleReg == "" && dev.AssignedTenant == "" {
 			dev.Status = "Unassigned"
-		case lastHeartbeat != nil && time.Since(*lastHeartbeat) < 15*time.Minute:
-			dev.Status = "Online"
-		case rawStatus == "active":
-			dev.Status = "Offline"
-		default:
+		} else {
 			dev.Status = rawStatus
 		}
 		list = append(list, dev)
