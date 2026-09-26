@@ -122,7 +122,7 @@ export const useVehicleStore = create<VehicleState>((set) => ({
           heading: v.heading ?? 0,
           ignition,
           status,
-          timestamp: v.timestamp || new Date().toISOString(),
+          timestamp: v.timestamp || '',
           odometer: v.odometer,
           temperature: v.temperature,
           location_name:

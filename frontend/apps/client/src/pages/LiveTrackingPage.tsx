@@ -12,6 +12,7 @@ import {
   Square,
   Navigation,
   Activity,
+  Clock,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { fetchWithAuth } from '../utils/api';
@@ -144,7 +145,19 @@ export const LiveTrackingPage: React.FC<{ initialAction?: string }> = ({ initial
     init();
   }, [token, user?.company_id, fetchVehicles, setAuth]);
 
-  // Status counts matching Screenshot 1
+  // Helper to format authentic database timestamp
+  const formatDatabaseTime = (ts?: string) => {
+    if (!ts) return 'No GPS Data';
+    const dt = new Date(ts);
+    if (isNaN(dt.getTime())) return ts;
+    const day = String(dt.getDate()).padStart(2, '0');
+    const month = String(dt.getMonth() + 1).padStart(2, '0');
+    const year = dt.getFullYear();
+    const timeStr = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return `${day}/${month}/${year} ${timeStr}`;
+  };
+
+  // Status counts matching fleet telemetry
   const counts = useMemo(() => {
     let moving = 0;
     let waiting = 0;
@@ -161,14 +174,15 @@ export const LiveTrackingPage: React.FC<{ initialAction?: string }> = ({ initial
       if (v.temperature !== undefined && v.temperature !== null) {
         freezer++;
       }
-      const isRecent = (Date.now() - new Date(v.timestamp).getTime()) < 24 * 3600 * 1000;
+      // A device is active only if it received a real telemetry ping recently (within last 30 minutes)
+      const isRecent = v.timestamp ? (Date.now() - new Date(v.timestamp).getTime()) < 30 * 60 * 1000 : false;
       if (isRecent) active++;
       else inactive++;
     });
 
     return {
       total: vehiclesMap.size || 312,
-      active: active || vehiclesMap.size,
+      active: active, // Real active device count (0 if no live data streaming)
       inactive,
       freezer: freezer || 48,
       moving,
@@ -182,6 +196,7 @@ export const LiveTrackingPage: React.FC<{ initialAction?: string }> = ({ initial
   const vehicleList = useMemo(() => {
     const list = Array.from(vehiclesMap.values());
     return list.filter((v) => {
+      const isRecent = v.timestamp ? (Date.now() - new Date(v.timestamp).getTime()) < 30 * 60 * 1000 : false;
       const matchesFilter =
         filterStatus === 'all' ||
         (filterStatus === 'moving' && v.status === 'moving') ||
@@ -190,8 +205,8 @@ export const LiveTrackingPage: React.FC<{ initialAction?: string }> = ({ initial
         (filterStatus === 'parked' && (v.status === 'stopped' || v.status === 'offline')) ||
         (filterStatus === 'stopped' && (v.status === 'stopped' || v.status === 'offline')) ||
         (filterStatus === 'freezer' && (v.temperature !== undefined && v.temperature !== null)) ||
-        (filterStatus === 'active' && ((Date.now() - new Date(v.timestamp).getTime()) < 24 * 3600 * 1000)) ||
-        (filterStatus === 'inactive' && ((Date.now() - new Date(v.timestamp).getTime()) >= 24 * 3600 * 1000));
+        (filterStatus === 'active' && isRecent) ||
+        (filterStatus === 'inactive' && !isRecent);
 
       const matchesSearch =
         v.reg_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -510,9 +525,17 @@ export const LiveTrackingPage: React.FC<{ initialAction?: string }> = ({ initial
 
                   {/* Location & Expand */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', paddingTop: '6px', borderTop: '1px solid var(--border-subtle)', fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '220px' }}>
-                      {v.location_name || 'Dubai, UAE'}
-                    </span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', overflow: 'hidden', maxWidth: '240px' }}>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {v.location_name || 'Dubai, UAE'}
+                      </span>
+                      {v.timestamp && (
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <Clock size={10} />
+                          <span>{formatDatabaseTime(v.timestamp)}</span>
+                        </span>
+                      )}
+                    </div>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -527,7 +550,7 @@ export const LiveTrackingPage: React.FC<{ initialAction?: string }> = ({ initial
                         fontSize: '0.78rem',
                         padding: '2px 4px',
                       }}
-                      title="View Teltonika Telemetry & 1-Minute Live Data Logs"
+                      title="View Teltonika Telemetry & Transmission Logs"
                     >
                       More
                     </button>
@@ -578,7 +601,7 @@ export const LiveTrackingPage: React.FC<{ initialAction?: string }> = ({ initial
                         }}
                       >
                         <Activity size={13} color="var(--accent)" />
-                        <span>Teltonika Telemetry & 1-Min Logs</span>
+                        <span>Teltonika Telemetry & Device Logs</span>
                       </button>
                       <button
                         onClick={(e) => {
@@ -781,7 +804,7 @@ export const LiveTrackingPage: React.FC<{ initialAction?: string }> = ({ initial
         </div>
       )}
 
-      {/* Teltonika Device Telemetry & 1-Minute Live Data Logs Modal */}
+      {/* Teltonika Device Telemetry & Transmission Logs Modal */}
       {selectedTeltonikaVehicle && (
         <TeltonikaDetailsModal
           vehicle={selectedTeltonikaVehicle}

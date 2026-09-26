@@ -50,14 +50,14 @@ export const ListViewPage: React.FC = () => {
         freezer++;
       }
 
-      const isRecent = (Date.now() - new Date(v.timestamp).getTime()) < 24 * 3600 * 1000;
+      const isRecent = v.timestamp ? (Date.now() - new Date(v.timestamp).getTime()) < 30 * 60 * 1000 : false;
       if (isRecent) active++;
       else inactive++;
     });
 
     return {
       total: vehicleList.length || 312,
-      active: active || vehicleList.length,
+      active: active,
       inactive,
       freezer: freezer || 48,
       moving,
@@ -74,11 +74,11 @@ export const ListViewPage: React.FC = () => {
       if (statusFilter === 'stopped' && v.status !== 'stopped') return false;
       if (statusFilter === 'freezer' && (v.temperature === undefined || v.temperature === null)) return false;
       if (statusFilter === 'active') {
-        const isRecent = (Date.now() - new Date(v.timestamp).getTime()) < 24 * 3600 * 1000;
+        const isRecent = v.timestamp ? (Date.now() - new Date(v.timestamp).getTime()) < 30 * 60 * 1000 : false;
         if (!isRecent) return false;
       }
       if (statusFilter === 'inactive') {
-        const isRecent = (Date.now() - new Date(v.timestamp).getTime()) < 24 * 3600 * 1000;
+        const isRecent = v.timestamp ? (Date.now() - new Date(v.timestamp).getTime()) < 30 * 60 * 1000 : false;
         if (isRecent) return false;
       }
 

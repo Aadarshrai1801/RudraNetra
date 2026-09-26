@@ -51,6 +51,7 @@ func RegisterRoutes(router *gin.Engine, d *Dependencies) {
 			tracking.GET("/positions", getPositionsHandler)          // all devices current position
 			tracking.GET("/positions/:id", getDevicePositionHandler) // single device
 			tracking.GET("/history/:id", getHistoryHandler)          // playback data
+			tracking.GET("/logs/:id", getVehicleLogsHandler)         // device telemetry logs
 			tracking.GET("/clusters", getClustersHandler)            // clustered markers
 		}
 
@@ -59,6 +60,7 @@ func RegisterRoutes(router *gin.Engine, d *Dependencies) {
 		{
 			devices.GET("", listDevicesHandler)
 			devices.GET("/:id", getDeviceHandler)
+			devices.GET("/:id/logs", getVehicleLogsHandler)
 			devices.POST("", createDeviceHandler)
 			devices.PUT("/:id", updateDeviceHandler)
 			devices.DELETE("/:id", deleteDeviceHandler)
@@ -72,6 +74,7 @@ func RegisterRoutes(router *gin.Engine, d *Dependencies) {
 		{
 			vehicles.GET("", listVehiclesHandler)
 			vehicles.GET("/:id", getVehicleHandler)
+			vehicles.GET("/:id/logs", getVehicleLogsHandler)
 			vehicles.POST("", createVehicleHandler)
 			vehicles.PUT("/:id", updateVehicleHandler)
 			vehicles.PUT("/:id/config", updateVehicleConfigHandler)
