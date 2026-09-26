@@ -10,8 +10,10 @@ services:
       POSTGRES_USER: rudra
       POSTGRES_PASSWORD: secretpassword
     volumes:
-      - pgdata:/var/lib/postgresql/data
-      - ../backend/migrations/000001_init_schema.up.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+      - pgdata:/home/postgres/pgdata/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+      - ../backend/migrations:/migrations:ro
+      - ../backend/scripts:/seeds:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U rudra -d rudra_netra"]
       interval: 5s
